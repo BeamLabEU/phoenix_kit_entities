@@ -836,21 +836,10 @@ defmodule PhoenixKitEntities.FormBuilder do
         field_key = field["key"]
         field_value = Map.get(data_params, field_key)
 
-        case field_value do
-          nil ->
-            {data_acc, errors_acc}
-
-          "" ->
-            {data_acc, errors_acc}
-
-          value ->
-            case validate_type(field, value) do
-              {:ok, validated_value} ->
-                {Map.put(data_acc, field_key, validated_value), errors_acc}
-
-              {:error, field_errors} ->
-                {data_acc, Map.put(errors_acc, field_key, field_errors)}
-            end
+        if is_nil(field_value) or field_value == "" do
+          {data_acc, errors_acc}
+        else
+          validate_secondary_field(field_key, field, field_value, data_acc, errors_acc)
         end
       end)
 
@@ -860,6 +849,16 @@ defmodule PhoenixKitEntities.FormBuilder do
 
       {_data, errors} ->
         {:error, errors}
+    end
+  end
+
+  defp validate_secondary_field(field_key, field, value, data_acc, errors_acc) do
+    case validate_type(field, value) do
+      {:ok, validated_value} ->
+        {Map.put(data_acc, field_key, validated_value), errors_acc}
+
+      {:error, field_errors} ->
+        {data_acc, Map.put(errors_acc, field_key, field_errors)}
     end
   end
 

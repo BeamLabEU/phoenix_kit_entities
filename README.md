@@ -104,7 +104,7 @@ Changes to the module's source are picked up automatically on recompile.
 ### Git dependency (`git:`)
 
 ```elixir
-{:phoenix_kit_entities, git: "https://github.com/mdon/phoenix_kit_entities.git"}
+{:phoenix_kit_entities, git: "https://github.com/BeamLabEU/phoenix_kit_entities.git"}
 ```
 
 After updating the remote: `mix deps.update phoenix_kit_entities`, then `mix deps.compile phoenix_kit_entities --force` + restart the server.
@@ -135,7 +135,7 @@ lib/
     controllers/
       entity_form_controller.ex        # Public form submission handler
     migrations/
-      v1.ex                            # Consolidated IF NOT EXISTS migration
+      v1.ex                            # Migration module (called by parent app)
     mirror/
       exporter.ex                      # Entity/data export to JSON
       importer.ex                      # Entity/data import from JSON
@@ -361,7 +361,7 @@ mix phoenix_kit_entities.import
 
 ## Database
 
-The migration lives in PhoenixKit core. This module also provides a consolidated migration at `PhoenixKitEntities.Migrations.V1` with `IF NOT EXISTS` logic, safe to run standalone:
+Database tables and migrations are managed by the parent PhoenixKit project. This repo provides `PhoenixKitEntities.Migrations.V1` as a library module that the parent app's migrations call — there are no migrations to run in this repo directly.
 
 ```elixir
 # Two tables:
@@ -402,3 +402,5 @@ Names must be snake_case, start with a letter, 2-50 characters. Examples: `produ
 ### Changes not taking effect after editing
 
 Force a clean rebuild: `mix deps.clean phoenix_kit_entities && mix deps.get && mix deps.compile phoenix_kit_entities --force && mix compile --force`
+
+> **Note:** This repo has no database migrations. All tables and migrations are managed by the parent PhoenixKit project. The test helper creates necessary DB functions directly when a test database is available.

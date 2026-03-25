@@ -126,49 +126,43 @@ defmodule PhoenixKitEntities.Web.DataForm do
       |> assign(:has_unsaved_changes, false)
       |> mount_multilang()
 
-    socket =
-      if connected?(socket) do
-        Events.subscribe_to_entity_data(entity.uuid)
-        Events.subscribe_to_data_form(entity.uuid, form_record_key)
-
-        socket =
-          if data_record.uuid do
-            # Track this user in Presence
-            {:ok, _ref} =
-              PresenceHelpers.track_editing_session(:data, data_record.uuid, socket, current_user)
-
-            # Subscribe to presence changes
-            PresenceHelpers.subscribe_to_editing(:data, data_record.uuid)
-
-            # Determine our role (owner or spectator)
-            socket = assign_editing_role(socket, data_record.uuid)
-
-            # Load spectator state if we're not the owner
-            if socket.assigns.readonly? do
-              load_spectator_state(socket, data_record.uuid)
-            else
-              socket
-            end
-          else
-            # New record - no lock needed
-            socket
-            |> assign(:lock_owner?, true)
-            |> assign(:readonly?, false)
-            |> assign(:lock_owner_user, nil)
-            |> assign(:spectators, [])
-          end
-
-        socket
-      else
-        # Not connected - no lock logic
-        socket
-        |> assign(:lock_owner?, true)
-        |> assign(:readonly?, false)
-        |> assign(:lock_owner_user, nil)
-        |> assign(:spectators, [])
-      end
+    socket = mount_data_presence(socket, entity, data_record, form_record_key, current_user)
 
     {:ok, socket}
+  end
+
+  defp mount_data_presence(socket, entity, data_record, form_record_key, current_user) do
+    if connected?(socket) do
+      Events.subscribe_to_entity_data(entity.uuid)
+      Events.subscribe_to_data_form(entity.uuid, form_record_key)
+      setup_data_editing(socket, data_record, current_user)
+    else
+      assign_no_lock(socket)
+    end
+  end
+
+  defp setup_data_editing(socket, data_record, current_user) do
+    if data_record.uuid do
+      {:ok, _ref} =
+        PresenceHelpers.track_editing_session(:data, data_record.uuid, socket, current_user)
+
+      PresenceHelpers.subscribe_to_editing(:data, data_record.uuid)
+      socket = assign_editing_role(socket, data_record.uuid)
+
+      if socket.assigns.readonly?,
+        do: load_spectator_state(socket, data_record.uuid),
+        else: socket
+    else
+      assign_no_lock(socket)
+    end
+  end
+
+  defp assign_no_lock(socket) do
+    socket
+    |> assign(:lock_owner?, true)
+    |> assign(:readonly?, false)
+    |> assign(:lock_owner_user, nil)
+    |> assign(:spectators, [])
   end
 
   defp assign_editing_role(socket, data_uuid) do
@@ -302,50 +296,36 @@ defmodule PhoenixKitEntities.Web.DataForm do
 
   # ── Validate/Save helpers (below all handle_event clauses to avoid grouping warnings) ──
 
+  defp maybe_auto_generate_data_slug(data_params, _entity_uuid, record_uuid, _socket)
+       when not is_nil(record_uuid),
+       do: data_params
+
+  defp maybe_auto_generate_data_slug(data_params, entity_uuid, record_uuid, socket) do
+    current_data = Ecto.Changeset.apply_changes(socket.assigns.changeset)
+    previous_title = current_data.title || ""
+    title = data_params["title"] || previous_title
+    current_slug = data_params["slug"] || ""
+    auto_generated_slug = auto_generate_entity_slug(entity_uuid, record_uuid, previous_title)
+
+    if current_slug == "" || current_slug == auto_generated_slug do
+      Map.put(data_params, "slug", auto_generate_entity_slug(entity_uuid, record_uuid, title))
+    else
+      data_params
+    end
+  end
+
   defp do_validate(data_params, socket) do
     entity_uuid = socket.assigns.entity.uuid
     record_uuid = socket.assigns.data_record.uuid
     form_data = Map.get(data_params, "data", %{})
 
     data_params =
-      if socket.assigns.data_record.uuid do
-        data_params
-      else
-        data_params
-        |> Map.put("created_by_uuid", socket.assigns.current_user.uuid)
-      end
+      if socket.assigns.data_record.uuid,
+        do: data_params,
+        else: Map.put(data_params, "created_by_uuid", socket.assigns.current_user.uuid)
 
     data_params =
-      if is_nil(record_uuid) do
-        # Always use the primary language title for slug generation
-        current_data = Ecto.Changeset.apply_changes(socket.assigns.changeset)
-        previous_title = current_data.title || ""
-
-        title =
-          if data_params["title"] do
-            data_params["title"]
-          else
-            # On secondary language tab, title param is absent — keep the existing title
-            previous_title
-          end
-
-        current_slug = data_params["slug"] || ""
-
-        auto_generated_slug =
-          auto_generate_entity_slug(entity_uuid, record_uuid, previous_title)
-
-        if current_slug == "" || current_slug == auto_generated_slug do
-          Map.put(
-            data_params,
-            "slug",
-            auto_generate_entity_slug(entity_uuid, record_uuid, title)
-          )
-        else
-          data_params
-        end
-      else
-        data_params
-      end
+      maybe_auto_generate_data_slug(data_params, entity_uuid, record_uuid, socket)
 
     current_lang = socket.assigns[:current_lang]
 
@@ -474,43 +454,11 @@ defmodule PhoenixKitEntities.Web.DataForm do
 
         case save_data_record(socket, params) do
           {:ok, saved_record} ->
-            if socket.assigns.data_record.uuid do
-              # Update — stay on page, refresh changeset from saved record
-              changeset = EntityData.change(saved_record)
-
-              socket =
-                socket
-                |> assign(:data_record, saved_record)
-                |> assign(:changeset, changeset)
-                |> put_flash(:info, gettext("Data record saved successfully"))
-                |> broadcast_data_form_state(params)
-
-              {:noreply, socket}
-            else
-              # Create — navigate to the edit page for the new record
-              entity_name = socket.assigns.entity.name
-
-              socket =
-                socket
-                |> put_flash(:info, gettext("Data record created successfully"))
-                |> push_navigate(
-                  to:
-                    Routes.path(
-                      "/admin/entities/#{entity_name}/data/#{saved_record.uuid}/edit",
-                      locale: socket.assigns.current_locale_base
-                    )
-                )
-
-              {:noreply, socket}
-            end
+            {:noreply, handle_data_save_success(socket, saved_record, params)}
 
           {:error, %Ecto.Changeset{} = changeset} ->
-            socket =
-              socket
-              |> assign(:changeset, changeset)
-              |> broadcast_data_form_state(params)
-
-            {:noreply, socket}
+            {:noreply,
+             socket |> assign(:changeset, changeset) |> broadcast_data_form_state(params)}
         end
 
       {:error, errors} ->
@@ -548,6 +496,30 @@ defmodule PhoenixKitEntities.Web.DataForm do
           |> broadcast_data_form_state(error_params)
 
         {:noreply, socket}
+    end
+  end
+
+  defp handle_data_save_success(socket, saved_record, params) do
+    if socket.assigns.data_record.uuid do
+      changeset = EntityData.change(saved_record)
+
+      socket
+      |> assign(:data_record, saved_record)
+      |> assign(:changeset, changeset)
+      |> put_flash(:info, gettext("Data record saved successfully"))
+      |> broadcast_data_form_state(params)
+    else
+      entity_name = socket.assigns.entity.name
+
+      socket
+      |> put_flash(:info, gettext("Data record created successfully"))
+      |> push_navigate(
+        to:
+          Routes.path(
+            "/admin/entities/#{entity_name}/data/#{saved_record.uuid}/edit",
+            locale: socket.assigns.current_locale_base
+          )
+      )
     end
   end
 

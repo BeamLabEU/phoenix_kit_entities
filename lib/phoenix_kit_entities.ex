@@ -200,27 +200,17 @@ defmodule PhoenixKitEntities do
   end
 
   defp validate_name_uniqueness(changeset) do
-    case get_field(changeset, :name) do
-      nil ->
-        changeset
+    name = get_field(changeset, :name)
+    current_uuid = get_field(changeset, :uuid)
 
-      "" ->
-        changeset
-
-      name ->
-        case get_entity_by_name(name) do
-          nil ->
-            changeset
-
-          existing_entity ->
-            current_uuid = get_field(changeset, :uuid)
-
-            if current_uuid && existing_entity.uuid == current_uuid do
-              changeset
-            else
-              add_error(changeset, :name, "has already been taken")
-            end
-        end
+    if is_nil(name) or name == "" do
+      changeset
+    else
+      case get_entity_by_name(name) do
+        nil -> changeset
+        existing when current_uuid != nil and existing.uuid == current_uuid -> changeset
+        _existing -> add_error(changeset, :name, "has already been taken")
+      end
     end
   end
 
@@ -490,17 +480,8 @@ defmodule PhoenixKitEntities do
     if has_created_by_uuid do
       attrs
     else
-      case Auth.get_first_admin_uuid() do
-        nil ->
-          # Fall back to first user if no admin exists
-          case Auth.get_first_user_uuid() do
-            nil -> attrs
-            user_uuid -> Map.put(attrs, :created_by_uuid, user_uuid)
-          end
-
-        admin_uuid ->
-          Map.put(attrs, :created_by_uuid, admin_uuid)
-      end
+      creator_uuid = Auth.get_first_admin_uuid() || Auth.get_first_user_uuid()
+      if creator_uuid, do: Map.put(attrs, :created_by_uuid, creator_uuid), else: attrs
     end
   end
 
@@ -816,20 +797,21 @@ defmodule PhoenixKitEntities do
     alias PhoenixKit.Dashboard.Registry, as: DashboardRegistry
 
     if DashboardRegistry.initialized?() do
-      case :ets.lookup(DashboardRegistry.ets_table(), @entities_cache_key) do
-        [{@entities_cache_key, entities, timestamp}]
-        when is_integer(timestamp) ->
-          if System.monotonic_time(:millisecond) - timestamp < @entities_cache_ttl_ms do
-            entities
-          else
-            fetch_and_cache_entities()
-          end
-
-        _ ->
-          fetch_and_cache_entities()
-      end
+      lookup_cached_entities(DashboardRegistry)
     else
       list_entity_summaries()
+    end
+  end
+
+  defp lookup_cached_entities(registry) do
+    case :ets.lookup(registry.ets_table(), @entities_cache_key) do
+      [{@entities_cache_key, entities, timestamp}] when is_integer(timestamp) ->
+        if System.monotonic_time(:millisecond) - timestamp < @entities_cache_ttl_ms,
+          do: entities,
+          else: fetch_and_cache_entities()
+
+      _ ->
+        fetch_and_cache_entities()
     end
   end
 

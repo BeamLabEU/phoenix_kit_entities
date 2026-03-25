@@ -155,25 +155,25 @@ defmodule PhoenixKitEntities.Mirror.Importer do
   end
 
   defp handle_entity_conflict(existing_entity, definition, :merge) do
-    attrs = %{
-      display_name: definition["display_name"] || existing_entity.display_name,
-      display_name_plural:
-        definition["display_name_plural"] || existing_entity.display_name_plural,
-      description: definition["description"] || existing_entity.description,
-      icon: definition["icon"] || existing_entity.icon,
-      status: definition["status"] || existing_entity.status,
-      fields_definition:
-        merge_fields_definition(
-          existing_entity.fields_definition,
-          definition["fields_definition"]
-        ),
-      settings: deep_merge(existing_entity.settings || %{}, definition["settings"] || %{})
-    }
+    attrs = build_merged_entity_attrs(existing_entity, definition)
 
     case Entities.update_entity(existing_entity, attrs) do
       {:ok, entity} -> {:ok, :updated, entity}
       {:error, changeset} -> {:error, {:validation_failed, changeset}}
     end
+  end
+
+  defp build_merged_entity_attrs(existing, definition) do
+    %{
+      display_name: definition["display_name"] || existing.display_name,
+      display_name_plural: definition["display_name_plural"] || existing.display_name_plural,
+      description: definition["description"] || existing.description,
+      icon: definition["icon"] || existing.icon,
+      status: definition["status"] || existing.status,
+      fields_definition:
+        merge_fields_definition(existing.fields_definition, definition["fields_definition"]),
+      settings: deep_merge(existing.settings || %{}, definition["settings"] || %{})
+    }
   end
 
   # ============================================================================
@@ -305,18 +305,22 @@ defmodule PhoenixKitEntities.Mirror.Importer do
   end
 
   defp handle_data_conflict(existing_record, record_data, :merge) do
-    attrs = %{
-      title: record_data["title"] || existing_record.title,
-      slug: record_data["slug"] || existing_record.slug,
-      status: record_data["status"] || existing_record.status,
-      data: deep_merge(existing_record.data || %{}, record_data["data"] || %{}),
-      metadata: deep_merge(existing_record.metadata || %{}, record_data["metadata"] || %{})
-    }
+    attrs = build_merged_data_attrs(existing_record, record_data)
 
     case EntityData.update(existing_record, attrs) do
       {:ok, record} -> {:ok, :updated, record}
       {:error, changeset} -> {:error, {:validation_failed, changeset}}
     end
+  end
+
+  defp build_merged_data_attrs(existing, record_data) do
+    %{
+      title: record_data["title"] || existing.title,
+      slug: record_data["slug"] || existing.slug,
+      status: record_data["status"] || existing.status,
+      data: deep_merge(existing.data || %{}, record_data["data"] || %{}),
+      metadata: deep_merge(existing.metadata || %{}, record_data["metadata"] || %{})
+    }
   end
 
   # ============================================================================

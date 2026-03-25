@@ -222,28 +222,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
         {:noreply, put_flash(socket, :error, gettext("Entity not found"))}
 
       entity ->
-        message =
-          case Exporter.export_entity(entity) do
-            {:ok, _path, :with_data} ->
-              gettext("Exported %{name} (definition + records)", name: entity.display_name)
-
-            {:ok, _path, :definition_only} ->
-              gettext("Exported %{name} (definition only)", name: entity.display_name)
-
-            {:error, _reason} ->
-              nil
-          end
-
-        socket =
-          socket
-          |> assign(:export_stats, Storage.get_stats())
-          |> then(fn s ->
-            if message,
-              do: put_flash(s, :info, message),
-              else: put_flash(s, :error, gettext("Export failed"))
-          end)
-
-        {:noreply, socket}
+        {:noreply, do_export_entity(socket, entity)}
     end
   end
 
@@ -421,6 +400,26 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
   end
 
   ## Per-entity mirror helpers
+
+  defp do_export_entity(socket, entity) do
+    message =
+      case Exporter.export_entity(entity) do
+        {:ok, _path, :with_data} ->
+          gettext("Exported %{name} (definition + records)", name: entity.display_name)
+
+        {:ok, _path, :definition_only} ->
+          gettext("Exported %{name} (definition only)", name: entity.display_name)
+
+        {:error, _reason} ->
+          nil
+      end
+
+    socket = assign(socket, :export_stats, Storage.get_stats())
+
+    if message,
+      do: put_flash(socket, :info, message),
+      else: put_flash(socket, :error, gettext("Export failed"))
+  end
 
   defp fetch_entity(entity_uuid) do
     case Entities.get_entity(entity_uuid) do

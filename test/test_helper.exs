@@ -61,9 +61,6 @@ repo_available =
       $$ LANGUAGE plpgsql VOLATILE;
       """)
 
-      # If your module has a Migration module, run it here:
-      # Ecto.Migrator.up(TestRepo, 0, PhoenixKitEntities.Migrations.V1, log: false)
-
       Ecto.Adapters.SQL.Sandbox.mode(TestRepo, :manual)
       true
     rescue

@@ -260,53 +260,42 @@ defmodule Mix.Tasks.PhoenixKitEntities.Import do
     preview = Importer.preview_import()
     summary = preview.summary
 
-    unless options[:quiet] do
+    log_unless_quiet(options, fn ->
       Mix.shell().info(
         "Found #{summary.definitions.total} entities with #{summary.data.total} total data records"
       )
 
       Mix.shell().info("Conflict strategy: #{strategy}")
-    end
+    end)
 
     unless options[:yes] do
-      if not confirm_import("all entities", strategy) do
+      unless confirm_import("all entities", strategy) do
         Mix.shell().info("Import cancelled.")
         exit({:shutdown, 0})
       end
     end
 
-    unless options[:quiet] do
-      Mix.shell().info("\nImporting...")
-    end
+    log_unless_quiet(options, fn -> Mix.shell().info("\nImporting...") end)
 
     {:ok, %{definitions: def_results, data: data_results}} = Importer.import_all(strategy)
 
-    unless options[:quiet] do
-      Mix.shell().info("\n--- Results ---")
-    end
+    log_unless_quiet(options, fn -> Mix.shell().info("\n--- Results ---") end)
 
-    Enum.each(def_results, fn result ->
-      case result do
-        {:ok, _action, entity} ->
-          log_definition_result(entity.name, result, options)
-
-        {:error, _} = err ->
-          log_definition_result("unknown", err, options)
-      end
+    Enum.each(def_results, fn
+      {:ok, _action, entity} = result -> log_definition_result(entity.name, result, options)
+      {:error, _} = err -> log_definition_result("unknown", err, options)
     end)
 
-    Enum.each(data_results, fn result ->
-      case result do
-        {:ok, _action, _record} ->
-          log_data_result("", result, options)
-
-        {:error, _} = err ->
-          log_data_result("", err, options)
-      end
+    Enum.each(data_results, fn
+      {:ok, _action, _record} = result -> log_data_result("", result, options)
+      {:error, _} = err -> log_data_result("", err, options)
     end)
 
     log_summary(def_results ++ data_results, options)
   end
+
+  defp log_unless_quiet(%{quiet: true}, _fun), do: :ok
+  defp log_unless_quiet(_options, fun), do: fun.()
 
   defp confirm_import(entity_name, strategy) do
     Mix.shell().yes?("Import #{entity_name} with strategy '#{strategy}'? [y/N]")

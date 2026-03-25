@@ -329,49 +329,50 @@ defmodule PhoenixKitEntities.SitemapSource do
   end
 
   defp collect_entity_records(entity, base_url, language, is_default, routes_cache) do
-    # Skip entities whose routes require authentication (using cached routes)
     if entity_requires_auth_cached?(entity, routes_cache) do
       Logger.debug("Sitemap: Entity '#{entity.name}' skipped - routes require authentication")
-
       []
     else
-      # Use cached pattern lookup instead of RouteResolver calls
-      url_pattern = get_url_pattern_cached(entity, routes_cache)
-
-      # If no URL pattern found (no route, no settings) - use entity name as fallback
-      effective_pattern = url_pattern || get_fallback_pattern(entity)
-
-      if effective_pattern do
-        records = EntityData.published_records(entity.uuid)
-
-        if url_pattern do
-          Logger.debug(
-            "Sitemap: Entity '#{entity.name}' using URL pattern: #{url_pattern} (#{length(records)} published records)"
-          )
-        else
-          Logger.info(
-            "Sitemap: Entity '#{entity.name}' using fallback pattern: #{effective_pattern} (#{length(records)} published records)"
-          )
-        end
-
-        records
-        |> Enum.reject(&excluded?/1)
-        |> Enum.map(fn record ->
-          build_entry(record, entity, effective_pattern, base_url, language, is_default)
-        end)
-      else
-        Logger.warning(
-          "Sitemap: Entity '#{entity.name}' skipped - no URL pattern configured and fallback disabled"
-        )
-
-        []
-      end
+      do_collect_entity_records(entity, base_url, language, is_default, routes_cache)
     end
   rescue
     error ->
       Logger.warning("Failed to collect records for entity #{entity.name}: #{inspect(error)}")
+      []
+  end
+
+  defp do_collect_entity_records(entity, base_url, language, is_default, routes_cache) do
+    url_pattern = get_url_pattern_cached(entity, routes_cache)
+    effective_pattern = url_pattern || get_fallback_pattern(entity)
+
+    if effective_pattern do
+      records = EntityData.published_records(entity.uuid)
+      log_pattern_usage(entity, url_pattern, effective_pattern, length(records))
+
+      records
+      |> Enum.reject(&excluded?/1)
+      |> Enum.map(fn record ->
+        build_entry(record, entity, effective_pattern, base_url, language, is_default)
+      end)
+    else
+      Logger.warning(
+        "Sitemap: Entity '#{entity.name}' skipped - no URL pattern configured and fallback disabled"
+      )
 
       []
+    end
+  end
+
+  defp log_pattern_usage(entity, url_pattern, effective_pattern, count) do
+    if url_pattern do
+      Logger.debug(
+        "Sitemap: Entity '#{entity.name}' using URL pattern: #{url_pattern} (#{count} published records)"
+      )
+    else
+      Logger.info(
+        "Sitemap: Entity '#{entity.name}' using fallback pattern: #{effective_pattern} (#{count} published records)"
+      )
+    end
   end
 
   # Fallback pattern using entity name - disabled by default

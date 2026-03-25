@@ -88,44 +88,31 @@ defmodule PhoenixKitEntities.Web.EntityForm do
       |> assign(:sort_mode, Entities.get_sort_mode(entity))
       |> mount_multilang()
 
-    socket =
-      if connected?(socket) do
-        if form_key && entity.uuid do
-          # Track this user in Presence
-          {:ok, _ref} =
-            PresenceHelpers.track_editing_session(:entity, entity.uuid, socket, current_user)
-
-          # Subscribe to presence changes and form events
-          PresenceHelpers.subscribe_to_editing(:entity, entity.uuid)
-          Events.subscribe_to_entity_form(form_key)
-
-          # Determine our role (owner or spectator)
-          socket = assign_editing_role(socket, entity.uuid)
-
-          # Load spectator state if we're not the owner
-          if socket.assigns.readonly? do
-            load_spectator_state(socket, entity.uuid)
-          else
-            socket
-          end
-        else
-          # New entity (no lock needed) or no form_key
-          socket
-          |> assign(:lock_owner?, true)
-          |> assign(:readonly?, false)
-          |> assign(:lock_owner_user, nil)
-          |> assign(:spectators, [])
-        end
-      else
-        # Not connected - no lock logic
-        socket
-        |> assign(:lock_owner?, true)
-        |> assign(:readonly?, false)
-        |> assign(:lock_owner_user, nil)
-        |> assign(:spectators, [])
-      end
+    socket = mount_entity_presence(socket, form_key, entity, current_user)
 
     {:ok, socket}
+  end
+
+  defp mount_entity_presence(socket, form_key, entity, current_user) do
+    if (connected?(socket) and form_key) && entity.uuid do
+      {:ok, _ref} =
+        PresenceHelpers.track_editing_session(:entity, entity.uuid, socket, current_user)
+
+      PresenceHelpers.subscribe_to_editing(:entity, entity.uuid)
+      Events.subscribe_to_entity_form(form_key)
+
+      socket = assign_editing_role(socket, entity.uuid)
+
+      if socket.assigns.readonly?,
+        do: load_spectator_state(socket, entity.uuid),
+        else: socket
+    else
+      socket
+      |> assign(:lock_owner?, true)
+      |> assign(:readonly?, false)
+      |> assign(:lock_owner_user, nil)
+      |> assign(:spectators, [])
+    end
   end
 
   defp assign_editing_role(socket, entity_uuid) do
@@ -182,165 +169,15 @@ defmodule PhoenixKitEntities.Web.EntityForm do
   @impl true
   def handle_event("validate", %{"entities" => entity_params}, socket) do
     if socket.assigns[:lock_owner?] do
-      # Get all current data from the changeset (both changes and original data)
-      current_data = Ecto.Changeset.apply_changes(socket.assigns.changeset)
-
-      # Convert struct to map and merge with incoming params
-      existing_data =
-        current_data
-        |> Map.from_struct()
-        |> Map.drop([:__meta__, :creator, :entity_data, :id, :uuid, :date_created, :date_updated])
-        |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
-
-      # Merge existing data with new params (new params override existing)
-      entity_params = Map.merge(existing_data, entity_params)
-
-      # Auto-generate slug from display_name during creation (but not editing)
-      entity_params =
-        if is_nil(socket.assigns.entity.uuid) do
-          # Only auto-generate if display_name changed and slug wasn't manually edited
-          display_name = entity_params["display_name"] || ""
-          current_slug = entity_params["name"] || ""
-
-          # Check if the current slug was auto-generated from the previous display_name
-          previous_display_name = existing_data["display_name"] || ""
-          auto_generated_slug = generate_slug_from_name(previous_display_name)
-
-          # If slug matches the auto-generated one or is empty, update it
-          if current_slug == "" || current_slug == auto_generated_slug do
-            Map.put(entity_params, "name", generate_slug_from_name(display_name))
-          else
-            # User manually edited the slug, don't overwrite it
-            entity_params
-          end
-        else
-          # In edit mode, don't auto-generate
-          entity_params
-        end
-
-      # Add fields_definition to params for validation
-      entity_params = Map.put(entity_params, "fields_definition", socket.assigns.fields)
-
-      # Add current settings with merged translations and sort mode to params
-      settings = merge_translation_params(socket, entity_params)
-
-      settings =
-        case entity_params["sort_mode"] do
-          mode when mode in ~w(auto manual) -> Map.put(settings, "sort_mode", mode)
-          _ -> settings
-        end
-
-      entity_params = Map.put(entity_params, "settings", settings)
-      entity_params = Map.delete(entity_params, "translations")
-
-      # Add created_by for new entities during validation so changeset can be valid
-      entity_params =
-        if socket.assigns.entity.uuid do
-          entity_params
-        else
-          entity_params
-          |> Map.put("created_by_uuid", socket.assigns.current_user.uuid)
-        end
-
-      changeset =
-        socket.assigns.entity
-        |> Entities.change_entity(entity_params)
-
-      # Keep entity in sync with updated settings
-      entity = %{socket.assigns.entity | settings: settings}
-
-      socket =
-        socket
-        |> assign(:changeset, changeset)
-        |> assign(:entity, entity)
-        |> assign(:sort_mode, settings["sort_mode"] || "auto")
-
-      reply_with_broadcast(socket)
+      do_validate(entity_params, socket)
     else
-      # Spectator - ignore local changes, wait for broadcasts
       {:noreply, socket}
     end
   end
 
   def handle_event("save", %{"entities" => entity_params}, socket) do
     if socket.assigns[:lock_owner?] do
-      # Merge existing changeset data into params to preserve fields not on current tab
-      current_data = Ecto.Changeset.apply_changes(socket.assigns.changeset)
-
-      existing_data =
-        current_data
-        |> Map.from_struct()
-        |> Map.drop([:__meta__, :creator, :entity_data, :id, :uuid, :date_created, :date_updated])
-        |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
-
-      entity_params = Map.merge(existing_data, entity_params)
-
-      # Add current fields to entity params
-      entity_params = Map.put(entity_params, "fields_definition", socket.assigns.fields)
-
-      # Add current settings with merged translations and sort mode
-      settings = merge_translation_params(socket, entity_params)
-
-      settings =
-        case entity_params["sort_mode"] do
-          mode when mode in ~w(auto manual) -> Map.put(settings, "sort_mode", mode)
-          _ -> settings
-        end
-
-      entity_params = Map.put(entity_params, "settings", settings)
-      entity_params = Map.delete(entity_params, "translations")
-
-      # Add created_by for new entities
-      entity_params =
-        if socket.assigns.entity.uuid do
-          entity_params
-        else
-          entity_params
-          |> Map.put("created_by_uuid", socket.assigns.current_user.uuid)
-        end
-
-      try do
-        case save_entity(socket, entity_params) do
-          {:ok, saved_entity} ->
-            if socket.assigns.entity.uuid do
-              # Update — stay on page, refresh changeset from saved entity
-              changeset = Entities.change_entity(saved_entity)
-
-              socket =
-                socket
-                |> assign(:entity, saved_entity)
-                |> assign(:changeset, changeset)
-                |> assign(:fields, saved_entity.fields_definition || [])
-                |> assign(:sort_mode, Entities.get_sort_mode(saved_entity))
-                |> put_flash(:info, gettext("Entity saved successfully"))
-
-              reply_with_broadcast(socket)
-            else
-              # Create — navigate to the edit page for the new entity
-              locale = socket.assigns[:current_locale] || "en"
-
-              socket =
-                socket
-                |> put_flash(:info, gettext("Entity created successfully"))
-                |> push_navigate(
-                  to: Routes.path("/admin/entities/#{saved_entity.uuid}/edit", locale: locale)
-                )
-
-              {:noreply, socket}
-            end
-
-          {:error, %Ecto.Changeset{} = changeset} ->
-            socket = assign(socket, :changeset, changeset)
-            reply_with_broadcast(socket)
-        end
-      rescue
-        e ->
-          require Logger
-          Logger.error("Entity save failed: #{Exception.message(e)}")
-
-          {:noreply,
-           put_flash(socket, :error, gettext("Something went wrong. Please try again."))}
-      end
+      do_save(entity_params, socket)
     else
       {:noreply, put_flash(socket, :error, gettext("Cannot save - you are spectating"))}
     end
@@ -1001,6 +838,136 @@ defmodule PhoenixKitEntities.Web.EntityForm do
     end
   end
 
+  # ── Validate/Save helpers (below all handle_event clauses to avoid grouping warnings) ──
+
+  defp do_validate(entity_params, socket) do
+    existing_data = changeset_to_string_map(socket.assigns.changeset)
+    entity_params = Map.merge(existing_data, entity_params)
+    entity_params = maybe_auto_generate_slug(entity_params, existing_data, socket.assigns.entity)
+
+    entity_params = Map.put(entity_params, "fields_definition", socket.assigns.fields)
+
+    settings = merge_translation_params(socket, entity_params)
+
+    settings =
+      case entity_params["sort_mode"] do
+        mode when mode in ~w(auto manual) -> Map.put(settings, "sort_mode", mode)
+        _ -> settings
+      end
+
+    entity_params =
+      entity_params
+      |> Map.put("settings", settings)
+      |> Map.delete("translations")
+
+    entity_params =
+      if socket.assigns.entity.uuid,
+        do: entity_params,
+        else: Map.put(entity_params, "created_by_uuid", socket.assigns.current_user.uuid)
+
+    changeset = Entities.change_entity(socket.assigns.entity, entity_params)
+    entity = %{socket.assigns.entity | settings: settings}
+
+    socket =
+      socket
+      |> assign(:changeset, changeset)
+      |> assign(:entity, entity)
+      |> assign(:sort_mode, settings["sort_mode"] || "auto")
+
+    reply_with_broadcast(socket)
+  end
+
+  defp changeset_to_string_map(changeset) do
+    changeset
+    |> Ecto.Changeset.apply_changes()
+    |> Map.from_struct()
+    |> Map.drop([:__meta__, :creator, :entity_data, :id, :uuid, :date_created, :date_updated])
+    |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
+  end
+
+  defp maybe_auto_generate_slug(entity_params, existing_data, entity) do
+    if entity.uuid do
+      entity_params
+    else
+      display_name = entity_params["display_name"] || ""
+      current_slug = entity_params["name"] || ""
+      previous_display_name = existing_data["display_name"] || ""
+      auto_generated_slug = generate_slug_from_name(previous_display_name)
+
+      if current_slug == "" || current_slug == auto_generated_slug do
+        Map.put(entity_params, "name", generate_slug_from_name(display_name))
+      else
+        entity_params
+      end
+    end
+  end
+
+  defp do_save(entity_params, socket) do
+    existing_data = changeset_to_string_map(socket.assigns.changeset)
+    entity_params = Map.merge(existing_data, entity_params)
+    entity_params = Map.put(entity_params, "fields_definition", socket.assigns.fields)
+
+    settings = merge_translation_params(socket, entity_params)
+
+    settings =
+      case entity_params["sort_mode"] do
+        mode when mode in ~w(auto manual) -> Map.put(settings, "sort_mode", mode)
+        _ -> settings
+      end
+
+    entity_params =
+      entity_params
+      |> Map.put("settings", settings)
+      |> Map.delete("translations")
+
+    entity_params =
+      if socket.assigns.entity.uuid,
+        do: entity_params,
+        else: Map.put(entity_params, "created_by_uuid", socket.assigns.current_user.uuid)
+
+    try do
+      case save_entity(socket, entity_params) do
+        {:ok, saved_entity} ->
+          handle_save_success(socket, saved_entity)
+
+        {:error, %Ecto.Changeset{} = changeset} ->
+          reply_with_broadcast(assign(socket, :changeset, changeset))
+      end
+    rescue
+      e ->
+        require Logger
+        Logger.error("Entity save failed: #{Exception.message(e)}")
+        {:noreply, put_flash(socket, :error, gettext("Something went wrong. Please try again."))}
+    end
+  end
+
+  defp handle_save_success(socket, saved_entity) do
+    if socket.assigns.entity.uuid do
+      changeset = Entities.change_entity(saved_entity)
+
+      socket =
+        socket
+        |> assign(:entity, saved_entity)
+        |> assign(:changeset, changeset)
+        |> assign(:fields, saved_entity.fields_definition || [])
+        |> assign(:sort_mode, Entities.get_sort_mode(saved_entity))
+        |> put_flash(:info, gettext("Entity saved successfully"))
+
+      reply_with_broadcast(socket)
+    else
+      locale = socket.assigns[:current_locale] || "en"
+
+      socket =
+        socket
+        |> put_flash(:info, gettext("Entity created successfully"))
+        |> push_navigate(
+          to: Routes.path("/admin/entities/#{saved_entity.uuid}/edit", locale: locale)
+        )
+
+      {:noreply, socket}
+    end
+  end
+
   ## Live updates
 
   @impl true
@@ -1030,37 +997,10 @@ defmodule PhoenixKitEntities.Web.EntityForm do
   def handle_info({:entity_created, _}, socket), do: {:noreply, socket}
 
   def handle_info({:entity_updated, entity_uuid}, socket) do
-    if socket.assigns.entity.uuid == entity_uuid do
-      # Ignore our own saves — the save handler already refreshes state
-      if socket.assigns[:lock_owner?] do
-        {:noreply, socket}
-      else
-        entity = Entities.get_entity!(entity_uuid)
-        locale = socket.assigns[:current_locale] || "en"
-
-        # If entity was archived or unpublished, redirect to entities list
-        if entity.status != "published" do
-          {:noreply,
-           socket
-           |> put_flash(
-             :warning,
-             gettext("Entity '%{name}' was %{status} in another session.",
-               name: entity.display_name,
-               status: entity.status
-             )
-           )
-           |> redirect(to: Routes.path("/admin/entities", locale: locale))}
-        else
-          socket =
-            socket
-            |> refresh_entity_state(entity)
-            |> put_flash(:info, gettext("Entity updated in another session."))
-
-          {:noreply, socket}
-        end
-      end
-    else
-      {:noreply, socket}
+    cond do
+      socket.assigns.entity.uuid != entity_uuid -> {:noreply, socket}
+      socket.assigns[:lock_owner?] -> {:noreply, socket}
+      true -> handle_remote_entity_update(socket, entity_uuid)
     end
   end
 
@@ -1108,6 +1048,29 @@ defmodule PhoenixKitEntities.Web.EntityForm do
   end
 
   # Helper Functions
+
+  defp handle_remote_entity_update(socket, entity_uuid) do
+    entity = Entities.get_entity!(entity_uuid)
+    locale = socket.assigns[:current_locale] || "en"
+
+    if entity.status != "published" do
+      {:noreply,
+       socket
+       |> put_flash(
+         :warning,
+         gettext("Entity '%{name}' was %{status} in another session.",
+           name: entity.display_name,
+           status: entity.status
+         )
+       )
+       |> redirect(to: Routes.path("/admin/entities", locale: locale))}
+    else
+      {:noreply,
+       socket
+       |> refresh_entity_state(entity)
+       |> put_flash(:info, gettext("Entity updated in another session."))}
+    end
+  end
 
   defp reply_with_broadcast(socket) do
     {:noreply, broadcast_entity_form_state(socket)}

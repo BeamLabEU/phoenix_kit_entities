@@ -426,30 +426,21 @@ defmodule PhoenixKitEntities.EntityData do
 
   # Mirror export helpers for auto-sync (per-entity settings)
   defp maybe_mirror_data(entity_data) do
-    # Check if the parent entity has data mirroring enabled
-    case Entities.get_entity(entity_data.entity_uuid) do
-      nil ->
-        :ok
-
-      entity ->
-        if Entities.mirror_data_enabled?(entity) do
-          Task.start(fn -> Exporter.export_entity_data(entity_data) end)
-        end
+    with entity when not is_nil(entity) <- Entities.get_entity(entity_data.entity_uuid),
+         true <- Entities.mirror_data_enabled?(entity) do
+      Task.start(fn -> Exporter.export_entity_data(entity_data) end)
     end
+
+    :ok
   end
 
   defp maybe_delete_mirrored_data(entity_data) do
-    # Re-export the entity file to update the data array
-    # Only if the entity has data mirroring enabled
-    case Entities.get_entity(entity_data.entity_uuid) do
-      nil ->
-        :ok
-
-      entity ->
-        if Entities.mirror_data_enabled?(entity) do
-          Task.start(fn -> Exporter.export_entity(entity) end)
-        end
+    with entity when not is_nil(entity) <- Entities.get_entity(entity_data.entity_uuid),
+         true <- Entities.mirror_data_enabled?(entity) do
+      Task.start(fn -> Exporter.export_entity(entity) end)
     end
+
+    :ok
   end
 
   @doc """
@@ -640,22 +631,16 @@ defmodule PhoenixKitEntities.EntityData do
     has_created_by_uuid =
       Map.has_key?(attrs, :created_by_uuid) or Map.has_key?(attrs, "created_by_uuid")
 
-    if has_created_by_uuid do
-      attrs
-    else
+    creator_uuid =
+      if has_created_by_uuid,
+        do: nil,
+        else: Auth.get_first_admin_uuid() || Auth.get_first_user_uuid()
+
+    if creator_uuid do
       key = if Map.has_key?(attrs, :entity_uuid), do: :created_by_uuid, else: "created_by_uuid"
-
-      case Auth.get_first_admin_uuid() do
-        nil ->
-          # Fall back to first user if no admin exists
-          case Auth.get_first_user_uuid() do
-            nil -> attrs
-            user_uuid -> Map.put(attrs, key, user_uuid)
-          end
-
-        admin_uuid ->
-          Map.put(attrs, key, admin_uuid)
-      end
+      Map.put(attrs, key, creator_uuid)
+    else
+      attrs
     end
   end
 
@@ -663,19 +648,14 @@ defmodule PhoenixKitEntities.EntityData do
   defp maybe_add_position(attrs) when is_map(attrs) do
     has_position = Map.has_key?(attrs, :position) or Map.has_key?(attrs, "position")
 
-    if has_position do
+    entity_uuid = Map.get(attrs, :entity_uuid) || Map.get(attrs, "entity_uuid")
+
+    if has_position or is_nil(entity_uuid) do
       attrs
     else
-      entity_uuid =
-        Map.get(attrs, :entity_uuid) || Map.get(attrs, "entity_uuid")
-
-      if entity_uuid do
-        next_pos = next_position(entity_uuid)
-        key = if Map.has_key?(attrs, :entity_uuid), do: :position, else: "position"
-        Map.put(attrs, key, next_pos)
-      else
-        attrs
-      end
+      next_pos = next_position(entity_uuid)
+      key = if Map.has_key?(attrs, :entity_uuid), do: :position, else: "position"
+      Map.put(attrs, key, next_pos)
     end
   end
 

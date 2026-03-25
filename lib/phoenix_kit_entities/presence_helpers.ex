@@ -98,23 +98,21 @@ defmodule PhoenixKitEntities.PresenceHelpers do
 
     raw_presences
     |> Enum.flat_map(fn {socket_id, %{metas: metas}} ->
-      # Filter out metas with dead PIDs
-      valid_metas =
-        Enum.filter(metas, fn meta ->
-          case Map.get(meta, :pid) do
-            pid when is_pid(pid) -> Process.alive?(pid)
-            # Keep metas without PID for backward compatibility
-            _ -> true
-          end
-        end)
-
-      # Take the first valid meta (most recent)
-      case valid_metas do
+      metas
+      |> Enum.filter(&alive_presence?/1)
+      |> case do
         [meta | _] -> [{socket_id, meta}]
         [] -> []
       end
     end)
     |> Enum.sort_by(fn {_socket_id, meta} -> meta.joined_at end)
+  end
+
+  defp alive_presence?(meta) do
+    case Map.get(meta, :pid) do
+      pid when is_pid(pid) -> Process.alive?(pid)
+      _ -> true
+    end
   end
 
   @doc """

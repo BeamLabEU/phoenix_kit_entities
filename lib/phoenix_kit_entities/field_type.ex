@@ -40,13 +40,15 @@ defmodule PhoenixKitEntities.FieldType do
   @spec from_map(map()) :: t()
   def from_map(map) when is_map(map) do
     %__MODULE__{
-      name: map[:name] || map["name"],
-      label: map[:label] || map["label"],
-      description: map[:description] || map["description"],
-      category: map[:category] || map["category"],
-      icon: map[:icon] || map["icon"],
-      requires_options: map[:requires_options] || map["requires_options"] || false,
-      default_props: map[:default_props] || map["default_props"] || %{}
+      name: get_value(map, :name),
+      label: get_value(map, :label),
+      description: get_value(map, :description),
+      category: get_value(map, :category),
+      icon: get_value(map, :icon),
+      requires_options: get_value(map, :requires_options) || false,
+      default_props: get_value(map, :default_props) || %{}
     }
   end
+
+  defp get_value(map, key), do: map[key] || map[to_string(key)]
 end
