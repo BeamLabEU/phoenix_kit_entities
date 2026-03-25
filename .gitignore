@@ -18,3 +18,5 @@ erl_crash.dump
 
 # Ignore package tarball (built via "mix hex.build").
 phoenix_kit_entities-*.tar
+
+*.log
