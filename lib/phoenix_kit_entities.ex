@@ -849,8 +849,10 @@ defmodule PhoenixKitEntities do
   @impl PhoenixKit.Module
   def children, do: [PhoenixKitEntities.Presence]
 
+  def css_sources, do: ["phoenix_kit_entities"]
+
   @impl PhoenixKit.Module
-  def css_sources, do: [:phoenix_kit_entities]
+  def version, do: "0.1.0"
 
   @impl PhoenixKit.Module
   def route_module, do: PhoenixKitEntities.Routes

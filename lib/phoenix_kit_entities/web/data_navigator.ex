@@ -15,6 +15,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
   alias PhoenixKitEntities.EntityData
   alias PhoenixKitEntities.Events
 
+  @impl true
   def mount(_params, _session, socket) do
     project_title = Settings.get_project_title()
     entities = Entities.list_entities()
@@ -46,6 +47,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
     {:ok, socket}
   end
 
+  @impl true
   def handle_params(params, _url, socket) do
     # Resolve entity from slug in params
     {entity, entity_uuid} = resolve_entity_from_params(params, socket)
@@ -117,6 +119,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
     |> assign(:archived_records, stats.archived_records)
   end
 
+  @impl true
   def handle_event("toggle_view_mode", %{"mode" => mode}, socket) do
     params =
       build_url_params(
@@ -411,6 +414,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
 
   ## Live updates
 
+  @impl true
   def handle_info({:entity_created, _entity_uuid}, socket) do
     {:noreply, refresh_entities_and_data(socket)}
   end

@@ -10,6 +10,7 @@ defmodule PhoenixKitEntities.Web.Entities do
   alias PhoenixKit.Settings
   alias PhoenixKitEntities, as: Entities
 
+  @impl true
   def mount(params, _session, socket) do
     # Set locale for LiveView process
     locale =
@@ -28,6 +29,7 @@ defmodule PhoenixKitEntities.Web.Entities do
     {:ok, socket}
   end
 
+  @impl true
   def handle_params(params, _url, socket) do
     view_mode = Map.get(params, "view", "table")
 
@@ -38,6 +40,7 @@ defmodule PhoenixKitEntities.Web.Entities do
     {:noreply, socket}
   end
 
+  @impl true
   def handle_event("toggle_view_mode", %{"mode" => mode}, socket) do
     base_path = current_base_path(socket)
     query = if mode != "table", do: "?view=#{mode}", else: ""
@@ -87,6 +90,7 @@ defmodule PhoenixKitEntities.Web.Entities do
 
   ## Live updates
 
+  @impl true
   def handle_info({event, _entity_uuid}, socket)
       when event in [:entity_created, :entity_updated, :entity_deleted] do
     {:noreply, assign(socket, :entities, Entities.list_entities())}

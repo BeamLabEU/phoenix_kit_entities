@@ -4,6 +4,11 @@ defmodule PhoenixKitEntities.Web.EntityForm do
   Provides form interface for defining entity fields, types, and validation rules.
   """
 
+  # Defensive catch-all clauses for parse_int/2 and parse_accept_list/1 are
+  # unreachable given current call sites but kept for safety.
+  @dialyzer {:nowarn_function, parse_int: 2}
+  @dialyzer {:nowarn_function, parse_accept_list: 1}
+
   use PhoenixKitWeb, :live_view
   on_mount(PhoenixKitEntities.Web.Hooks)
 
@@ -1507,7 +1512,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
     end
   end
 
-  defp parse_int(_, default), do: default
+  defp parse_int(_non_binary, default), do: default
 
   defp mb_to_bytes(mb_string, default_mb) when is_binary(mb_string) do
     case Float.parse(mb_string) do
@@ -1532,7 +1537,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
     end)
   end
 
-  defp parse_accept_list(_), do: []
+  defp parse_accept_list(_non_binary), do: []
 
   # Helper functions for the view
   def bytes_to_mb(bytes) when is_integer(bytes) do

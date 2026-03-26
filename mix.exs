@@ -20,7 +20,7 @@ defmodule PhoenixKitEntities.MixProject do
       package: package(),
 
       # Dialyzer
-      dialyzer: [plt_add_apps: [:phoenix_kit]],
+      dialyzer: [plt_add_apps: [:phoenix_kit, :mix]],
 
       # Docs
       name: "PhoenixKitEntities",

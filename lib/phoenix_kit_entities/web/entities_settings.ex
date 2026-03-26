@@ -13,6 +13,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
   alias PhoenixKitEntities.Events
   alias PhoenixKitEntities.Mirror.{Exporter, Importer, Storage}
 
+  @impl true
   def mount(_params, _session, socket) do
     project_title = Settings.get_project_title()
 
@@ -55,6 +56,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
     {:ok, socket}
   end
 
+  @impl true
   def handle_event("validate", %{"settings" => settings_params}, socket) do
     changeset = build_changeset(settings_params, :validate)
     {:noreply, assign(socket, :changeset, changeset)}
@@ -455,6 +457,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
 
   ## Live updates
 
+  @impl true
   def handle_info({event, _entity_uuid}, socket)
       when event in [:entity_created, :entity_updated, :entity_deleted] do
     socket =
