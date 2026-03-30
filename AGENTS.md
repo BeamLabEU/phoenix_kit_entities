@@ -141,17 +141,6 @@ PR review files go in `dev_docs/pull_requests/{year}/{pr_number}-{slug}/` direct
 - Integration tests tagged `:integration` require PostgreSQL: `createdb phoenix_kit_entities_test`
 - Test helper auto-detects database availability and excludes integration tests if unavailable
 
-## Installation Note
-
-Host apps must register the route module explicitly in config due to compile-time ordering (the router may compile before this dep is discovered):
-
-```elixir
-# config/config.exs
-config :phoenix_kit,
-  route_modules: [PhoenixKitEntities.Routes]
-```
-
-Without this, admin routes (`/admin/entities`, `/admin/settings/entities`, etc.) will return `NoRouteError`.
 
 ## External Dependencies
 
