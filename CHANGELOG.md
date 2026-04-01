@@ -1,3 +1,8 @@
+## 0.1.1 - 2026-04-01
+
+### Fixed
+- Fix compilation error: replace undefined `content_status_badge` with `status_badge` from PhoenixKit core components
+
 ## 0.1.0 - 2026-03-24
 
 ### Added
