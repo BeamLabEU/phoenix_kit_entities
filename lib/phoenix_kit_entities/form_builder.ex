@@ -502,24 +502,25 @@ defmodule PhoenixKitEntities.FormBuilder do
       <.label for={@field["key"]}>
         {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
-      <select
-        name={"#{@changeset.data.__struct__.__schema__(:source)}[data][#{@field["key"]}]"}
-        class={["select w-full", @opts[:input_class]]}
-        required={@field["required"]}
-        disabled={@opts[:disabled]}
-      >
-        <%= if @field["allow_empty"] || !@field["required"] do %>
-          <option value="">{@field["placeholder"] || gettext("Select an option...")}</option>
-        <% end %>
-        <%= for option <- (@field["options"] || []) do %>
-          <option
-            value={option}
-            selected={get_field_value(@changeset, @field["key"]) == option}
-          >
-            {option}
-          </option>
-        <% end %>
-      </select>
+      <label class={["select w-full", @opts[:input_class]]}>
+        <select
+          name={"#{@changeset.data.__struct__.__schema__(:source)}[data][#{@field["key"]}]"}
+          required={@field["required"]}
+          disabled={@opts[:disabled]}
+        >
+          <%= if @field["allow_empty"] || !@field["required"] do %>
+            <option value="">{@field["placeholder"] || gettext("Select an option...")}</option>
+          <% end %>
+          <%= for option <- (@field["options"] || []) do %>
+            <option
+              value={option}
+              selected={get_field_value(@changeset, @field["key"]) == option}
+            >
+              {option}
+            </option>
+          <% end %>
+        </select>
+      </label>
       <%= if @field["description"] do %>
         <.label class="label">
           <span class="label-text-alt">{@field["description"]}</span>

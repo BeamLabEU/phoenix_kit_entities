@@ -1859,23 +1859,24 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                 <%!-- Status --%>
                 <div>
                   <.label for="entity_status">{gettext("Status")} *</.label>
-                  <select
-                    id="entity_status"
-                    name={f[:status].name}
-                    class="select w-full"
-                    required
-                    disabled={@readonly?}
-                  >
-                    <option value="published" selected={f[:status].value == "published"}>
-                      {gettext("Published (active)")}
-                    </option>
-                    <option value="draft" selected={f[:status].value == "draft"}>
-                      {gettext("Draft (not visible)")}
-                    </option>
-                    <option value="archived" selected={f[:status].value == "archived"}>
-                      {gettext("Archived (hidden)")}
-                    </option>
-                  </select>
+                  <label class="select w-full">
+                    <select
+                      id="entity_status"
+                      name={f[:status].name}
+                      required
+                      disabled={@readonly?}
+                    >
+                      <option value="published" selected={f[:status].value == "published"}>
+                        {gettext("Published (active)")}
+                      </option>
+                      <option value="draft" selected={f[:status].value == "draft"}>
+                        {gettext("Draft (not visible)")}
+                      </option>
+                      <option value="archived" selected={f[:status].value == "archived"}>
+                        {gettext("Archived (hidden)")}
+                      </option>
+                    </select>
+                  </label>
                   <.label class="label">
                     <span class="label-text-alt">
                       {gettext("Only published can be used")}
@@ -1886,25 +1887,26 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                 <%!-- Sort Mode --%>
                 <div>
                   <.label for="entity_sort_mode">{gettext("Record Ordering")}</.label>
-                  <select
-                    id="entity_sort_mode"
-                    name="entities[sort_mode]"
-                    class="select w-full"
-                    disabled={@readonly?}
-                  >
-                    <option
-                      value="auto"
-                      selected={@sort_mode == "auto"}
+                  <label class="select w-full">
+                    <select
+                      id="entity_sort_mode"
+                      name="entities[sort_mode]"
+                      disabled={@readonly?}
                     >
-                      {gettext("Automatic (by creation date)")}
-                    </option>
-                    <option
-                      value="manual"
-                      selected={@sort_mode == "manual"}
-                    >
-                      {gettext("Manual (custom order)")}
-                    </option>
-                  </select>
+                      <option
+                        value="auto"
+                        selected={@sort_mode == "auto"}
+                      >
+                        {gettext("Automatic (by creation date)")}
+                      </option>
+                      <option
+                        value="manual"
+                        selected={@sort_mode == "manual"}
+                      >
+                        {gettext("Manual (custom order)")}
+                      </option>
+                    </select>
+                  </label>
                   <%!-- TODO: uncomment when table drag-and-drop is ready --%>
                   <%!-- <.label class="label">
                     <span class="label-text-alt">
@@ -2340,9 +2342,9 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                         <%= if get_in(@entity.settings, ["public_form_honeypot"]) do %>
                           <div class="mt-3 pl-14">
                             <.label class="text-sm">{gettext("When triggered:")}</.label>
+                            <label class="select select-sm w-full max-w-xs mt-1">
                             <select
                               name="public_form_honeypot_action"
-                              class="select select-sm w-full max-w-xs mt-1"
                               phx-change="update_security_action"
                               phx-value-setting="public_form_honeypot_action"
                               disabled={@readonly?}
@@ -2385,6 +2387,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                                 {gettext("Save and log warning")}
                               </option>
                             </select>
+                            </label>
                           </div>
                         <% end %>
                       </div>
@@ -2418,9 +2421,9 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                         <%= if get_in(@entity.settings, ["public_form_time_check"]) do %>
                           <div class="mt-3 pl-14">
                             <.label class="text-sm">{gettext("When triggered:")}</.label>
+                            <label class="select select-sm w-full max-w-xs mt-1">
                             <select
                               name="public_form_time_check_action"
-                              class="select select-sm w-full max-w-xs mt-1"
                               phx-change="update_security_action"
                               phx-value-setting="public_form_time_check_action"
                               disabled={@readonly?}
@@ -2465,6 +2468,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                                 {gettext("Save and log warning")}
                               </option>
                             </select>
+                            </label>
                           </div>
                         <% end %>
                       </div>
@@ -2496,9 +2500,9 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                         <%= if get_in(@entity.settings, ["public_form_rate_limit"]) do %>
                           <div class="mt-3 pl-14">
                             <.label class="text-sm">{gettext("When triggered:")}</.label>
+                            <label class="select select-sm w-full max-w-xs mt-1">
                             <select
                               name="public_form_rate_limit_action"
-                              class="select select-sm w-full max-w-xs mt-1"
                               phx-change="update_security_action"
                               phx-value-setting="public_form_rate_limit_action"
                               disabled={@readonly?}
@@ -2543,6 +2547,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                                 {gettext("Save and log warning")}
                               </option>
                             </select>
+                            </label>
                           </div>
                         <% end %>
                       </div>
@@ -2798,22 +2803,23 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                 <%!-- Field Type --%>
                 <div>
                   <.label>{gettext("Field Type")} *</.label>
-                  <select
-                    name="field[type]"
-                    class="select w-full"
-                    phx-debounce="300"
-                    value={@field_form["type"]}
-                  >
-                    <%= for {category_key, _label} <- PhoenixKitEntities.FieldTypes.category_list() do %>
-                      <optgroup label={field_category_label(category_key)}>
-                        <%= for type <- PhoenixKitEntities.FieldTypes.by_category(category_key) do %>
-                          <option value={type.name} selected={@field_form["type"] == type.name}>
-                            {field_type_label(type.name)}
-                          </option>
-                        <% end %>
-                      </optgroup>
-                    <% end %>
-                  </select>
+                  <label class="select w-full">
+                    <select
+                      name="field[type]"
+                      phx-debounce="300"
+                      value={@field_form["type"]}
+                    >
+                      <%= for {category_key, _label} <- PhoenixKitEntities.FieldTypes.category_list() do %>
+                        <optgroup label={field_category_label(category_key)}>
+                          <%= for type <- PhoenixKitEntities.FieldTypes.by_category(category_key) do %>
+                            <option value={type.name} selected={@field_form["type"] == type.name}>
+                              {field_type_label(type.name)}
+                            </option>
+                          <% end %>
+                        </optgroup>
+                      <% end %>
+                    </select>
+                  </label>
                 </div>
 
                 <%!-- Field Label and Key --%>

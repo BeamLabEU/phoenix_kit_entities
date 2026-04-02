@@ -1158,8 +1158,8 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                                 </span>
                             <% end %>
                           </div>
+                          <label class="select select-sm">
                           <select
-                            class="select select-sm"
                             phx-change="set_definition_action"
                             phx-value-entity={entity.name}
                             name="action"
@@ -1189,6 +1189,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                               {gettext("Merge")}
                             </option>
                           </select>
+                          </label>
                         </div>
                       </div>
 
@@ -1270,8 +1271,8 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                                   </td>
                                   <td class="truncate max-w-32">{record[:title] || "-"}</td>
                                   <td class="text-right">
+                                    <label class="select select-xs">
                                     <select
-                                      class="select select-xs"
                                       phx-change="set_record_action"
                                       phx-value-entity={entity.name}
                                       phx-value-slug={record.slug}
@@ -1314,6 +1315,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                                         {gettext("Merge")}
                                       </option>
                                     </select>
+                                    </label>
                                   </td>
                                 </tr>
                               <% end %>
