@@ -1280,30 +1280,31 @@ defmodule PhoenixKitEntities.Web.DataForm do
                   <%!-- Status --%>
                   <div>
                     <.label for="phoenix_kit_entity_data_status">{gettext("Status")}</.label>
-                    <select
-                      name="phoenix_kit_entity_data[status]"
-                      class="select select-bordered w-full"
-                      disabled={@readonly?}
-                    >
-                      <option
-                        value="draft"
-                        selected={Ecto.Changeset.get_field(@changeset, :status) == "draft"}
+                    <label class="select w-full">
+                      <select
+                        name="phoenix_kit_entity_data[status]"
+                        disabled={@readonly?}
                       >
-                        {gettext("Draft")}
-                      </option>
-                      <option
-                        value="published"
-                        selected={Ecto.Changeset.get_field(@changeset, :status) == "published"}
-                      >
-                        {gettext("Published")}
-                      </option>
-                      <option
-                        value="archived"
-                        selected={Ecto.Changeset.get_field(@changeset, :status) == "archived"}
-                      >
-                        {gettext("Archived")}
-                      </option>
-                    </select>
+                        <option
+                          value="draft"
+                          selected={Ecto.Changeset.get_field(@changeset, :status) == "draft"}
+                        >
+                          {gettext("Draft")}
+                        </option>
+                        <option
+                          value="published"
+                          selected={Ecto.Changeset.get_field(@changeset, :status) == "published"}
+                        >
+                          {gettext("Published")}
+                        </option>
+                        <option
+                          value="archived"
+                          selected={Ecto.Changeset.get_field(@changeset, :status) == "archived"}
+                        >
+                          {gettext("Archived")}
+                        </option>
+                      </select>
+                    </label>
                   </div>
 
                   <%!-- Entity Type (Read-only) --%>
@@ -1386,30 +1387,31 @@ defmodule PhoenixKitEntities.Web.DataForm do
                   <%!-- Status --%>
                   <div>
                     <.label for="phoenix_kit_entity_data_status">{gettext("Status")}</.label>
-                    <select
-                      name="phoenix_kit_entity_data[status]"
-                      class="select select-bordered w-full"
-                      disabled={@readonly?}
-                    >
-                      <option
-                        value="draft"
-                        selected={Ecto.Changeset.get_field(@changeset, :status) == "draft"}
+                    <label class="select w-full">
+                      <select
+                        name="phoenix_kit_entity_data[status]"
+                        disabled={@readonly?}
                       >
-                        {gettext("Draft")}
-                      </option>
-                      <option
-                        value="published"
-                        selected={Ecto.Changeset.get_field(@changeset, :status) == "published"}
-                      >
-                        {gettext("Published")}
-                      </option>
-                      <option
-                        value="archived"
-                        selected={Ecto.Changeset.get_field(@changeset, :status) == "archived"}
-                      >
-                        {gettext("Archived")}
-                      </option>
-                    </select>
+                        <option
+                          value="draft"
+                          selected={Ecto.Changeset.get_field(@changeset, :status) == "draft"}
+                        >
+                          {gettext("Draft")}
+                        </option>
+                        <option
+                          value="published"
+                          selected={Ecto.Changeset.get_field(@changeset, :status) == "published"}
+                        >
+                          {gettext("Published")}
+                        </option>
+                        <option
+                          value="archived"
+                          selected={Ecto.Changeset.get_field(@changeset, :status) == "archived"}
+                        >
+                          {gettext("Archived")}
+                        </option>
+                      </select>
+                    </label>
                   </div>
 
                   <%!-- Entity Type (Read-only) --%>

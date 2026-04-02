@@ -825,20 +825,22 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
                   <span class="label-text">{gettext("Filter by Status")}</span>
                 </label>
                 <.form for={%{}} phx-change="filter_by_status">
-                  <select class="select select-bordered w-full" name="status">
-                    <option value="all" selected={@selected_status == "all"}>
-                      {gettext("All Statuses")}
-                    </option>
-                    <option value="published" selected={@selected_status == "published"}>
-                      {gettext("Published")}
-                    </option>
-                    <option value="draft" selected={@selected_status == "draft"}>
-                      {gettext("Draft")}
-                    </option>
-                    <option value="archived" selected={@selected_status == "archived"}>
-                      {gettext("Archived")}
-                    </option>
-                  </select>
+                  <label class="select w-full">
+                    <select name="status">
+                      <option value="all" selected={@selected_status == "all"}>
+                        {gettext("All Statuses")}
+                      </option>
+                      <option value="published" selected={@selected_status == "published"}>
+                        {gettext("Published")}
+                      </option>
+                      <option value="draft" selected={@selected_status == "draft"}>
+                        {gettext("Draft")}
+                      </option>
+                      <option value="archived" selected={@selected_status == "archived"}>
+                        {gettext("Archived")}
+                      </option>
+                    </select>
+                  </label>
                 </.form>
               </div>
 
