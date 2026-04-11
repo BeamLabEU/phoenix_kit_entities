@@ -1,3 +1,16 @@
+## 0.1.3 - 2026-04-11
+
+### Fixed
+- Remove misleading Data View route override example (anti-pattern)
+- Add routing anti-pattern warning to AGENTS.md
+- Fix version mismatch between mix.exs and module function
+
+## 0.1.2 - 2026-04-02
+
+### Fixed
+- Migrate select elements to daisyUI 5 label wrapper pattern
+- Remove deprecated `select-bordered` class for daisyUI 5 compatibility
+
 ## 0.1.1 - 2026-04-01
 
 ### Fixed

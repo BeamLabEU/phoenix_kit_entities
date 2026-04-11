@@ -852,7 +852,7 @@ defmodule PhoenixKitEntities do
   def css_sources, do: [:phoenix_kit_entities]
 
   @impl PhoenixKit.Module
-  def version, do: "0.1.0"
+  def version, do: "0.1.3"
 
   @impl PhoenixKit.Module
   def route_module, do: PhoenixKitEntities.Routes
