@@ -80,6 +80,8 @@ This module has multiple admin pages, so it uses the **route module pattern** (n
 
 The `admin_tabs/0` callback does NOT have a `live_view:` field — the route module handles all routing.
 
+These routes are auto-discovered by PhoenixKit at compile time and injected into `live_session :phoenix_kit_admin`. Parent apps must never hand-register these routes (or any plugin LiveView routes) in their own `router.ex` — doing so puts the routes in a different `live_session`, which loses the admin layout and crashes the socket on navigation. See `phoenix_kit/guides/custom-admin-pages.md` for the authoritative reference.
+
 ## Tailwind CSS Scanning
 
 This module implements `css_sources/0` returning `[:phoenix_kit_entities]`. PhoenixKit's installer (`mix phoenix_kit.install`) discovers this and adds `@source` directives to the parent's `app.css`. Without this, Tailwind purges CSS classes from our templates.
