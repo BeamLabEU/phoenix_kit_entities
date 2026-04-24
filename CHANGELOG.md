@@ -1,3 +1,20 @@
+## 0.1.4 - 2026-04-24
+
+### Added
+- `PhoenixKitEntities.UrlResolver` module — extracted URL pattern resolution and locale prefixing from `SitemapSource` into a shared helper
+- `EntityData.public_path/3` and `public_url/3` — locale-aware public URL helpers with translated-slug support (`data[locale]["_slug"]`)
+- `PhoenixKitEntities.list_entity_summaries/1` — lightweight sidebar query with `:lang` option
+- `entities_children/2` arity on the sidebar callback for future phoenix_kit core releases that pass locale explicitly
+- `PhoenixKitEntities.ActivityLog` — internal helper that logs entity and entity_data mutations through the optional `PhoenixKit.Activity` context
+- README sections documenting multi-language support and public URL resolution
+- Unit tests for `UrlResolver`, `public_path/3` / `public_url/3`, multilang field resolution, and per-locale sidebar cache invalidation
+
+### Changed
+- Admin LiveViews (`Web.Entities`, `Web.DataNavigator`, `Web.DataForm`, `Web.DataView`) now thread the current locale through entity lookups so translated `display_name` / `display_name_plural` / `description` render in the admin UI
+- Sidebar `entities_children` caches per-locale ETS entries; `invalidate_entities_cache/0` now match-deletes every locale variant instead of the single atom key
+- `SitemapSource` delegates URL construction to `UrlResolver` while keeping its "prefix every language" policy
+- `resolve_language/2` and `resolve_languages/2` are nil-safe so callers can pass an optional locale without a pre-check
+
 ## 0.1.3 - 2026-04-11
 
 ### Fixed
