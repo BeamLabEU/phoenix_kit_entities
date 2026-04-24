@@ -16,9 +16,13 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
   alias PhoenixKitEntities.Events
 
   @impl true
-  def mount(_params, _session, socket) do
+  def mount(params, _session, socket) do
+    # Set locale for LiveView process
+    locale =
+      params["locale"] || socket.assigns[:current_locale]
+
     project_title = Settings.get_project_title()
-    entities = Entities.list_entities()
+    entities = Entities.list_entities(lang: locale)
 
     # Subscribe to entity definition events so we know about creates/updates/deletes
     if connected?(socket) do
@@ -29,6 +33,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
     # Set defaults only — entity resolution and data loading deferred to handle_params
     socket =
       socket
+      |> assign(:current_locale, locale)
       |> assign(:page_title, gettext("Data Navigator"))
       |> assign(:project_title, project_title)
       |> assign(:entities, entities)
@@ -87,13 +92,13 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
         {nil, nil}
 
       slug when is_binary(slug) ->
-        resolve_entity_by_slug(slug)
+        resolve_entity_by_slug(slug, socket.assigns[:current_locale])
     end
   end
 
   # Look up entity by slug/name
-  defp resolve_entity_by_slug(slug) do
-    case Entities.get_entity_by_name(slug) do
+  defp resolve_entity_by_slug(slug, locale) do
+    case Entities.get_entity_by_name(slug, lang: locale) do
       nil -> {nil, nil}
       entity -> {entity, entity.uuid}
     end
@@ -422,7 +427,8 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
   def handle_info({:entity_updated, entity_uuid}, socket) do
     # If the currently viewed entity was updated, check if it was archived
     if socket.assigns.selected_entity_uuid && entity_uuid == socket.assigns.selected_entity_uuid do
-      entity = Entities.get_entity!(entity_uuid)
+      locale = socket.assigns[:current_locale]
+      entity = Entities.get_entity!(entity_uuid, lang: locale)
 
       # If entity was archived or unpublished, redirect to entities list
       if entity.status != "published" do
@@ -479,6 +485,9 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
     {:noreply, apply_filters(socket)}
   end
 
+  # Catch-all — ignore unexpected messages rather than crashing the socket.
+  def handle_info(_message, socket), do: {:noreply, socket}
+
   # Helper Functions
 
   defp build_base_path(nil), do: "/admin/entities"
@@ -527,7 +536,9 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
 
     # Pass sort_mode from the already-loaded entity to avoid redundant DB lookups
     sort_opts =
-      if entity, do: [sort_mode: Entities.get_sort_mode(entity)], else: []
+      if entity,
+        do: [sort_mode: Entities.get_sort_mode(entity), lang: socket.assigns[:current_locale]],
+        else: [lang: socket.assigns[:current_locale]]
 
     entity_data_records =
       fetch_records(entity_uuid, status, sort_opts)
@@ -570,8 +581,10 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
   end
 
   defp refresh_entities_and_data(socket) do
+    locale = socket.assigns[:current_locale]
+
     socket
-    |> assign(:entities, Entities.list_entities())
+    |> assign(:entities, Entities.list_entities(lang: locale))
     |> refresh_data_stats()
     |> apply_filters()
   end

@@ -535,6 +535,9 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
     {:noreply, socket}
   end
 
+  # Catch-all — ignore unexpected messages rather than crashing the socket.
+  def handle_info(_message, socket), do: {:noreply, socket}
+
   # Private Functions
 
   defp build_changeset(settings, action \\ nil) do

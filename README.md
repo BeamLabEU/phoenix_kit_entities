@@ -269,17 +269,143 @@ Admin routes are registered via `PhoenixKitEntities.Routes` (returned by `route_
 
 ## Multi-language support
 
-Multilang is auto-enabled when PhoenixKit has 2+ languages configured. Data is stored in a nested JSONB structure:
+Multilang is auto-enabled when PhoenixKit has 2+ languages configured. Both the entity definition (labels/description) and each data record support translations.
+
+### Entity definition translations
+
+Translatable fields: `display_name`, `display_name_plural`, `description`.
+
+Storage: `entity.settings["translations"]` JSONB.
 
 ```elixir
-# Multilang data format
 %{
-  "en" => %{"title" => "Hello", "description" => "..."},
-  "es" => %{"title" => "Hola", "description" => "..."}
+  "translations" => %{
+    "es-ES" => %{
+      "display_name" => "Producto",
+      "display_name_plural" => "Productos",
+      "description" => "Catálogo de productos"
+    }
+  }
 }
 ```
 
-See `PhoenixKit.Utils.Multilang` for helper functions.
+Only fields that differ from the primary language need to be stored — missing keys fall back to the primary column value on read.
+
+**Editing (admin UI):** the entity create/edit form renders language tabs above the translatable fields. No opt-in required — tabs appear automatically when the Languages module has 2+ languages.
+
+**API:**
+
+```elixir
+alias PhoenixKitEntities, as: Entities
+
+# Read
+Entities.get_entity_translations(entity)
+# => %{"es-ES" => %{"display_name" => "Producto", ...}}
+
+Entities.get_entity_translation(entity, "es-ES")
+# => %{"display_name" => "Producto", "display_name_plural" => "Productos", ...}
+
+# Write (empty string removes a per-field override)
+Entities.set_entity_translation(entity, "es-ES", %{"display_name" => "Producto"})
+
+# Remove all translations for a language
+Entities.remove_entity_translation(entity, "es-ES")
+```
+
+### Reading translated metadata
+
+Every query function accepts an optional `lang:` keyword. When provided, the returned struct has `display_name` / `display_name_plural` / `description` resolved to that locale (missing fields fall back to primary):
+
+```elixir
+Entities.list_entities(lang: "es-ES")
+Entities.list_active_entities(lang: "es-ES")
+Entities.get_entity(uuid, lang: "es-ES")
+Entities.get_entity!(uuid, lang: "es-ES")
+Entities.get_entity_by_name("product", lang: "es-ES")
+Entities.list_entity_summaries(lang: "es-ES")  # sidebar/navigation summaries
+```
+
+Without `lang:`, raw primary-language column values are returned (backward compatible).
+
+Manual resolution is also available:
+
+```elixir
+resolved = Entities.resolve_language(entity, "es-ES")
+resolved_list = Entities.resolve_languages(entities, "es-ES")
+```
+
+### Data record translations
+
+Field values inside `entity_data.data` use a nested JSONB structure with a primary-language marker:
+
+```elixir
+%{
+  "_primary_language" => "en-US",
+  "en-US" => %{"_title" => "Hello", "body" => "..."},
+  "es-ES" => %{"_title" => "Hola"}   # overrides only
+}
+```
+
+The `_title` key carries the translated title (the DB `title` column still stores the primary-language title). All `EntityData` query functions accept `lang:` for automatic resolution:
+
+```elixir
+alias PhoenixKitEntities.EntityData
+
+EntityData.get!(uuid, lang: "es-ES")
+EntityData.list_by_entity(entity_uuid, lang: "es-ES")
+EntityData.search_by_title("Hola", entity_uuid, lang: "es-ES")
+EntityData.published_records(entity_uuid, lang: "es-ES")
+EntityData.get_by_slug(entity_uuid, "my-slug", lang: "es-ES")
+```
+
+See `lib/phoenix_kit_entities/OVERVIEW.md` § "Multi-Language Support" for the full translation API (title translations, primary-language changes, compact-mode tabs).
+
+## Public URL resolution
+
+`PhoenixKitEntities.EntityData` exposes locale-aware URL builders for public-facing links (replaces the hand-wired `"/#{record.slug}"` pattern that silently drops locale prefixes on non-default routes).
+
+### Pattern resolution chain
+
+1. `entity.settings["sitemap_url_pattern"]` — per-entity override (e.g. `"/blog/:slug"`)
+2. Router introspection — explicit route (`live "/pages/:slug", ...`) or catchall (`/:entity_name/:slug`)
+3. Per-entity setting `sitemap_entity_<name>_pattern`
+4. Global setting `sitemap_entities_pattern` (with `:entity_name` / `:slug` / `:id` placeholders)
+5. Fallback `/<entity_name>/:slug`
+
+Placeholders: `:slug` (falls back to the record UUID when the slug is nil) and `:id` (the UUID).
+
+### Locale prefix policy
+
+Matches `PhoenixKit.Utils.Routes.path/2`:
+
+- `locale:` omitted or `nil` → no prefix
+- Single-language mode → no prefix
+- Locale matches the primary language → no prefix (default locale served at the unprefixed URL)
+- Other locales → prefixed with the base code (`/es/...`, `/ru/...`)
+
+### Helpers
+
+```elixir
+alias PhoenixKitEntities.EntityData
+
+EntityData.public_path(entity, record)
+# => "/products/my-item"
+
+EntityData.public_path(entity, record, locale: "es-ES")
+# => "/es/products/my-item"
+
+EntityData.public_path(entity, record, locale: "en-US")  # primary language
+# => "/products/my-item"
+
+EntityData.public_url(entity, record, base_url: "https://shop.example.com")
+# => "https://shop.example.com/products/my-item"
+
+# Batch usage — pre-build the routes cache once
+cache = PhoenixKitEntities.UrlResolver.build_routes_cache()
+Enum.map(records, &EntityData.public_path(entity, &1, locale: locale, routes_cache: cache))
+```
+
+If `:base_url` is omitted, `public_url/3` falls back to the `site_url` setting.
 
 ## Public forms
 

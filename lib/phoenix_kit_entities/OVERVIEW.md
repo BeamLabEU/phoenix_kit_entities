@@ -12,6 +12,7 @@ PhoenixKit's Entities layer is a dynamic content type engine. It lets administra
 - **Admin UI** – LiveView dashboards for managing blueprints, browsing/creating data, filtering, and adjusting module settings.
 - **Settings + security** – Feature toggle and max entities per user are enforced; additional settings (relation/file flags, auto slugging, etc.) are persisted in `phoenix_kit_settings` but reserved for future use. All surfaces are gated behind the admin scope.
 - **Statistics** – Counts and summaries for dashboards and monitoring.
+- **URL Resolution Engine** – Robust path resolution logic that introspects the router and entity settings to generate localized public URLs for records.
 - **Public Form Builder** – Create embeddable forms for public-facing pages with security features (honeypot, time-based validation, rate limiting), configurable actions, and submission statistics.
 
 ---
@@ -22,6 +23,7 @@ PhoenixKit's Entities layer is a dynamic content type engine. It lets administra
 lib/modules/entities/
 ├── entities.ex          # Entity schema + business logic
 ├── entity_data.ex       # Data record schema + CRUD helpers
+├── url_resolver.ex      # URL resolution engine for public paths
 ├── field_types.ex       # Registry of supported field types
 ├── form_builder.ex      # Dynamic form rendering + validation helpers
 ├── multilang.ex         # Multi-language data transformation helpers
@@ -122,11 +124,19 @@ Field validation pipeline ensures every entry in `fields_definition` has `type/k
 Manages actual records:
 - Schema + changeset verifying required fields, slug format, status, and cross-checking submitted JSON against the entity definition.
 - CRUD and query helpers (`list_all/1`, `list_by_entity/2`, `get!/2`, `get/2`, `search_by_title/3`, `create/1`, `update/2`, `delete/1`, `change/2`). All query functions accept an optional `lang:` keyword option for language-aware results.
+- Public URL helpers (`public_path/3`, `public_url/3`) for generating localized front-end links.
 - Ordering helpers (`update_position/2`, `move_to_position/2`, `reorder/2`, `bulk_update_positions/1`, `next_position/1`). Queries automatically respect the parent entity's sort mode.
 - Language resolution (`resolve_language/2`, `resolve_languages/2`) for applying translations to data record structs.
 - Field-level validation ensures required fields are present, numbers are numeric, booleans are booleans, options exist, etc.
 
 Note: `create/1` auto-fills `created_by_uuid` with the first admin user if not provided. It also auto-populates `position` with the next sequential value for the entity.
+
+### `PhoenixKitEntities.UrlResolver`
+Shared engine for resolving public URLs:
+- Introspects the application router for entity-specific or catchall routes.
+- Respects `sitemap_url_pattern` and `sitemap_index_path` settings from entity blueprints.
+- Handles locale prefixing for multi-language systems.
+- Used by both the `SitemapSource` and `EntityData.public_url/3`.
 
 ### `PhoenixKitEntities.FieldTypes`
 Registry of supported field types with metadata:

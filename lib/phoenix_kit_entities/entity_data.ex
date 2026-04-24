@@ -81,6 +81,7 @@ defmodule PhoenixKitEntities.EntityData do
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.Events
   alias PhoenixKitEntities.Mirror.Exporter
+  alias PhoenixKitEntities.UrlResolver
   @type t :: %__MODULE__{}
 
   @primary_key {:uuid, UUIDv7, autogenerate: true}
@@ -392,22 +393,43 @@ defmodule PhoenixKitEntities.EntityData do
   defp notify_data_event({:ok, %__MODULE__{} = entity_data}, :created) do
     Events.broadcast_data_created(entity_data.entity_uuid, entity_data.uuid)
     maybe_mirror_data(entity_data)
+    log_data_activity(entity_data, "entity_data.created")
     {:ok, entity_data}
   end
 
   defp notify_data_event({:ok, %__MODULE__{} = entity_data}, :updated) do
     Events.broadcast_data_updated(entity_data.entity_uuid, entity_data.uuid)
     maybe_mirror_data(entity_data)
+    log_data_activity(entity_data, "entity_data.updated")
     {:ok, entity_data}
   end
 
   defp notify_data_event({:ok, %__MODULE__{} = entity_data}, :deleted) do
     Events.broadcast_data_deleted(entity_data.entity_uuid, entity_data.uuid)
     maybe_delete_mirrored_data(entity_data)
+    log_data_activity(entity_data, "entity_data.deleted")
     {:ok, entity_data}
   end
 
   defp notify_data_event(result, _event), do: result
+
+  # Records a data-record-lifecycle activity entry. Non-crashing — see
+  # `PhoenixKitEntities.ActivityLog` for the guard semantics.
+  defp log_data_activity(%__MODULE__{} = entity_data, action) do
+    PhoenixKitEntities.ActivityLog.log(%{
+      action: action,
+      mode: "manual",
+      actor_uuid: entity_data.created_by_uuid,
+      resource_type: "entity_data",
+      resource_uuid: entity_data.uuid,
+      metadata: %{
+        "entity_uuid" => entity_data.entity_uuid,
+        "title" => entity_data.title,
+        "slug" => entity_data.slug,
+        "status" => entity_data.status
+      }
+    })
+  end
 
   # Broadcast a reorder event for an entity so live views refresh.
   defp notify_reorder_event(entity_uuid) when is_binary(entity_uuid) do
@@ -965,6 +987,102 @@ defmodule PhoenixKitEntities.EntityData do
     )
     |> repo().all()
     |> maybe_resolve_langs(opts)
+  end
+
+  @doc """
+  Returns a public path for a record, respecting locale and the configured URL pattern.
+
+  URL pattern resolution chain (shared with `PhoenixKitEntities.SitemapSource`):
+  1. `entity.settings["sitemap_url_pattern"]`
+  2. Router introspection (via `PhoenixKit.Modules.Sitemap.RouteResolver`)
+  3. Per-entity setting `sitemap_entity_<name>_pattern`
+  4. Global pattern setting `sitemap_entities_pattern`
+  5. Fallback `/<entity_name>/:slug`
+
+  Locale prefix policy (matches `PhoenixKit.Utils.Routes.path/2`):
+  - `:locale` omitted or `nil` → no prefix
+  - Single-language mode → no prefix
+  - Primary language → no prefix (default locale served at unprefixed URL)
+  - Other locales → prefixed with the base code (`/es/...`, `/ru/...`)
+
+  Slug resolution:
+  - When `:locale` is given and the record has a secondary-language slug
+    override stored as `data[locale]["_slug"]`, that override is substituted
+    for `:slug` in the pattern. Otherwise the primary `record.slug` is used
+    (falling back to the UUID when slug is nil).
+
+  ## Options
+
+    * `:locale` — locale code (dialect like `"es-ES"` or base `"es"`). Omit to skip prefixing.
+    * `:routes_cache` — pre-built cache from `UrlResolver.build_routes_cache/0` (for batches).
+
+  ## Examples
+
+      iex> EntityData.public_path(entity, record)
+      "/products/my-item"
+
+      iex> EntityData.public_path(entity, record, locale: "es-ES")
+      "/es/products/my-item"
+
+      iex> EntityData.public_path(entity, record, locale: "en-US")  # primary language
+      "/products/my-item"
+  """
+  @spec public_path(map(), map(), keyword()) :: String.t()
+  def public_path(entity, record, opts \\ []) do
+    locale = Keyword.get(opts, :locale)
+    cache = Keyword.get(opts, :routes_cache) || UrlResolver.build_routes_cache()
+
+    pattern = UrlResolver.get_url_pattern_cached(entity, cache) || "/#{entity.name}/:slug"
+    localized_record = maybe_apply_translated_slug(record, locale)
+    path = UrlResolver.build_path(pattern, localized_record)
+
+    UrlResolver.add_public_locale_prefix(path, locale)
+  end
+
+  # If the record carries a secondary-language `_slug` override for the
+  # requested locale, swap it onto the record before placeholder substitution.
+  # Keeps the URL stable in the primary language and lets `/es/products/mi-item`
+  # use `mi-item` instead of the English slug.
+  defp maybe_apply_translated_slug(record, nil), do: record
+  defp maybe_apply_translated_slug(record, ""), do: record
+
+  defp maybe_apply_translated_slug(record, locale) when is_binary(locale) do
+    case translated_slug(record, locale) do
+      nil -> record
+      translated -> Map.put(record, :slug, translated)
+    end
+  end
+
+  defp translated_slug(%{data: data}, locale) when is_map(data) do
+    case get_in(data, [locale, "_slug"]) do
+      slug when is_binary(slug) and slug != "" -> slug
+      _ -> nil
+    end
+  end
+
+  defp translated_slug(_record, _locale), do: nil
+
+  @doc """
+  Returns a full public URL for a record by prepending a base URL to `public_path/3`.
+
+  ## Options
+
+    * `:base_url` — explicit base (e.g. `"https://site.com"`). Falls back to the
+      `site_url` setting, then an empty string.
+    * `:locale` — forwarded to `public_path/3`.
+    * `:routes_cache` — forwarded to `public_path/3`.
+
+  ## Examples
+
+      iex> EntityData.public_url(entity, record, base_url: "https://shop.example.com")
+      "https://shop.example.com/products/my-item"
+  """
+  @spec public_url(map(), map(), keyword()) :: String.t()
+  def public_url(entity, record, opts \\ []) do
+    path = public_path(entity, record, opts)
+    base_url = Keyword.get(opts, :base_url)
+
+    UrlResolver.build_url(path, base_url)
   end
 
   @doc """

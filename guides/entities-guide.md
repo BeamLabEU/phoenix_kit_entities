@@ -17,6 +17,8 @@ The Entities system lets you create custom content types (like blog posts, produ
 7. [Public Forms](#public-forms)
 8. [API Reference](#api-reference)
 9. [Common Patterns](#common-patterns)
+10. [Multi-Language Support](#multi-language-support)
+11. [Public URL Resolution](#public-url-resolution)
 
 ---
 
@@ -24,11 +26,11 @@ The Entities system lets you create custom content types (like blog posts, produ
 
 ```elixir
 # 1. Enable the Entities system
-PhoenixKit.Modules.Entities.enable_system()
+PhoenixKitEntities.enable_system()
 
 # 2. Create an entity
-alias PhoenixKit.Modules.Entities
-alias PhoenixKit.Modules.Entities.FieldTypes
+alias PhoenixKitEntities
+alias PhoenixKitEntities.FieldTypes
 
 {:ok, entity} = Entities.create_entity(%{
   name: "contact_form",
@@ -42,7 +44,7 @@ alias PhoenixKit.Modules.Entities.FieldTypes
 })
 
 # 3. Create data records
-{:ok, record} = PhoenixKit.Modules.Entities.EntityData.create(%{
+{:ok, record} = PhoenixKitEntities.EntityData.create(%{
   entity_uuid: entity.uuid,
   title: "New Submission",
   status: "published",
@@ -61,7 +63,7 @@ alias PhoenixKit.Modules.Entities.FieldTypes
 ### Via Code
 
 ```elixir
-PhoenixKit.Modules.Entities.enable_system()
+PhoenixKitEntities.enable_system()
 ```
 
 ### Via Admin UI
@@ -75,7 +77,7 @@ Visit `/phoenix_kit/admin/modules` and enable the Entities module.
 ### Basic Entity
 
 ```elixir
-{:ok, entity} = PhoenixKit.Modules.Entities.create_entity(%{
+{:ok, entity} = PhoenixKitEntities.create_entity(%{
   name: "article",
   display_name: "Article",
   display_name_plural: "Articles",
@@ -96,7 +98,7 @@ Visit `/phoenix_kit/admin/modules` and enable the Entities module.
 
 ```elixir
 # Note: created_by_uuid is optional - it auto-fills with first admin user if not provided
-{:ok, entity} = PhoenixKit.Modules.Entities.create_entity(%{
+{:ok, entity} = PhoenixKitEntities.create_entity(%{
   name: "product",
   display_name: "Product",
   status: "published",
@@ -172,7 +174,7 @@ admin = PhoenixKit.Users.Auth.get_first_admin()
 Use these helpers to create field definitions more easily:
 
 ```elixir
-alias PhoenixKit.Modules.Entities.FieldTypes
+alias PhoenixKitEntities.FieldTypes
 
 # Text fields
 FieldTypes.text_field("name", "Full Name", required: true)
@@ -208,8 +210,8 @@ FieldTypes.new_field("select", "status", "Status", options: ["Active", "Inactive
 ### Creating Entity with Choice Fields
 
 ```elixir
-alias PhoenixKit.Modules.Entities
-alias PhoenixKit.Modules.Entities.FieldTypes
+alias PhoenixKitEntities
+alias PhoenixKitEntities.FieldTypes
 
 {:ok, entity} = Entities.create_entity(%{
   name: "survey_response",
@@ -241,7 +243,7 @@ alias PhoenixKit.Modules.Entities.FieldTypes
 ### Create a Data Record
 
 ```elixir
-{:ok, record} = PhoenixKit.Modules.Entities.EntityData.create(%{
+{:ok, record} = PhoenixKitEntities.EntityData.create(%{
   entity_uuid: entity.uuid,
   title: "New Contact",
   status: "published",
@@ -258,35 +260,35 @@ alias PhoenixKit.Modules.Entities.FieldTypes
 
 ```elixir
 # All records for an entity
-records = PhoenixKit.Modules.Entities.EntityData.list_by_entity(entity.uuid)
+records = PhoenixKitEntities.EntityData.list_by_entity(entity.uuid)
 
 # Search by title (search_term first, entity_uuid optional second)
-results = PhoenixKit.Modules.Entities.EntityData.search_by_title("John", entity.uuid)
+results = PhoenixKitEntities.EntityData.search_by_title("John", entity.uuid)
 
 # Get entity by name
-entity = PhoenixKit.Modules.Entities.get_entity_by_name("contact_form")
+entity = PhoenixKitEntities.get_entity_by_name("contact_form")
 
 # Get by UUID
-record = PhoenixKit.Modules.Entities.EntityData.get(record_uuid)
+record = PhoenixKitEntities.EntityData.get(record_uuid)
 
 # Filter by status
-records = PhoenixKit.Modules.Entities.EntityData.list_by_entity_and_status(entity.uuid, "published")
+records = PhoenixKitEntities.EntityData.list_by_entity_and_status(entity.uuid, "published")
 
 # Get by slug
-record = PhoenixKit.Modules.Entities.EntityData.get_by_slug(entity.uuid, "my-record-slug")
+record = PhoenixKitEntities.EntityData.get_by_slug(entity.uuid, "my-record-slug")
 ```
 
 ### Update and Delete
 
 ```elixir
 # Update
-{:ok, updated} = PhoenixKit.Modules.Entities.EntityData.update(record, %{
+{:ok, updated} = PhoenixKitEntities.EntityData.update(record, %{
   title: "Updated Title",
   data: Map.put(record.data, "new_field", "value")
 })
 
 # Delete
-{:ok, deleted} = PhoenixKit.Modules.Entities.EntityData.delete(record)
+{:ok, deleted} = PhoenixKitEntities.EntityData.delete(record)
 ```
 
 ---
@@ -300,7 +302,7 @@ Embed entity-based forms on public pages for contact forms, surveys, lead captur
 ```elixir
 # Via admin UI: /phoenix_kit/admin/entities/:id/edit
 # Or programmatically:
-PhoenixKit.Modules.Entities.update_entity(entity, %{
+PhoenixKitEntities.update_entity(entity, %{
   settings: %{
     "public_form_enabled" => true,
     "public_form_fields" => ["name", "email", "message"],
@@ -361,42 +363,42 @@ This is handled by `PhoenixKitWeb.EntityFormController`.
 
 ## API Reference
 
-### PhoenixKit.Modules.Entities
+### PhoenixKitEntities
 
 ```elixir
 # Check if system is enabled
-PhoenixKit.Modules.Entities.enabled?() :: boolean()
+PhoenixKitEntities.enabled?() :: boolean()
 
 # Enable/disable
-PhoenixKit.Modules.Entities.enable_system() :: {:ok, Setting.t()}
-PhoenixKit.Modules.Entities.disable_system() :: {:ok, Setting.t()}
+PhoenixKitEntities.enable_system() :: {:ok, Setting.t()}
+PhoenixKitEntities.disable_system() :: {:ok, Setting.t()}
 
 # Get by ID
-PhoenixKit.Modules.Entities.get_entity(id) :: Entity.t() | nil        # Returns nil if not found
-PhoenixKit.Modules.Entities.get_entity!(id) :: Entity.t()             # Raises if not found
-PhoenixKit.Modules.Entities.get_entity_by_name(name) :: Entity.t() | nil
+PhoenixKitEntities.get_entity(id) :: Entity.t() | nil        # Returns nil if not found
+PhoenixKitEntities.get_entity!(id) :: Entity.t()             # Raises if not found
+PhoenixKitEntities.get_entity_by_name(name) :: Entity.t() | nil
 
 # List
-PhoenixKit.Modules.Entities.list_entities() :: [Entity.t()]
-PhoenixKit.Modules.Entities.list_active_entities() :: [Entity.t()]    # Only status: "published"
+PhoenixKitEntities.list_entities() :: [Entity.t()]
+PhoenixKitEntities.list_active_entities() :: [Entity.t()]    # Only status: "published"
 
 # Create/Update/Delete
-PhoenixKit.Modules.Entities.create_entity(attrs) :: {:ok, Entity.t()} | {:error, Changeset.t()}
-PhoenixKit.Modules.Entities.update_entity(entity, attrs) :: {:ok, Entity.t()} | {:error, Changeset.t()}
-PhoenixKit.Modules.Entities.delete_entity(entity) :: {:ok, Entity.t()} | {:error, Changeset.t()}
+PhoenixKitEntities.create_entity(attrs) :: {:ok, Entity.t()} | {:error, Changeset.t()}
+PhoenixKitEntities.update_entity(entity, attrs) :: {:ok, Entity.t()} | {:error, Changeset.t()}
+PhoenixKitEntities.delete_entity(entity) :: {:ok, Entity.t()} | {:error, Changeset.t()}
 
 # Changeset (for forms)
-PhoenixKit.Modules.Entities.change_entity(entity, attrs \\ %{}) :: Changeset.t()
+PhoenixKitEntities.change_entity(entity, attrs \\ %{}) :: Changeset.t()
 
 # Stats
-PhoenixKit.Modules.Entities.get_system_stats() :: %{
+PhoenixKitEntities.get_system_stats() :: %{
   total_entities: integer(),
   active_entities: integer(),
   total_data_records: integer()
 }
 ```
 
-### PhoenixKit.Modules.Entities.EntityData
+### PhoenixKitEntities.EntityData
 
 ```elixir
 # Get by ID
@@ -419,7 +421,7 @@ EntityData.delete(record) :: {:ok, EntityData.t()} | {:error, Changeset.t()}
 EntityData.change(record, attrs \\ %{}) :: Changeset.t()
 ```
 
-### PhoenixKit.Modules.Entities.FieldTypes
+### PhoenixKitEntities.FieldTypes
 
 ```elixir
 # Field builder helpers (recommended for programmatic entity creation)
@@ -458,7 +460,7 @@ FieldTypes.validate_field(field_map) :: {:ok, map()} | {:error, String.t()}
 # In a migration or seeds.exs
 admin = PhoenixKit.Users.Auth.get_user_by_email("admin@example.com")
 
-{:ok, _entity} = PhoenixKit.Modules.Entities.create_entity(%{
+{:ok, _entity} = PhoenixKitEntities.create_entity(%{
   name: "contact",
   display_name: "Contact Submission",
   status: "published",
@@ -484,8 +486,8 @@ admin = PhoenixKit.Users.Auth.get_user_by_email("admin@example.com")
 ### List All Contact Submissions
 
 ```elixir
-entity = PhoenixKit.Modules.Entities.get_entity_by_name("contact")
-submissions = PhoenixKit.Modules.Entities.EntityData.list_by_entity(entity.uuid)
+entity = PhoenixKitEntities.get_entity_by_name("contact")
+submissions = PhoenixKitEntities.EntityData.list_by_entity(entity.uuid)
 
 for submission <- submissions do
   IO.puts("#{submission.data["name"]} - #{submission.data["email"]}")
@@ -495,8 +497,8 @@ end
 ### Export Entity Data
 
 ```elixir
-entity = PhoenixKit.Modules.Entities.get_entity_by_name("contact")
-records = PhoenixKit.Modules.Entities.EntityData.list_by_entity(entity.uuid)
+entity = PhoenixKitEntities.get_entity_by_name("contact")
+records = PhoenixKitEntities.EntityData.list_by_entity(entity.uuid)
 
 # Convert to list of maps
 data = Enum.map(records, fn r ->
@@ -513,4 +515,132 @@ Jason.encode!(data)
 
 ---
 
-**Last Updated**: 2026-03-02
+## Multi-Language Support
+
+When PhoenixKit has 2+ languages enabled, entity definitions and data records both support translations.
+
+### Translating Entity Metadata
+
+`display_name`, `display_name_plural`, and `description` are translatable. Translations live in `entity.settings["translations"]` and can be set either through the admin entity form (language tabs appear above the translatable fields) or programmatically:
+
+```elixir
+alias PhoenixKitEntities, as: Entities
+
+{:ok, entity} = Entities.set_entity_translation(entity, "es-ES", %{
+  "display_name" => "Producto",
+  "display_name_plural" => "Productos",
+  "description" => "Catálogo de productos"
+})
+
+# Read a specific translation (merged with primary fallback)
+Entities.get_entity_translation(entity, "es-ES")
+# => %{"display_name" => "Producto", "display_name_plural" => "Productos", ...}
+
+# All translations
+Entities.get_entity_translations(entity)
+# => %{"es-ES" => %{...}, "fr-FR" => %{...}}
+
+# Remove a language
+Entities.remove_entity_translation(entity, "es-ES")
+```
+
+### Reading Translated Metadata in Consumers
+
+Every query function accepts an optional `lang:` keyword. When supplied, the returned struct has translatable fields resolved to that locale (falling back to primary for missing keys):
+
+```elixir
+Entities.list_entities(lang: "es-ES")
+Entities.list_active_entities(lang: "es-ES")
+Entities.get_entity(uuid, lang: "es-ES")
+Entities.get_entity!(uuid, lang: "es-ES")
+Entities.get_entity_by_name("product", lang: "es-ES")
+Entities.list_entity_summaries(lang: "es-ES")
+```
+
+For parent-app listings at `/:locale/...` routes, threading the current locale through `lang:` is the difference between translated and untranslated page titles, breadcrumbs, and `<h1>` content.
+
+### Translating Data Records
+
+Values inside `entity_data.data` use a nested JSONB structure with a primary-language marker:
+
+```elixir
+%{
+  "_primary_language" => "en-US",
+  "en-US" => %{"_title" => "Hello", "body" => "..."},
+  "es-ES" => %{"_title" => "Hola"}   # overrides only
+}
+```
+
+The same `lang:` option works on every `EntityData` query:
+
+```elixir
+alias PhoenixKitEntities.EntityData
+
+EntityData.get!(uuid, lang: "es-ES")
+EntityData.list_by_entity(entity_uuid, lang: "es-ES")
+EntityData.search_by_title("Hola", entity_uuid, lang: "es-ES")
+EntityData.published_records(entity_uuid, lang: "es-ES")
+EntityData.get_by_slug(entity_uuid, "mi-articulo", lang: "es-ES")
+```
+
+---
+
+## Public URL Resolution
+
+Use `EntityData.public_path/3` / `public_url/3` to build locale-aware public links for records. The URL-pattern resolution chain introspects the parent app's router so you don't hand-wire paths per entity.
+
+```elixir
+alias PhoenixKitEntities.EntityData
+
+EntityData.public_path(entity, record)
+# => "/products/my-item"
+
+EntityData.public_path(entity, record, locale: "es-ES")
+# => "/es/products/my-item"   (non-primary locale → base prefix added)
+
+EntityData.public_path(entity, record, locale: "en-US")
+# => "/products/my-item"      (primary locale → no prefix)
+
+EntityData.public_url(entity, record, base_url: "https://shop.example.com")
+# => "https://shop.example.com/products/my-item"
+```
+
+### Pattern resolution chain
+
+1. `entity.settings["sitemap_url_pattern"]` — per-entity override (`"/blog/:slug"`)
+2. Router introspection — explicit (`live "/pages/:slug", ...`) or catchall (`/:entity_name/:slug`)
+3. Per-entity setting `sitemap_entity_<name>_pattern`
+4. Global setting `sitemap_entities_pattern`
+5. Fallback `/<entity_name>/:slug`
+
+Placeholders: `:slug` (falls back to UUID when nil) and `:id` (UUID).
+
+### Translated slugs
+
+When a record has a secondary-language slug override stored as `data[locale]["_slug"]`, `public_path/3` substitutes that override for the `:slug` placeholder:
+
+```elixir
+record = %{
+  slug: "my-item",
+  data: %{"es-ES" => %{"_slug" => "mi-articulo"}}
+}
+
+EntityData.public_path(entity, record, locale: "es-ES")
+# => "/es/products/mi-articulo"
+```
+
+### Batch usage
+
+For rendering a listing of records, pre-build the routes cache once:
+
+```elixir
+cache = PhoenixKitEntities.UrlResolver.build_routes_cache()
+
+Enum.map(records, fn r ->
+  EntityData.public_path(entity, r, locale: locale, routes_cache: cache)
+end)
+```
+
+---
+
+**Last Updated**: 2026-04-24

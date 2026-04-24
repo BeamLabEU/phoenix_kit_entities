@@ -24,7 +24,7 @@ defmodule PhoenixKitEntities.Web.Entities do
       |> assign(:page_title, gettext("Entities"))
       |> assign(:project_title, project_title)
       |> assign(:view_mode, "table")
-      |> assign(:entities, Entities.list_entities())
+      |> assign(:entities, Entities.list_entities(lang: locale))
 
     {:ok, socket}
   end
@@ -49,13 +49,14 @@ defmodule PhoenixKitEntities.Web.Entities do
   end
 
   def handle_event("archive_entity", %{"uuid" => uuid}, socket) do
-    entity = Entities.get_entity!(uuid)
+    locale = socket.assigns[:current_locale]
+    entity = Entities.get_entity!(uuid, lang: locale)
 
     case Entities.update_entity(entity, %{status: "archived"}) do
       {:ok, _entity} ->
         socket =
           socket
-          |> assign(:entities, Entities.list_entities())
+          |> assign(:entities, Entities.list_entities(lang: locale))
           |> put_flash(
             :info,
             gettext("Entity '%{name}' archived successfully", name: entity.display_name)
@@ -69,13 +70,14 @@ defmodule PhoenixKitEntities.Web.Entities do
   end
 
   def handle_event("restore_entity", %{"uuid" => uuid}, socket) do
-    entity = Entities.get_entity!(uuid)
+    locale = socket.assigns[:current_locale]
+    entity = Entities.get_entity!(uuid, lang: locale)
 
     case Entities.update_entity(entity, %{status: "published"}) do
       {:ok, _entity} ->
         socket =
           socket
-          |> assign(:entities, Entities.list_entities())
+          |> assign(:entities, Entities.list_entities(lang: locale))
           |> put_flash(
             :info,
             gettext("Entity '%{name}' restored successfully", name: entity.display_name)
@@ -93,8 +95,12 @@ defmodule PhoenixKitEntities.Web.Entities do
   @impl true
   def handle_info({event, _entity_uuid}, socket)
       when event in [:entity_created, :entity_updated, :entity_deleted] do
-    {:noreply, assign(socket, :entities, Entities.list_entities())}
+    {:noreply,
+     assign(socket, :entities, Entities.list_entities(lang: socket.assigns[:current_locale]))}
   end
+
+  # Catch-all — ignore unexpected messages rather than crashing the socket.
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   # Helper Functions
 

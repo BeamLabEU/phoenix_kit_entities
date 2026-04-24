@@ -20,8 +20,8 @@ defmodule PhoenixKitEntities.Web.DataView do
     locale =
       params["locale"] || socket.assigns[:current_locale]
 
-    entity = Entities.get_entity_by_name(entity_slug)
-    data_record = EntityData.get!(id)
+    entity = Entities.get_entity_by_name(entity_slug, lang: locale)
+    data_record = EntityData.get!(id, lang: locale)
 
     mount_data_view(socket, entity, data_record, locale)
   end
@@ -30,8 +30,8 @@ defmodule PhoenixKitEntities.Web.DataView do
     locale =
       params["locale"] || socket.assigns[:current_locale]
 
-    entity = Entities.get_entity!(entity_uuid)
-    data_record = EntityData.get!(id)
+    entity = Entities.get_entity!(entity_uuid, lang: locale)
+    data_record = EntityData.get!(id, lang: locale)
 
     mount_data_view(socket, entity, data_record, locale)
   end

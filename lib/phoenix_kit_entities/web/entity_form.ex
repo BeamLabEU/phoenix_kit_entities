@@ -1052,6 +1052,9 @@ defmodule PhoenixKitEntities.Web.EntityForm do
     end
   end
 
+  # Catch-all — ignore unexpected messages rather than crashing the socket.
+  def handle_info(_message, socket), do: {:noreply, socket}
+
   # Helper Functions
 
   defp handle_remote_entity_update(socket, entity_uuid) do
@@ -1630,6 +1633,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
               type="submit"
               class="btn btn-primary"
               disabled={!@changeset.valid? or @readonly?}
+              phx-disable-with={gettext("Saving…")}
             >
               {if @entity.uuid, do: gettext("Update Entity"), else: gettext("Create Entity")}
             </button>
@@ -2772,6 +2776,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
               type="submit"
               class="btn btn-primary"
               disabled={!@changeset.valid? or @readonly?}
+              phx-disable-with={gettext("Saving…")}
             >
               {if @entity.uuid, do: gettext("Update Entity"), else: gettext("Create Entity")}
             </button>
