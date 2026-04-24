@@ -99,6 +99,9 @@ defmodule PhoenixKitEntities.Web.Entities do
      assign(socket, :entities, Entities.list_entities(lang: socket.assigns[:current_locale]))}
   end
 
+  # Catch-all — ignore unexpected messages rather than crashing the socket.
+  def handle_info(_message, socket), do: {:noreply, socket}
+
   # Helper Functions
 
   # Extracts the base path (without query string) from the current URL,

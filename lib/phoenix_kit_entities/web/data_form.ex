@@ -679,6 +679,9 @@ defmodule PhoenixKitEntities.Web.DataForm do
     end
   end
 
+  # Catch-all — ignore unexpected messages rather than crashing the socket.
+  def handle_info(_message, socket), do: {:noreply, socket}
+
   # Strip lang_title/lang_slug from params — these are translation input names
   # that shouldn't be passed to the changeset as DB fields.
   defp strip_lang_params(params) do

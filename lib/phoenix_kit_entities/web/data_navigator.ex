@@ -485,6 +485,9 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
     {:noreply, apply_filters(socket)}
   end
 
+  # Catch-all — ignore unexpected messages rather than crashing the socket.
+  def handle_info(_message, socket), do: {:noreply, socket}
+
   # Helper Functions
 
   defp build_base_path(nil), do: "/admin/entities"

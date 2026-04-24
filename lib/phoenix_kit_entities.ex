@@ -360,26 +360,41 @@ defmodule PhoenixKitEntities do
   """
   @spec list_entity_summaries(keyword()) :: [map()]
   def list_entity_summaries(opts \\ []) do
-    from(e in __MODULE__,
-      where: e.status == "published",
-      order_by: [desc: e.date_created],
-      select: %{
-        name: e.name,
-        display_name: e.display_name,
-        display_name_plural: e.display_name_plural,
-        description: e.description,
-        icon: e.icon,
-        settings: e.settings
-      }
-    )
-    |> repo().all()
-    |> Enum.map(fn summary ->
-      # Convert map to struct for resolve_language, then back to map
-      struct(__MODULE__, summary)
-      |> maybe_resolve_lang(opts)
-      |> Map.take([:name, :display_name, :display_name_plural, :description, :icon, :settings])
-    end)
+    summaries =
+      from(e in __MODULE__,
+        where: e.status == "published",
+        order_by: [desc: e.date_created],
+        select: %{
+          name: e.name,
+          display_name: e.display_name,
+          display_name_plural: e.display_name_plural,
+          description: e.description,
+          icon: e.icon,
+          settings: e.settings
+        }
+      )
+      |> repo().all()
+
+    case Keyword.get(opts, :lang) do
+      nil -> summaries
+      lang -> Enum.map(summaries, &resolve_summary_language(&1, lang))
+    end
   end
+
+  # Resolves display_name / display_name_plural / description on a summary map,
+  # matching the behaviour of resolve_language/2 without a struct round-trip.
+  defp resolve_summary_language(summary, lang_code) do
+    translations = get_in(summary, [:settings, "translations", lang_code]) || %{}
+
+    summary
+    |> maybe_put_translation(:display_name, translations["display_name"])
+    |> maybe_put_translation(:display_name_plural, translations["display_name_plural"])
+    |> maybe_put_translation(:description, translations["description"])
+  end
+
+  defp maybe_put_translation(summary, _field, nil), do: summary
+  defp maybe_put_translation(summary, _field, ""), do: summary
+  defp maybe_put_translation(summary, field, value), do: Map.put(summary, field, value)
 
   @doc """
   Gets a single entity by integer ID or UUID.

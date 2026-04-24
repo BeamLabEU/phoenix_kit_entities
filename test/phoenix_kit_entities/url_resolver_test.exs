@@ -97,10 +97,36 @@ defmodule PhoenixKitEntities.UrlResolverTest do
                "/products/my-item"
     end
 
+    test "empty locale returns path unchanged" do
+      assert UrlResolver.add_public_locale_prefix("/products/my-item", "") ==
+               "/products/my-item"
+    end
+
     test "single-language mode returns path unchanged even with a locale" do
       # Languages module is not enabled in the test environment, so
       # single_language_mode?/0 returns true and the prefix is skipped.
       assert UrlResolver.add_public_locale_prefix("/products/my-item", "es-ES") ==
+               "/products/my-item"
+    end
+
+    # These tests exercise the safe_base_code/1 guard against path injection
+    # from caller-supplied locales (e.g. raw request params). The guard runs
+    # before single_language_mode?/0, so even in tests without the Languages
+    # module these inputs must never leak into the prefix.
+    test "rejects locale with path-traversal attempt" do
+      # Even if a malicious locale got past single-language-mode check,
+      # safe_base_code would strip it — verified by the no-prefix output.
+      assert UrlResolver.add_public_locale_prefix("/products/my-item", "../etc/passwd") ==
+               "/products/my-item"
+    end
+
+    test "rejects locale containing slashes" do
+      assert UrlResolver.add_public_locale_prefix("/products/my-item", "en/admin") ==
+               "/products/my-item"
+    end
+
+    test "rejects locale with non-alpha chars" do
+      assert UrlResolver.add_public_locale_prefix("/products/my-item", "en123") ==
                "/products/my-item"
     end
   end

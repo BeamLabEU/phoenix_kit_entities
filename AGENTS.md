@@ -37,7 +37,17 @@ This is a **library** (not a standalone Phoenix app). It depends on `phoenix_kit
 
 - **`PhoenixKitEntities.Routes`** (`lib/phoenix_kit_entities/routes.ex`) — Admin LiveView routes + public form submission endpoint. Registered via `route_module/0` callback.
 
+- **`PhoenixKitEntities.UrlResolver`** (`lib/phoenix_kit_entities/url_resolver.ex`) — Shared URL-pattern resolution (entity settings → router introspection → per-entity settings → global pattern → fallback). Used by both `SitemapSource` and `EntityData.public_path/3` / `public_url/3`. Settings lookups are wrapped in `try/rescue` so URL generation degrades gracefully when the Settings table is unavailable.
+
+- **`PhoenixKitEntities.SitemapSource`** (`lib/phoenix_kit_entities/sitemap_source.ex`) — `PhoenixKit.Modules.Sitemap.Sources.Source` implementation. Delegates pattern resolution to `UrlResolver` and keeps its own "prefix every language" policy for hreflang-correct sitemap entries.
+
+- **`PhoenixKitEntities.Presence` / `PresenceHelpers`** (`lib/phoenix_kit_entities/presence.ex`, `presence_helpers.ex`) — FIFO collaborative editing locks and presence tracking for the entity/data forms.
+
+- **`PhoenixKitEntities.Mirror.*`** (`lib/phoenix_kit_entities/mirror/`) — Filesystem export/import of entity definitions and data (per-entity toggles in `entity.settings`).
+
 - **`PhoenixKitEntities.Web.*`** (`lib/phoenix_kit_entities/web/`) — Admin LiveViews for entity management. PhoenixKit wraps these in the admin layout automatically.
+
+- **`PhoenixKitEntities.Controllers.EntityFormController`** (`lib/phoenix_kit_entities/controllers/entity_form_controller.ex`) — Handles public form submissions (honeypot, time-based validation, rate limiting).
 
 ### How It Works
 
@@ -69,6 +79,9 @@ This is a **library** (not a standalone Phoenix app). It depends on `phoenix_kit
 - **Entity names** must be snake_case, start with letter, 2-50 chars: `^[a-z][a-z0-9_]*$`
 - **Field definitions** require string keys: `%{"type" => "text", "key" => "name", "label" => "Name"}`
 - **Inline templates** — All LiveView templates use inline `~H` sigils (no separate .heex files) for reliable Tailwind CSS scanning
+- **Multilang for entity metadata** — `display_name`, `display_name_plural`, and `description` are translatable via `entity.settings["translations"]`. Every entity query function (`list_entities`, `get_entity_by_name`, `list_entity_summaries`, …) accepts an optional `lang:` keyword that returns the struct with those fields resolved. Admin LiveViews thread `lang: @current_locale` to dogfood the pattern; `Web.EntityForm` and `Web.EntitiesSettings` intentionally keep raw primary-language reads because they manage canonical identity.
+- **Sidebar locale propagation** — `entities_children/1` has no direct access to the current locale from the dashboard registry, so it reads `Gettext.get_locale(PhoenixKitWeb.Gettext)` at render time. The ETS cache is keyed by `{@entities_cache_key, locale}`; `invalidate_entities_cache/0` uses `:ets.match_delete/2` to clear every locale variant on mutations.
+- **Public URL helpers** — `EntityData.public_path/3` and `public_url/3` build locale-aware public URLs for records, reusing `UrlResolver`. Locale policy matches `PhoenixKit.Utils.Routes.path/2`: `nil` locale / single-language / primary language → no prefix; other locales → `/<base>/…`. See README "Public URL resolution" for the full resolution chain.
 
 ## Routing
 

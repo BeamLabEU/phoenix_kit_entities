@@ -91,6 +91,26 @@ defmodule PhoenixKitEntities.EntityDataUrlTest do
     end
   end
 
+  describe "public_path/3 — defensive inputs" do
+    test "nil settings on entity uses fallback pattern" do
+      entity = %{name: "product", settings: nil}
+      record = %{uuid: "uuid-1", slug: "item"}
+      cache = empty_cache()
+
+      assert EntityData.public_path(entity, record, routes_cache: cache) ==
+               "/product/item"
+    end
+
+    test "empty settings map on entity uses fallback pattern" do
+      entity = %{name: "product", settings: %{}}
+      record = %{uuid: "uuid-1", slug: "item"}
+      cache = empty_cache()
+
+      assert EntityData.public_path(entity, record, routes_cache: cache) ==
+               "/product/item"
+    end
+  end
+
   describe "public_url/3" do
     test "prepends base_url option" do
       entity = %{name: "product", settings: %{"sitemap_url_pattern" => "/p/:slug"}}

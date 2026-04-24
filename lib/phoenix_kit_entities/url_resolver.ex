@@ -11,9 +11,21 @@ defmodule PhoenixKitEntities.UrlResolver do
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Multilang
 
+  @type routes_cache :: %{
+          optional(:all_routes) => list(),
+          optional(:content_routes) => list(),
+          optional(:index_routes) => list(),
+          required(:entity_patterns) => map(),
+          required(:entity_index_paths) => map()
+        }
+
   @doc """
   Builds a cache of all routes for efficient lookups.
+
+  For hot loops (e.g. rendering a listing of records), build the cache once
+  via this function and pass it as `:routes_cache` to `EntityData.public_path/3`.
   """
+  @spec build_routes_cache() :: routes_cache()
   def build_routes_cache do
     routes = RouteResolver.get_routes()
 
@@ -114,8 +126,13 @@ defmodule PhoenixKitEntities.UrlResolver do
   end
 
   @doc """
-  Gets the URL pattern for an entity using cached routes.
+  Resolves the URL pattern for an entity using a pre-built routes cache.
+
+  Resolution chain: `entity.settings["sitemap_url_pattern"]` → router introspection
+  (explicit or catchall) → `sitemap_entity_<name>_pattern` setting → global
+  `sitemap_entities_pattern`. Returns `nil` if none match.
   """
+  @spec get_url_pattern_cached(map(), routes_cache()) :: String.t() | nil
   def get_url_pattern_cached(entity, routes_cache) do
     get_pattern_from_entity_settings(entity) ||
       get_pattern_from_cache(entity, routes_cache) ||
@@ -180,8 +197,12 @@ defmodule PhoenixKitEntities.UrlResolver do
   end
 
   @doc """
-  Gets the index path for an entity using cached routes.
+  Resolves the index-page path for an entity using a pre-built routes cache.
+
+  Used by the sitemap source to emit index entries (e.g. `/products` alongside
+  `/products/:slug`). Returns `nil` if no index path can be resolved.
   """
+  @spec get_index_path_cached(map(), routes_cache()) :: String.t() | nil
   def get_index_path_cached(entity, routes_cache) do
     get_index_from_entity_settings(entity) ||
       get_index_from_cache(entity, routes_cache) ||
@@ -230,8 +251,12 @@ defmodule PhoenixKitEntities.UrlResolver do
   end
 
   @doc """
-  Substitutes variables in a URL pattern with record data.
+  Substitutes `:slug` and `:id` placeholders in a URL pattern with record data.
+
+  `:slug` falls back to the record UUID when the slug is nil. Patterns without
+  placeholders are returned unchanged.
   """
+  @spec build_path(String.t(), map()) :: String.t()
   def build_path(pattern, record) do
     pattern
     |> String.replace(":slug", record.slug || to_string(record.uuid))
@@ -245,6 +270,7 @@ defmodule PhoenixKitEntities.UrlResolver do
   Consumers building public links should prefer `add_public_locale_prefix/2`, which
   omits the prefix for the primary language (matching `PhoenixKit.Utils.Routes` conventions).
   """
+  @spec build_path_with_language(String.t(), String.t() | nil, boolean()) :: String.t()
   def build_path_with_language(path, language, _is_default \\ true) do
     if language && !single_language_mode?() do
       "/#{Languages.DialectMapper.extract_base(language)}#{path}"
@@ -258,15 +284,20 @@ defmodule PhoenixKitEntities.UrlResolver do
 
   Policy:
   - Single-language mode → no prefix
-  - Locale is `nil` → no prefix (caller did not request a specific locale)
+  - Locale is `nil`, empty, or malformed → no prefix
   - Locale matches the primary language → no prefix
-  - Otherwise → `/<base>` prefix
+  - Otherwise → `/<base>` prefix (where `<base>` is a validated base code)
 
   This matches the convention used by `PhoenixKit.Utils.Routes.path/2`
   (default locale served from unprefixed URLs).
+
+  The base code is validated against `^[a-z]{2,3}$` before interpolation, so
+  caller-supplied locales (for example from request params) cannot inject
+  arbitrary path segments.
   """
   @spec add_public_locale_prefix(String.t(), String.t() | nil) :: String.t()
   def add_public_locale_prefix(path, nil), do: path
+  def add_public_locale_prefix(path, ""), do: path
 
   def add_public_locale_prefix(path, locale) when is_binary(locale) do
     cond do
@@ -277,8 +308,21 @@ defmodule PhoenixKitEntities.UrlResolver do
         path
 
       true ->
-        "/#{Languages.DialectMapper.extract_base(locale)}#{path}"
+        case safe_base_code(locale) do
+          nil -> path
+          base -> "/#{base}#{path}"
+        end
     end
+  end
+
+  # Extracts a base locale code and validates it against a strict allowlist
+  # of ISO 639-style lowercase alpha codes. Returns nil for anything else so
+  # the caller can fall back to an unprefixed URL rather than interpolate an
+  # attacker-controlled segment into the path.
+  defp safe_base_code(locale) do
+    base = Languages.DialectMapper.extract_base(locale)
+
+    if Regex.match?(~r/^[a-z]{2,3}$/, base), do: base, else: nil
   end
 
   defp primary_language_base?(locale) do
@@ -300,8 +344,12 @@ defmodule PhoenixKitEntities.UrlResolver do
   end
 
   @doc """
-  Checks if the system is in single language mode.
+  Returns `true` when the site is effectively single-language.
+
+  True when the Languages module is disabled or only one language is enabled;
+  also true if the lookup fails (defensive fallback).
   """
+  @spec single_language_mode?() :: boolean()
   def single_language_mode? do
     not Languages.enabled?() or length(Languages.get_enabled_languages()) <= 1
   rescue
@@ -313,6 +361,7 @@ defmodule PhoenixKitEntities.UrlResolver do
 
   If `base_url` is nil, falls back to the `site_url` setting (or empty string).
   """
+  @spec build_url(String.t(), String.t() | nil) :: String.t()
   def build_url(path, base_url \\ nil) do
     base = base_url || safe_get_setting("site_url", "")
     normalized_base = String.trim_trailing(base, "/")
