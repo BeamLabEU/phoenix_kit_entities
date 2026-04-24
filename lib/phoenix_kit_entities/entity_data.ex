@@ -81,6 +81,7 @@ defmodule PhoenixKitEntities.EntityData do
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.Events
   alias PhoenixKitEntities.Mirror.Exporter
+  alias PhoenixKitEntities.UrlResolver
   @type t :: %__MODULE__{}
 
   @primary_key {:uuid, UUIDv7, autogenerate: true}
@@ -965,6 +966,72 @@ defmodule PhoenixKitEntities.EntityData do
     )
     |> repo().all()
     |> maybe_resolve_langs(opts)
+  end
+
+  @doc """
+  Returns a public path for a record, respecting locale and the configured URL pattern.
+
+  URL pattern resolution chain (shared with `PhoenixKitEntities.SitemapSource`):
+  1. `entity.settings["sitemap_url_pattern"]`
+  2. Router introspection (via `PhoenixKit.Modules.Sitemap.RouteResolver`)
+  3. Per-entity setting `sitemap_entity_<name>_pattern`
+  4. Global pattern setting `sitemap_entities_pattern`
+  5. Fallback `/<entity_name>/:slug`
+
+  Locale prefix policy (matches `PhoenixKit.Utils.Routes.path/2`):
+  - `:locale` omitted or `nil` → no prefix
+  - Single-language mode → no prefix
+  - Primary language → no prefix (default locale served at unprefixed URL)
+  - Other locales → prefixed with the base code (`/es/...`, `/ru/...`)
+
+  ## Options
+
+    * `:locale` — locale code (dialect like `"es-ES"` or base `"es"`). Omit to skip prefixing.
+    * `:routes_cache` — pre-built cache from `UrlResolver.build_routes_cache/0` (for batches).
+
+  ## Examples
+
+      iex> EntityData.public_path(entity, record)
+      "/products/my-item"
+
+      iex> EntityData.public_path(entity, record, locale: "es-ES")
+      "/es/products/my-item"
+
+      iex> EntityData.public_path(entity, record, locale: "en-US")  # primary language
+      "/products/my-item"
+  """
+  @spec public_path(map(), map(), keyword()) :: String.t()
+  def public_path(entity, record, opts \\ []) do
+    locale = Keyword.get(opts, :locale)
+    cache = Keyword.get(opts, :routes_cache) || UrlResolver.build_routes_cache()
+
+    pattern = UrlResolver.get_url_pattern_cached(entity, cache) || "/#{entity.name}/:slug"
+    path = UrlResolver.build_path(pattern, record)
+
+    UrlResolver.add_public_locale_prefix(path, locale)
+  end
+
+  @doc """
+  Returns a full public URL for a record by prepending a base URL to `public_path/3`.
+
+  ## Options
+
+    * `:base_url` — explicit base (e.g. `"https://site.com"`). Falls back to the
+      `site_url` setting, then an empty string.
+    * `:locale` — forwarded to `public_path/3`.
+    * `:routes_cache` — forwarded to `public_path/3`.
+
+  ## Examples
+
+      iex> EntityData.public_url(entity, record, base_url: "https://shop.example.com")
+      "https://shop.example.com/products/my-item"
+  """
+  @spec public_url(map(), map(), keyword()) :: String.t()
+  def public_url(entity, record, opts \\ []) do
+    path = public_path(entity, record, opts)
+    base_url = Keyword.get(opts, :base_url)
+
+    UrlResolver.build_url(path, base_url)
   end
 
   @doc """

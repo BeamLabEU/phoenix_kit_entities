@@ -86,12 +86,11 @@ defmodule PhoenixKitEntities.SitemapSource do
 
   require Logger
 
-  alias PhoenixKit.Modules.Languages
   alias PhoenixKit.Modules.Sitemap.RouteResolver
   alias PhoenixKit.Modules.Sitemap.UrlEntry
   alias PhoenixKit.Settings
-  alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.EntityData
+  alias PhoenixKitEntities.UrlResolver
 
   @impl true
   def source_name, do: :entities
@@ -111,10 +110,10 @@ defmodule PhoenixKitEntities.SitemapSource do
       base_url = Keyword.get(opts, :base_url)
       language = Keyword.get(opts, :language)
       include_index = Settings.get_boolean_setting("sitemap_entities_include_index", true)
-      routes_cache = build_routes_cache()
+      routes_cache = UrlResolver.build_routes_cache()
 
       sub_maps =
-        Entities.list_active_entities()
+        PhoenixKitEntities.list_active_entities()
         |> Enum.filter(&entity_has_public_route?(&1, routes_cache))
         |> Enum.map(fn entity ->
           entries =
@@ -141,7 +140,7 @@ defmodule PhoenixKitEntities.SitemapSource do
 
   @impl true
   def enabled? do
-    Entities.enabled?()
+    PhoenixKitEntities.enabled?()
   rescue
     _ -> false
   end
@@ -170,7 +169,7 @@ defmodule PhoenixKitEntities.SitemapSource do
     include_index = Settings.get_boolean_setting("sitemap_entities_include_index", true)
 
     # Optimization: Get all routes ONCE and build lookup map
-    routes_cache = build_routes_cache()
+    routes_cache = UrlResolver.build_routes_cache()
 
     # Early exit if no public entity routes exist
     if map_size(routes_cache.entity_patterns) == 0 and
@@ -178,111 +177,11 @@ defmodule PhoenixKitEntities.SitemapSource do
       Logger.debug("Sitemap: No public entity routes found, skipping entities source")
       []
     else
-      Entities.list_active_entities()
+      PhoenixKitEntities.list_active_entities()
       |> Enum.filter(&entity_has_public_route?(&1, routes_cache))
       |> Enum.flat_map(
         &collect_entity_entries(&1, base_url, include_index, language, is_default, routes_cache)
       )
-    end
-  end
-
-  # Build a cache of all routes for efficient lookups
-  defp build_routes_cache do
-    routes = RouteResolver.get_routes()
-
-    # Pre-filter GET routes with :slug or :id params (content routes)
-    content_routes =
-      Enum.filter(routes, fn route ->
-        route.verb == :get and
-          (String.contains?(route.path, ":slug") or String.contains?(route.path, ":id"))
-      end)
-
-    # Pre-filter GET routes without params (index routes)
-    index_routes =
-      Enum.filter(routes, fn route ->
-        route.verb == :get and
-          not String.contains?(route.path, ":") and
-          not String.contains?(route.path, "*")
-      end)
-
-    # Build entity name -> pattern map for quick lookups
-    entity_patterns = build_entity_pattern_map(content_routes)
-    entity_index_paths = build_entity_index_map(index_routes)
-
-    %{
-      all_routes: routes,
-      content_routes: content_routes,
-      index_routes: index_routes,
-      entity_patterns: entity_patterns,
-      entity_index_paths: entity_index_paths
-    }
-  end
-
-  # Build map of entity_name -> url_pattern from routes
-  # Also detects catchall routes like /:entity_name/:slug
-  defp build_entity_pattern_map(content_routes) do
-    # Check for catchall route first
-    catchall_route = find_catchall_content_route(content_routes)
-
-    content_routes
-    |> Enum.reduce(%{catchall: catchall_route}, fn route, acc ->
-      path_lower = String.downcase(route.path)
-
-      # Extract entity name from path like /products/:slug or /product/:id
-      case extract_entity_from_path(path_lower) do
-        nil -> acc
-        entity_name -> Map.put_new(acc, entity_name, route.path)
-      end
-    end)
-  end
-
-  # Build map of entity_name -> index_path from routes
-  # Also detects catchall routes like /:entity_name
-  defp build_entity_index_map(index_routes) do
-    # Check for catchall index route first
-    catchall_route = find_catchall_index_route(index_routes)
-
-    index_routes
-    |> Enum.reduce(%{catchall: catchall_route}, fn route, acc ->
-      path_lower = String.downcase(route.path)
-
-      # Extract entity name from path like /products or /product
-      case extract_entity_from_index_path(path_lower) do
-        nil -> acc
-        entity_name -> Map.put_new(acc, entity_name, route.path)
-      end
-    end)
-  end
-
-  # Find catchall content route like /:entity_name/:slug
-  defp find_catchall_content_route(routes) do
-    Enum.find(routes, fn route ->
-      # Match patterns like /:entity_name/:slug, /:name/:slug, /:type/:id
-      Regex.match?(~r{^/:[a-z_]+/:[a-z_]+$}, route.path)
-    end)
-  end
-
-  # Find catchall index route like /:entity_name
-  defp find_catchall_index_route(routes) do
-    Enum.find(routes, fn route ->
-      # Match patterns like /:entity_name, /:name (single param at root)
-      Regex.match?(~r{^/:[a-z_]+$}, route.path)
-    end)
-  end
-
-  # Extract entity name from content path like /products/:slug -> "product"
-  defp extract_entity_from_path(path) do
-    case Regex.run(~r{^/([a-z_]+)s?/:[a-z_]+$}, path) do
-      [_, name] -> String.trim_trailing(name, "s")
-      _ -> nil
-    end
-  end
-
-  # Extract entity name from index path like /products -> "product"
-  defp extract_entity_from_index_path(path) do
-    case Regex.run(~r{^/([a-z_]+)s?$}, path) do
-      [_, name] -> String.trim_trailing(name, "s")
-      _ -> nil
     end
   end
 
@@ -342,7 +241,7 @@ defmodule PhoenixKitEntities.SitemapSource do
   end
 
   defp do_collect_entity_records(entity, base_url, language, is_default, routes_cache) do
-    url_pattern = get_url_pattern_cached(entity, routes_cache)
+    url_pattern = UrlResolver.get_url_pattern_cached(entity, routes_cache)
     effective_pattern = url_pattern || get_fallback_pattern(entity)
 
     if effective_pattern do
@@ -388,13 +287,13 @@ defmodule PhoenixKitEntities.SitemapSource do
 
   # Collect index page entry for entity (e.g., /page, /products) - cached version
   defp collect_entity_index(entity, base_url, language, is_default, routes_cache) do
-    index_path = get_index_path_cached(entity, routes_cache)
+    index_path = UrlResolver.get_index_path_cached(entity, routes_cache)
 
     if index_path do
       # Canonical path without language prefix (for hreflang grouping)
       canonical_path = index_path
-      path = build_path_with_language(index_path, language, is_default)
-      url = build_url(path, base_url)
+      path = UrlResolver.build_path_with_language(index_path, language, is_default)
+      url = UrlResolver.build_url(path, base_url)
 
       UrlEntry.new(%{
         loc: url,
@@ -413,100 +312,6 @@ defmodule PhoenixKitEntities.SitemapSource do
     error ->
       Logger.warning("Failed to collect index for entity #{entity.name}: #{inspect(error)}")
       nil
-  end
-
-  # Get index path using cached routes (no RouteResolver calls)
-  # Priority: entity settings -> cached lookup -> catchall -> per-entity settings -> fallback
-  defp get_index_path_cached(entity, routes_cache) do
-    get_index_from_entity_settings(entity) ||
-      get_index_from_cache(entity, routes_cache) ||
-      get_index_from_catchall(entity, routes_cache) ||
-      get_index_from_settings(entity) ||
-      get_fallback_index_path(entity)
-  end
-
-  defp get_index_from_entity_settings(entity) do
-    case entity.settings do
-      %{"sitemap_index_path" => path} when is_binary(path) and path != "" -> path
-      _ -> nil
-    end
-  end
-
-  defp get_index_from_cache(entity, routes_cache) do
-    entity_lower = String.downcase(entity.name)
-
-    Map.get(routes_cache.entity_index_paths, entity_lower) ||
-      Map.get(routes_cache.entity_index_paths, entity.name)
-  end
-
-  defp get_index_from_catchall(entity, routes_cache) do
-    case routes_cache.entity_index_paths[:catchall] do
-      %{path: _} -> "/#{entity.name}"
-      _ -> nil
-    end
-  end
-
-  defp get_index_from_settings(entity) do
-    Settings.get_setting("sitemap_entity_#{entity.name}_index_path")
-  end
-
-  # Fallback index path using entity name - disabled by default
-  defp get_fallback_index_path(entity) do
-    if Settings.get_boolean_setting("sitemap_entities_auto_pattern", false) do
-      "/#{entity.name}"
-    else
-      nil
-    end
-  end
-
-  # Get URL pattern using cached routes (no RouteResolver calls)
-  # Fallback chain: entity.settings -> cached routes -> per-entity settings -> global pattern
-  defp get_url_pattern_cached(entity, routes_cache) do
-    get_pattern_from_entity_settings(entity) ||
-      get_pattern_from_cache(entity, routes_cache) ||
-      get_pattern_from_settings(entity)
-  end
-
-  defp get_pattern_from_entity_settings(entity) do
-    case entity.settings do
-      %{"sitemap_url_pattern" => pattern} when is_binary(pattern) and pattern != "" -> pattern
-      _ -> nil
-    end
-  end
-
-  defp get_pattern_from_cache(entity, routes_cache) do
-    entity_lower = String.downcase(entity.name)
-
-    # First try explicit route for this entity
-    explicit_pattern =
-      Map.get(routes_cache.entity_patterns, entity_lower) ||
-        Map.get(routes_cache.entity_patterns, entity.name)
-
-    if explicit_pattern do
-      explicit_pattern
-    else
-      # Fall back to catchall route, replacing param with entity name
-      case routes_cache.entity_patterns[:catchall] do
-        nil -> nil
-        %{path: path} -> String.replace(path, ~r{^/:[a-z_]+/}, "/#{entity.name}/")
-      end
-    end
-  end
-
-  defp get_pattern_from_settings(entity) do
-    per_entity_key = "sitemap_entity_#{entity.name}_pattern"
-
-    case Settings.get_setting(per_entity_key) do
-      nil -> get_global_pattern(entity)
-      pattern -> pattern
-    end
-  end
-
-  defp get_global_pattern(entity) do
-    case Settings.get_setting("sitemap_entities_pattern") do
-      nil -> nil
-      global_pattern -> String.replace(global_pattern, ":entity_name", entity.name)
-    end
   end
 
   # Check if entity requires auth using cached routes
@@ -549,9 +354,9 @@ defmodule PhoenixKitEntities.SitemapSource do
 
   defp build_entry(record, entity, url_pattern, base_url, language, is_default) do
     # Canonical path without language prefix (for hreflang grouping)
-    canonical_path = build_path(url_pattern, record)
-    path = build_path_with_language(canonical_path, language, is_default)
-    url = build_url(path, base_url)
+    canonical_path = UrlResolver.build_path(url_pattern, record)
+    path = UrlResolver.build_path_with_language(canonical_path, language, is_default)
+    url = UrlResolver.build_url(path, base_url)
 
     UrlEntry.new(%{
       loc: url,
@@ -563,45 +368,5 @@ defmodule PhoenixKitEntities.SitemapSource do
       source: :entities,
       canonical_path: canonical_path
     })
-  end
-
-  defp build_path(pattern, record) do
-    pattern
-    |> String.replace(":slug", record.slug || to_string(record.uuid))
-    |> String.replace(":id", to_string(record.uuid))
-  end
-
-  # Add language prefix to path when in multi-language mode
-  # Single language: no prefix for anyone
-  # Multiple languages: ALL languages get prefix (including default)
-  defp build_path_with_language(path, language, _is_default) do
-    if language && !single_language_mode?() do
-      "/#{Languages.DialectMapper.extract_base(language)}#{path}"
-    else
-      path
-    end
-  end
-
-  # Check if we're in single language mode (no locale prefix needed)
-  # Returns true when languages module is off OR only one language is enabled
-  # Mirrors PublishingHTML.single_language_mode?/0 logic
-  defp single_language_mode? do
-    not Languages.enabled?() or length(Languages.get_enabled_languages()) <= 1
-  rescue
-    _ -> true
-  end
-
-  # Build URL for public entity pages (no PhoenixKit prefix)
-  defp build_url(path, nil) do
-    # Fallback to site_url from settings
-    base = PhoenixKit.Settings.get_setting("site_url", "")
-    normalized_base = String.trim_trailing(base, "/")
-    "#{normalized_base}#{path}"
-  end
-
-  defp build_url(path, base_url) when is_binary(base_url) do
-    # Entity pages are public - no PhoenixKit prefix needed
-    normalized_base = String.trim_trailing(base_url, "/")
-    "#{normalized_base}#{path}"
   end
 end
