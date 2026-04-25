@@ -1162,36 +1162,37 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                             <% end %>
                           </div>
                           <label class="select select-sm">
-                          <select
-                            phx-change="set_definition_action"
-                            phx-value-entity={entity.name}
-                            name="action"
-                          >
-                            <option
-                              value="skip"
-                              selected={
-                                get_definition_action(@import_selections, entity.name) == :skip
-                              }
+                            <select
+                              phx-change="set_definition_action"
+                              phx-value-entity={entity.name}
+                              name="action"
                             >
-                              {gettext("Skip")}
-                            </option>
-                            <option
-                              value="overwrite"
-                              selected={
-                                get_definition_action(@import_selections, entity.name) == :overwrite
-                              }
-                            >
-                              {gettext("Import/Overwrite")}
-                            </option>
-                            <option
-                              value="merge"
-                              selected={
-                                get_definition_action(@import_selections, entity.name) == :merge
-                              }
-                            >
-                              {gettext("Merge")}
-                            </option>
-                          </select>
+                              <option
+                                value="skip"
+                                selected={
+                                  get_definition_action(@import_selections, entity.name) == :skip
+                                }
+                              >
+                                {gettext("Skip")}
+                              </option>
+                              <option
+                                value="overwrite"
+                                selected={
+                                  get_definition_action(@import_selections, entity.name) ==
+                                    :overwrite
+                                }
+                              >
+                                {gettext("Import/Overwrite")}
+                              </option>
+                              <option
+                                value="merge"
+                                selected={
+                                  get_definition_action(@import_selections, entity.name) == :merge
+                                }
+                              >
+                                {gettext("Merge")}
+                              </option>
+                            </select>
                           </label>
                         </div>
                       </div>
@@ -1275,49 +1276,49 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                                   <td class="truncate max-w-32">{record[:title] || "-"}</td>
                                   <td class="text-right">
                                     <label class="select select-xs">
-                                    <select
-                                      phx-change="set_record_action"
-                                      phx-value-entity={entity.name}
-                                      phx-value-slug={record.slug}
-                                      name="action"
-                                    >
-                                      <option
-                                        value="skip"
-                                        selected={
-                                          get_record_action(
-                                            @import_selections,
-                                            entity.name,
-                                            record.slug
-                                          ) == :skip
-                                        }
+                                      <select
+                                        phx-change="set_record_action"
+                                        phx-value-entity={entity.name}
+                                        phx-value-slug={record.slug}
+                                        name="action"
                                       >
-                                        {gettext("Skip")}
-                                      </option>
-                                      <option
-                                        value="overwrite"
-                                        selected={
-                                          get_record_action(
-                                            @import_selections,
-                                            entity.name,
-                                            record.slug
-                                          ) == :overwrite
-                                        }
-                                      >
-                                        {gettext("Import")}
-                                      </option>
-                                      <option
-                                        value="merge"
-                                        selected={
-                                          get_record_action(
-                                            @import_selections,
-                                            entity.name,
-                                            record.slug
-                                          ) == :merge
-                                        }
-                                      >
-                                        {gettext("Merge")}
-                                      </option>
-                                    </select>
+                                        <option
+                                          value="skip"
+                                          selected={
+                                            get_record_action(
+                                              @import_selections,
+                                              entity.name,
+                                              record.slug
+                                            ) == :skip
+                                          }
+                                        >
+                                          {gettext("Skip")}
+                                        </option>
+                                        <option
+                                          value="overwrite"
+                                          selected={
+                                            get_record_action(
+                                              @import_selections,
+                                              entity.name,
+                                              record.slug
+                                            ) == :overwrite
+                                          }
+                                        >
+                                          {gettext("Import")}
+                                        </option>
+                                        <option
+                                          value="merge"
+                                          selected={
+                                            get_record_action(
+                                              @import_selections,
+                                              entity.name,
+                                              record.slug
+                                            ) == :merge
+                                          }
+                                        >
+                                          {gettext("Merge")}
+                                        </option>
+                                      </select>
                                     </label>
                                   </td>
                                 </tr>
