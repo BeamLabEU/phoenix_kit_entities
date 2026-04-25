@@ -86,7 +86,11 @@ defmodule PhoenixKitEntities.LiveCase do
     permissions = Keyword.get(opts, :permissions, ["entities"])
     authenticated? = Keyword.get(opts, :authenticated?, true)
 
-    user = %{uuid: user_uuid, email: email}
+    # Use a real `%PhoenixKit.Users.Auth.User{}` struct rather than a
+    # plain map. Production hooks call `Scope.user_uuid/1` which has
+    # function clauses pattern-matching on `%User{}` — a map raises
+    # `FunctionClauseError` during on_mount.
+    user = %PhoenixKit.Users.Auth.User{uuid: user_uuid, email: email}
 
     %PhoenixKit.Users.Auth.Scope{
       user: user,
