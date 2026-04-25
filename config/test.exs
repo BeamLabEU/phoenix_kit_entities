@@ -16,4 +16,18 @@ config :phoenix_kit_entities, PhoenixKitEntities.Test.Repo,
 # Wire repo for PhoenixKit.RepoHelper — without this, all DB calls crash.
 config :phoenix_kit, repo: PhoenixKitEntities.Test.Repo
 
+# Test endpoint config — minimal but sufficient for Phoenix.LiveViewTest.
+# Real apps load their full endpoint config from runtime.exs; we just
+# need enough for `live/2` to drive the LiveView.
+config :phoenix_kit_entities, PhoenixKitEntities.Test.Endpoint,
+  url: [host: "localhost"],
+  secret_key_base: String.duplicate("a", 64),
+  render_errors: [
+    formats: [html: PhoenixKitEntities.Test.Layouts],
+    layout: false
+  ],
+  pubsub_server: PhoenixKit.PubSub,
+  live_view: [signing_salt: "entities-test-salt"],
+  server: false
+
 config :logger, level: :warning

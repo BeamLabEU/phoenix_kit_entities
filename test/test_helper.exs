@@ -6,8 +6,24 @@
 #
 # To enable integration tests:
 #   createdb phoenix_kit_entities_test
+#
+# Test infrastructure:
+# - PhoenixKitEntities.Test.Repo (test/support/test_repo.ex)
+# - PhoenixKitEntities.Test.Endpoint + Router + Layouts + Hooks
+#   (test/support/test_*.ex)
+# - PhoenixKitEntities.LiveCase (test/support/live_case.ex)
+# - PhoenixKitEntities.DataCase (test/support/data_case.ex)
+# - PhoenixKitEntities.ActivityLogAssertions
+#   (test/support/activity_log_assertions.ex)
+# - Test migration (test/support/postgres/migrations/) — settings,
+#   activities, entities, and entity_data tables
 
 alias PhoenixKitEntities.Test.Repo, as: TestRepo
+
+# Pin URL prefix to "/" via persistent_term so PhoenixKit.Utils.Routes.path/2
+# doesn't try to read the unset application env. Tests can override this
+# value if they need a non-empty prefix.
+:persistent_term.put(PhoenixKit.Config, %{url_prefix: "/"})
 
 # Check if the test database exists before trying to connect
 db_config = Application.get_env(:phoenix_kit_entities, TestRepo, [])
@@ -41,27 +57,20 @@ repo_available =
     try do
       {:ok, _} = TestRepo.start_link()
 
-      # Enable uuid-ossp extension
-      TestRepo.query!("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"")
-
-      # Create uuid_generate_v7() function (normally created by PhoenixKit V40 migration)
-      TestRepo.query!("""
-      CREATE OR REPLACE FUNCTION uuid_generate_v7()
-      RETURNS uuid AS $$
-      DECLARE
-        unix_ts_ms bytea;
-        uuid_bytes bytea;
-      BEGIN
-        unix_ts_ms := substring(int8send(floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint) FROM 3);
-        uuid_bytes := unix_ts_ms || gen_random_bytes(10);
-        uuid_bytes := set_byte(uuid_bytes, 6, (get_byte(uuid_bytes, 6) & 15) | 112);
-        uuid_bytes := set_byte(uuid_bytes, 8, (get_byte(uuid_bytes, 8) & 63) | 128);
-        RETURN encode(uuid_bytes, 'hex')::uuid;
-      END;
-      $$ LANGUAGE plpgsql VOLATILE;
-      """)
+      # Run the test migration that creates settings, activities, and the
+      # module-owned tables (entities + entity_data). Idempotent via
+      # `create_if_not_exists`.
+      migration_path = Path.expand("support/postgres/migrations", __DIR__)
+      Ecto.Migrator.run(TestRepo, migration_path, :up, all: true, log: false)
 
       Ecto.Adapters.SQL.Sandbox.mode(TestRepo, :manual)
+
+      # Compile the require_file paths in elixirc_paths(:test) — needed so
+      # support modules are loaded before tests reference them.
+      Code.require_file("support/data_case.ex", __DIR__)
+      Code.require_file("support/live_case.ex", __DIR__)
+      Code.require_file("support/activity_log_assertions.ex", __DIR__)
+
       true
     rescue
       e ->
@@ -89,6 +98,12 @@ Application.put_env(:phoenix_kit_entities, :test_repo_available, repo_available)
 # Start minimal PhoenixKit services needed for tests
 {:ok, _pid} = PhoenixKit.PubSub.Manager.start_link([])
 {:ok, _pid} = PhoenixKit.ModuleRegistry.start_link([])
+
+# Start the test endpoint so Phoenix.LiveViewTest can render LVs.
+# Skipped if the repo isn't available — LV tests need both.
+if repo_available do
+  {:ok, _pid} = PhoenixKitEntities.Test.Endpoint.start_link()
+end
 
 # Exclude integration tests when DB is not available
 exclude = if repo_available, do: [], else: [:integration]
