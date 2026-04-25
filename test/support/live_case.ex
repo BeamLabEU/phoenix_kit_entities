@@ -82,7 +82,7 @@ defmodule PhoenixKitEntities.LiveCase do
   def fake_scope(opts \\ []) do
     user_uuid = Keyword.get(opts, :user_uuid, Ecto.UUID.generate())
     email = Keyword.get(opts, :email, "test-#{System.unique_integer([:positive])}@example.com")
-    roles = Keyword.get(opts, :roles, [:owner])
+    roles = Keyword.get(opts, :roles, ["Owner"])
     permissions = Keyword.get(opts, :permissions, ["entities"])
     authenticated? = Keyword.get(opts, :authenticated?, true)
 
@@ -92,10 +92,14 @@ defmodule PhoenixKitEntities.LiveCase do
     # `FunctionClauseError` during on_mount.
     user = %PhoenixKit.Users.Auth.User{uuid: user_uuid, email: email}
 
+    # `cached_roles` is a LIST (the production code stores role *names*
+    # like `"Owner"`/`"Admin"` from `Role.system_roles/0`, NOT atoms or a
+    # MapSet) — `Scope.admin?/1` pattern-matches `is_list(cached_roles)`.
+    # `cached_permissions` is a MapSet checked via membership.
     %PhoenixKit.Users.Auth.Scope{
       user: user,
       authenticated?: authenticated?,
-      cached_roles: MapSet.new(roles),
+      cached_roles: roles,
       cached_permissions: MapSet.new(permissions)
     }
   end

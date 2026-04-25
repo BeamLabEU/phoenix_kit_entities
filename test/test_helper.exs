@@ -103,6 +103,18 @@ Application.put_env(:phoenix_kit_entities, :test_repo_available, repo_available)
 {:ok, _pid} = PhoenixKit.ModuleRegistry.start_link([])
 {:ok, _pid} = PhoenixKit.Admin.SimplePresence.start_link([])
 
+# DataForm and EntityForm mount presence tracking via
+# `PhoenixKitEntities.Presence` (the module's own Phoenix.Tracker for
+# editing locks). Without this, every DataForm/EntityForm LV test
+# crashes during mount with "the table identifier does not refer to an
+# existing ETS table". Phoenix.Presence is supervised, not start_link'd
+# directly, so wrap in a tiny supervisor for the test boot sequence.
+{:ok, _pid} =
+  Supervisor.start_link([PhoenixKitEntities.Presence],
+    strategy: :one_for_one,
+    name: PhoenixKitEntities.Test.PresenceSupervisor
+  )
+
 # Start the test endpoint so Phoenix.LiveViewTest can render LVs.
 # Skipped if the repo isn't available — LV tests need both.
 if repo_available do
