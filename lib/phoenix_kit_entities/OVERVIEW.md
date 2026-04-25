@@ -318,7 +318,7 @@ PhoenixKitEntities.get_system_stats()
 ### Enforcing limits
 ```elixir
 PhoenixKitEntities.validate_user_entity_limit(admin.uuid)
-# {:ok, :valid} or {:error, "You have reached the maximum limit of 100 entities"}
+# {:ok, :valid} or {:error, {:user_entity_limit_reached, 100}}
 ```
 
 ### Language-aware queries

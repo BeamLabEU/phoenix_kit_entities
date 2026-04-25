@@ -148,6 +148,15 @@ and Settings.
   guarded by `Code.ensure_loaded?/1` and a rescue so logging failures
   never crash the primary mutation. See "Activity Logging Pattern"
   below.
+- **`PhoenixKitEntities.Errors`**
+  (`lib/phoenix_kit_entities/errors.ex`) — Atom-to-gettext dispatcher.
+  Public-API error returns use atoms (`:cannot_remove_primary`,
+  `:not_multilang`, `:entity_not_found`) and tagged tuples
+  (`{:invalid_field_type, type}`, `{:user_entity_limit_reached, max}`)
+  so callers can pattern-match locale-agnostic; LiveView call sites
+  pipe the reason through `Errors.message/1` for the user-facing
+  string. See `test/phoenix_kit_entities/errors_test.exs` for the
+  exhaustive per-atom test that pins each translated string.
 
 ### Two-Table Database Design
 
@@ -250,8 +259,11 @@ lib/phoenix_kit_entities/
 - **URL paths**: use hyphens, not underscores (e.g., `"entities"`)
 - **Navigation paths**: always use `PhoenixKit.Utils.Routes.path/1`,
   never relative paths
-- **`enabled?/0`**: must rescue errors and return `false` as fallback
-  (DB may not be available)
+- **`enabled?/0`**: rescues errors AND catches `:exit` signals
+  (sandbox shutdown raises `:exit`, not an exception). Returns
+  `false` as fallback (DB may not be available). Same pattern lives
+  in `safe_count/1` (used by `get_config/0`) so module-level
+  callbacks don't crash outside a sandbox checkout.
 - **`enable_system/0` and `disable_system/0`**: use `module_key()`
   not hardcoded strings; both log
   `module.entities.{enabled|disabled}` activity rows
