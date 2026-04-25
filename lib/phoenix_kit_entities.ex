@@ -91,6 +91,7 @@ defmodule PhoenixKitEntities do
   import Ecto.Query, warn: false
 
   alias PhoenixKit.Dashboard.Tab
+  alias PhoenixKit.Modules.Languages.DialectMapper
   alias PhoenixKit.Settings
   alias PhoenixKit.Users.Auth
   alias PhoenixKit.Users.Auth.User
@@ -404,7 +405,8 @@ defmodule PhoenixKitEntities do
   # Resolves display_name / display_name_plural / description on a summary map,
   # matching the behaviour of resolve_language/2 without a struct round-trip.
   defp resolve_summary_language(summary, lang_code) do
-    translations = get_in(summary, [:settings, "translations", lang_code]) || %{}
+    translations_map = get_in(summary, [:settings, "translations"]) || %{}
+    translations = lookup_translation(translations_map, lang_code)
 
     summary
     |> maybe_put_translation(:display_name, translations["display_name"])
@@ -415,6 +417,49 @@ defmodule PhoenixKitEntities do
   defp maybe_put_translation(summary, _field, nil), do: summary
   defp maybe_put_translation(summary, _field, ""), do: summary
   defp maybe_put_translation(summary, field, value), do: Map.put(summary, field, value)
+
+  # Looks up translation overrides by locale, tolerating base/dialect mismatches.
+  #
+  # Translations are stored under whatever key `set_entity_translation` saw —
+  # typically the dialect form (e.g. `"es-ES"`). Callers may query with either
+  # the dialect (`Gettext.get_locale/1` returns `"en-US"` etc.) or a base code
+  # (URL params expose `"en"`). Without normalization the dialect/base mismatch
+  # silently misses and the UI falls back to primary-language labels.
+  #
+  # Match priority:
+  # 1. Exact key match (`"es-ES"` → `"es-ES"`).
+  # 2. Same base code (`"es"` → first `"es-*"` translation, deterministic via
+  #    sort).
+  defp lookup_translation(translations_map, lang_code)
+       when is_map(translations_map) and is_binary(lang_code) do
+    case Map.get(translations_map, lang_code) do
+      %{} = exact ->
+        exact
+
+      _ ->
+        base = safe_extract_base(lang_code)
+
+        translations_map
+        |> Enum.filter(fn {key, _v} ->
+          is_binary(key) and safe_extract_base(key) == base and base != nil
+        end)
+        |> Enum.sort_by(&elem(&1, 0))
+        |> case do
+          [{_key, value} | _] when is_map(value) -> value
+          _ -> %{}
+        end
+    end
+  end
+
+  defp lookup_translation(_translations_map, _lang_code), do: %{}
+
+  defp safe_extract_base(code) when is_binary(code) and code != "" do
+    DialectMapper.extract_base(code)
+  rescue
+    _ -> nil
+  end
+
+  defp safe_extract_base(_), do: nil
 
   @doc """
   Gets a single entity by integer ID or UUID.
@@ -1220,7 +1265,7 @@ defmodule PhoenixKitEntities do
     }
 
     translations = get_entity_translations(entity)
-    lang_overrides = Map.get(translations, lang_code, %{})
+    lang_overrides = lookup_translation(translations, lang_code)
 
     Map.merge(primary, lang_overrides)
   end

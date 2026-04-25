@@ -72,6 +72,7 @@ defmodule PhoenixKitEntities.EntityData do
   import Ecto.Changeset
   import Ecto.Query, warn: false
 
+  alias PhoenixKit.Modules.Languages.DialectMapper
   alias PhoenixKit.Users.Auth
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKit.Utils.Date, as: UtilsDate
@@ -89,6 +90,7 @@ defmodule PhoenixKitEntities.EntityData do
   @derive {Jason.Encoder,
            only: [
              :uuid,
+             :entity_uuid,
              :title,
              :slug,
              :status,
@@ -1084,6 +1086,97 @@ defmodule PhoenixKitEntities.EntityData do
 
     UrlResolver.build_url(path, base_url)
   end
+
+  @doc """
+  Returns hreflang alternates and a canonical URL for a record across all
+  enabled languages.
+
+  When the same record serves at both the unprefixed primary-language URL
+  (`/products/my-item`) and a per-locale prefixed URL (`/es/products/mi-item`),
+  search engines can index both as duplicate content. Use this helper to emit
+  `<link rel="alternate" hreflang="...">` and `<link rel="canonical">` tags
+  alongside `public_path/3` so the duplication is declared rather than
+  competing.
+
+  ## Output shape
+
+      %{
+        canonical: "https://site.com/products/my-item",
+        alternates: [
+          %{locale: "en", href: "https://site.com/products/my-item"},
+          %{locale: "es", href: "https://site.com/es/products/mi-item"},
+          %{locale: "x-default", href: "https://site.com/products/my-item"}
+        ]
+      }
+
+  Locales are emitted as base codes (`"en"`, `"es"`) — matching the locale
+  prefix policy used in `public_path/3` and Google's hreflang docs (which
+  recommend `xx` over `xx-XX` unless region targeting is required).
+
+  ## Options
+
+    * `:base_url` — explicit absolute URL prefix (e.g. `"https://shop.example.com"`).
+      Falls back to the `site_url` setting, then `""` (which yields path-only
+      `href` values — useful in tests but not in production HTML).
+    * `:routes_cache` — pre-built cache from `UrlResolver.build_routes_cache/0`
+      (avoid rebuilding per call when emitting many records).
+    * `:primary_locale` — overrides the locale considered "canonical".
+      Defaults to `Multilang.primary_language/0` with rescue fallback to the
+      first enabled locale.
+
+  When the Multilang module is unavailable or only one language is enabled,
+  the result has a single canonical entry and no `:alternates`.
+  """
+  @spec public_alternates(map(), map(), keyword()) :: %{
+          canonical: String.t(),
+          alternates: [%{locale: String.t(), href: String.t()}]
+        }
+  def public_alternates(entity, record, opts \\ []) do
+    cache = Keyword.get(opts, :routes_cache) || UrlResolver.build_routes_cache()
+    opts_with_cache = Keyword.put(opts, :routes_cache, cache)
+
+    locales = enabled_locales()
+    primary_dialect = Keyword.get(opts, :primary_locale) || safe_primary_language(locales)
+
+    canonical_locale_url =
+      public_url(entity, record, Keyword.put(opts_with_cache, :locale, primary_dialect))
+
+    alternates =
+      locales
+      |> Enum.map(fn dialect ->
+        href = public_url(entity, record, Keyword.put(opts_with_cache, :locale, dialect))
+        %{locale: locale_base(dialect), href: href}
+      end)
+      |> Enum.uniq_by(& &1.locale)
+
+    alternates =
+      case alternates do
+        [_ | _] = list -> list ++ [%{locale: "x-default", href: canonical_locale_url}]
+        _ -> []
+      end
+
+    %{canonical: canonical_locale_url, alternates: alternates}
+  end
+
+  defp enabled_locales do
+    Multilang.enabled_languages()
+  rescue
+    _ -> []
+  end
+
+  defp safe_primary_language(fallback_locales) do
+    Multilang.primary_language()
+  rescue
+    _ -> List.first(fallback_locales)
+  end
+
+  defp locale_base(dialect) when is_binary(dialect) do
+    DialectMapper.extract_base(dialect)
+  rescue
+    _ -> dialect
+  end
+
+  defp locale_base(_), do: nil
 
   @doc """
   Alias for list_all/1 for consistency with LiveView naming.

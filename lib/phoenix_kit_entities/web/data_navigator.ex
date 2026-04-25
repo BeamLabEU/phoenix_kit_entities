@@ -22,7 +22,6 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
       params["locale"] || socket.assigns[:current_locale]
 
     project_title = Settings.get_project_title()
-    entities = Entities.list_entities(lang: locale)
 
     # Subscribe to entity definition events so we know about creates/updates/deletes
     if connected?(socket) do
@@ -30,13 +29,15 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
       Events.subscribe_to_all_data()
     end
 
-    # Set defaults only — entity resolution and data loading deferred to handle_params
+    # Set defaults only — entity list, entity resolution, and data loading
+    # deferred to handle_params. Mount runs twice (HTTP + WebSocket); handle_params
+    # runs once. See Phoenix iron law.
     socket =
       socket
       |> assign(:current_locale, locale)
       |> assign(:page_title, gettext("Data Navigator"))
       |> assign(:project_title, project_title)
-      |> assign(:entities, entities)
+      |> assign(:entities, [])
       |> assign(:total_records, 0)
       |> assign(:published_records, 0)
       |> assign(:draft_records, 0)
@@ -54,6 +55,10 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
 
   @impl true
   def handle_params(params, _url, socket) do
+    # Load entity definitions list once per page load (see mount comment).
+    socket =
+      assign(socket, :entities, Entities.list_entities(lang: socket.assigns.current_locale))
+
     # Resolve entity from slug in params
     {entity, entity_uuid} = resolve_entity_from_params(params, socket)
 

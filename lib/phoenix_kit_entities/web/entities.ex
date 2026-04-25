@@ -18,13 +18,15 @@ defmodule PhoenixKitEntities.Web.Entities do
 
     project_title = Settings.get_project_title()
 
+    # Defer DB query to handle_params/3 — mount runs twice (HTTP + WebSocket),
+    # handle_params runs once. See Phoenix iron law.
     socket =
       socket
       |> assign(:current_locale, locale)
       |> assign(:page_title, gettext("Entities"))
       |> assign(:project_title, project_title)
       |> assign(:view_mode, "table")
-      |> assign(:entities, Entities.list_entities(lang: locale))
+      |> assign(:entities, [])
 
     {:ok, socket}
   end
@@ -32,10 +34,12 @@ defmodule PhoenixKitEntities.Web.Entities do
   @impl true
   def handle_params(params, _url, socket) do
     view_mode = Map.get(params, "view", "table")
+    locale = socket.assigns[:current_locale]
 
     socket =
       socket
       |> assign(:view_mode, view_mode)
+      |> assign(:entities, Entities.list_entities(lang: locale))
 
     {:noreply, socket}
   end
