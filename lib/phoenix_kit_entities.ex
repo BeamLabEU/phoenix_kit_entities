@@ -345,10 +345,15 @@ defmodule PhoenixKitEntities do
     })
   end
 
-  # Mirror export helpers for auto-sync (per-entity settings)
+  # Mirror export helpers for auto-sync (per-entity settings).
+  # Filesystem export is fire-and-forget after the DB commit returns;
+  # supervised under PhoenixKit.TaskSupervisor so a crashing exporter
+  # doesn't take down the caller and the task is restartable.
   defp maybe_mirror_entity(entity) do
     if mirror_definitions_enabled?(entity) do
-      Task.start(fn -> Exporter.export_entity(entity) end)
+      Task.Supervisor.start_child(PhoenixKit.TaskSupervisor, fn ->
+        Exporter.export_entity(entity)
+      end)
     end
   end
 
@@ -356,7 +361,7 @@ defmodule PhoenixKitEntities do
     # Delete the file if it exists (regardless of current setting)
     # This ensures cleanup when entity is deleted
     if Storage.entity_exists?(entity.name) do
-      Task.start(fn ->
+      Task.Supervisor.start_child(PhoenixKit.TaskSupervisor, fn ->
         Storage.delete_entity(entity.name)
       end)
     end
@@ -370,6 +375,7 @@ defmodule PhoenixKitEntities do
       iex> PhoenixKitEntities.list_entities()
       [%PhoenixKit.Entities{}, ...]
   """
+  @spec list_entities(keyword()) :: [t()]
   def list_entities(opts \\ []) do
     __MODULE__
     |> order_by([e], desc: e.date_created)
@@ -505,6 +511,7 @@ defmodule PhoenixKitEntities do
       iex> PhoenixKitEntities.get_entity(456)
       nil
   """
+  @spec get_entity(term(), keyword()) :: t() | nil
   def get_entity(uuid, opts \\ [])
 
   def get_entity(uuid, opts) when is_binary(uuid) do
@@ -533,6 +540,7 @@ defmodule PhoenixKitEntities do
       iex> PhoenixKitEntities.get_entity!(456)
       ** (Ecto.NoResultsError)
   """
+  @spec get_entity!(term(), keyword()) :: t()
   def get_entity!(id, opts \\ []) do
     case get_entity(id, opts) do
       nil -> raise Ecto.NoResultsError, queryable: __MODULE__
@@ -553,6 +561,7 @@ defmodule PhoenixKitEntities do
       iex> PhoenixKitEntities.get_entity_by_name("invalid")
       nil
   """
+  @spec get_entity_by_name(String.t(), keyword()) :: t() | nil
   def get_entity_by_name(name, opts \\ []) when is_binary(name) do
     case repo().get_by(__MODULE__, name: name) do
       nil -> nil
@@ -645,6 +654,7 @@ defmodule PhoenixKitEntities do
       iex> PhoenixKitEntities.change_entity(entity)
       %Ecto.Changeset{data: %PhoenixKit.Entities{}}
   """
+  @spec change_entity(t(), map()) :: Ecto.Changeset.t()
   def change_entity(%__MODULE__{} = entity, attrs \\ %{}) do
     changeset(entity, attrs)
   end
@@ -685,6 +695,7 @@ defmodule PhoenixKitEntities do
       iex> PhoenixKitEntities.count_user_entities(1)
       5
   """
+  @spec count_user_entities(String.t()) :: non_neg_integer()
   def count_user_entities(user_uuid) when is_binary(user_uuid) do
     from(e in __MODULE__, where: e.created_by_uuid == ^user_uuid, select: count(e.uuid))
     |> repo().one()
@@ -698,6 +709,7 @@ defmodule PhoenixKitEntities do
       iex> PhoenixKitEntities.count_entities()
       15
   """
+  @spec count_entities() :: non_neg_integer()
   def count_entities do
     from(e in __MODULE__, select: count(e.uuid))
     |> repo().one()
@@ -757,10 +769,14 @@ defmodule PhoenixKitEntities do
       iex> PhoenixKitEntities.enabled?()
       false
   """
+  @spec enabled?() :: boolean()
   def enabled? do
     Settings.get_boolean_setting("entities_enabled", false)
   rescue
     _ -> false
+  catch
+    # Settings supervisor may exit during sandbox shutdown; treat as disabled.
+    :exit, _ -> false
   end
 
   @impl PhoenixKit.Module
@@ -869,9 +885,11 @@ defmodule PhoenixKitEntities do
   # ============================================================================
 
   @impl PhoenixKit.Module
+  @spec module_key() :: String.t()
   def module_key, do: "entities"
 
   @impl PhoenixKit.Module
+  @spec module_name() :: String.t()
   def module_name, do: "Entities"
 
   @impl PhoenixKit.Module
@@ -1028,11 +1046,14 @@ defmodule PhoenixKitEntities do
   end
 
   @impl PhoenixKit.Module
+  @spec children() :: [module()]
   def children, do: [PhoenixKitEntities.Presence]
 
+  @spec css_sources() :: [atom()]
   def css_sources, do: [:phoenix_kit_entities]
 
   @impl PhoenixKit.Module
+  @spec version() :: String.t()
   def version, do: "0.1.4"
 
   @impl PhoenixKit.Module

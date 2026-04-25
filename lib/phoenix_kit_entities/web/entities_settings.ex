@@ -446,7 +446,12 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
     Entities.update_mirror_settings(entity, %{"mirror_data" => new_value})
   end
 
-  defp maybe_export_entity(entity, true), do: Task.start(fn -> Exporter.export_entity(entity) end)
+  defp maybe_export_entity(entity, true) do
+    Task.Supervisor.start_child(PhoenixKit.TaskSupervisor, fn ->
+      Exporter.export_entity(entity)
+    end)
+  end
+
   defp maybe_export_entity(_entity, false), do: :ok
 
   defp refresh_entities_list(socket) do
@@ -788,6 +793,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                     <button
                       class="btn btn-error btn-sm"
                       phx-click="disable_entities"
+                      phx-disable-with={gettext("Disabling…")}
                       data-confirm={
                         gettext(
                           "Are you sure you want to disable the entities system? This will make all entities and data inaccessible."
@@ -800,6 +806,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                     <button
                       class="btn btn-success btn-sm"
                       phx-click="enable_entities"
+                      phx-disable-with={gettext("Enabling…")}
                     >
                       <.icon name="hero-check" class="w-4 h-4 mr-1" /> {gettext("Enable System")}
                     </button>
@@ -858,13 +865,21 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                   class="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-52"
                 >
                   <li>
-                    <button phx-click="enable_all_definitions" class="text-success">
+                    <button
+                      phx-click="enable_all_definitions"
+                      phx-disable-with={gettext("…")}
+                      class="text-success"
+                    >
                       <.icon name="hero-check" class="w-4 h-4" />
                       {gettext("Enable All")}
                     </button>
                   </li>
                   <li>
-                    <button phx-click="disable_all_definitions" class="text-error">
+                    <button
+                      phx-click="disable_all_definitions"
+                      phx-disable-with={gettext("…")}
+                      class="text-error"
+                    >
                       <.icon name="hero-x-mark" class="w-4 h-4" />
                       {gettext("Disable All")}
                     </button>
@@ -883,13 +898,21 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                   class="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-52"
                 >
                   <li>
-                    <button phx-click="enable_all_data" class="text-success">
+                    <button
+                      phx-click="enable_all_data"
+                      phx-disable-with={gettext("…")}
+                      class="text-success"
+                    >
                       <.icon name="hero-check" class="w-4 h-4" />
                       {gettext("Enable All")}
                     </button>
                   </li>
                   <li>
-                    <button phx-click="disable_all_data" class="text-error">
+                    <button
+                      phx-click="disable_all_data"
+                      phx-disable-with={gettext("…")}
+                      class="text-error"
+                    >
                       <.icon name="hero-x-mark" class="w-4 h-4" />
                       {gettext("Disable All")}
                     </button>
@@ -900,6 +923,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
               <button
                 class="btn btn-sm btn-primary"
                 phx-click="export_now"
+                phx-disable-with={gettext("Exporting…")}
                 disabled={@exporting}
               >
                 <%= if @exporting do %>
@@ -970,6 +994,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                                   class="btn btn-outline btn-success btn-xs tooltip tooltip-bottom"
                                   phx-click="toggle_entity_definitions"
                                   phx-value-uuid={entity.uuid}
+                                  phx-disable-with={gettext("…")}
                                   data-tip={gettext("Disable Definition sync")}
                                 >
                                   <.icon name="hero-check" class="w-3 h-3 hidden sm:inline" />
@@ -982,6 +1007,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                                   class="btn btn-outline btn-xs tooltip tooltip-bottom"
                                   phx-click="toggle_entity_definitions"
                                   phx-value-uuid={entity.uuid}
+                                  phx-disable-with={gettext("…")}
                                   data-tip={gettext("Enable Definition sync")}
                                 >
                                   <.icon name="hero-x-mark" class="w-3 h-3 hidden sm:inline" />
@@ -1001,6 +1027,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                                     class="btn btn-outline btn-success btn-xs tooltip tooltip-bottom"
                                     phx-click="toggle_entity_data"
                                     phx-value-uuid={entity.uuid}
+                                    phx-disable-with={gettext("…")}
                                     data-tip={gettext("Disable Records sync")}
                                   >
                                     <.icon name="hero-check" class="w-3 h-3 hidden sm:inline" />
@@ -1013,6 +1040,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                                     class="btn btn-outline btn-xs tooltip tooltip-bottom"
                                     phx-click="toggle_entity_data"
                                     phx-value-uuid={entity.uuid}
+                                    phx-disable-with={gettext("…")}
                                     data-tip={gettext("Enable Records sync")}
                                   >
                                     <.icon name="hero-x-mark" class="w-3 h-3 hidden sm:inline" />
@@ -1038,6 +1066,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                             class="btn btn-ghost btn-xs tooltip tooltip-bottom"
                             phx-click="export_entity_now"
                             phx-value-uuid={entity.uuid}
+                            phx-disable-with={gettext("…")}
                             data-tip={gettext("Export now")}
                           >
                             <.icon name="hero-arrow-up-tray" class="w-4 h-4 hidden sm:inline" />
@@ -1362,6 +1391,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                   class="btn btn-secondary btn-outline"
                   phx-click="do_import_entity"
                   phx-value-entity={@import_active_tab}
+                  phx-disable-with={gettext("Importing…")}
                   disabled={@import_preview == nil or @import_active_tab == nil}
                 >
                   <.icon name="hero-arrow-down-tray" class="w-4 h-4 mr-1" />
@@ -1370,6 +1400,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                 <button
                   class="btn btn-primary"
                   phx-click="do_import"
+                  phx-disable-with={gettext("Importing…")}
                   disabled={@import_preview == nil or length(@import_preview.entities) == 0}
                 >
                   <.icon name="hero-arrow-down-tray" class="w-4 h-4 mr-1" />

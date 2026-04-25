@@ -1215,6 +1215,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
                             class="btn btn-outline btn-xs text-success tooltip tooltip-bottom"
                             phx-click="restore_data"
                             phx-value-uuid={data_record.uuid}
+                            phx-disable-with={gettext("…")}
                             data-tip={gettext("Restore")}
                           >
                             <.icon name="hero-arrow-path" class="w-4 h-4 hidden sm:inline" />
@@ -1225,6 +1226,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
                             class="btn btn-outline btn-xs text-error tooltip tooltip-bottom"
                             phx-click="archive_data"
                             phx-value-uuid={data_record.uuid}
+                            phx-disable-with={gettext("…")}
                             data-tip={gettext("Archive")}
                           >
                             <.icon name="hero-trash" class="w-4 h-4 hidden sm:inline" />
@@ -1361,6 +1363,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
                           class="btn btn-success btn-sm"
                           phx-click="restore_data"
                           phx-value-uuid={data_record.uuid}
+                          phx-disable-with={gettext("…")}
                           title={gettext("Restore data record")}
                         >
                           <.icon name="hero-arrow-path" class="w-4 h-4" />
@@ -1370,6 +1373,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
                           class="btn btn-error btn-sm"
                           phx-click="archive_data"
                           phx-value-uuid={data_record.uuid}
+                          phx-disable-with={gettext("…")}
                           title={gettext("Archive data record")}
                         >
                           <.icon name="hero-trash" class="w-4 h-4" />

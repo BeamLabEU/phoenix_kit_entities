@@ -239,7 +239,7 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
 
   defp check_rate_limit(conn, settings, entity) do
     if Map.get(settings, "public_form_rate_limit", false) do
-      ip = get_client_ip(conn)
+      ip = get_rate_limit_ip(conn)
       key = "entity_form:#{entity.id}:#{ip}"
 
       # Use the same Backend module used by RateLimiter
@@ -255,8 +255,14 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
       :ok
     end
   rescue
-    # If Hammer is not available or not started, allow the request
-    _ -> :ok
+    # Hammer raises when its backend isn't started yet (test envs, boot
+    # races); allow the request. Narrow rescues so genuine bugs surface.
+    e in [ArgumentError, RuntimeError, UndefinedFunctionError] ->
+      Logger.debug(
+        "[EntityFormController] rate-limit check falling open: #{Exception.message(e)}"
+      )
+
+      :ok
   end
 
   defp get_success_message(entity) do
@@ -392,6 +398,11 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
     |> Kernel.<>("-#{:rand.uniform(9999)}")
   end
 
+  # Cap stored header values so a malicious 50KB user-agent string
+  # doesn't bloat the JSONB column. Same cap on referer; truncated rather
+  # than dropped so analytics still see something but storage is bounded.
+  @metadata_string_cap 255
+
   defp build_submission_metadata(conn, params) do
     user_agent = get_req_header(conn, "user-agent") |> List.first() || ""
     referer = get_req_header(conn, "referer") |> List.first()
@@ -401,35 +412,106 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
     form_loaded_at = Map.get(params, "_form_loaded_at")
     time_to_submit = get_time_to_submit(params)
 
+    capped_user_agent = cap_string(user_agent, @metadata_string_cap)
+
     %{
       "source" => "public_form",
       "ip_address" => get_client_ip(conn),
-      "user_agent" => user_agent,
-      "browser" => parse_browser(user_agent),
-      "os" => parse_os(user_agent),
-      "device" => parse_device(user_agent),
-      "referer" => referer,
+      "user_agent" => capped_user_agent,
+      "browser" => parse_browser(capped_user_agent),
+      "os" => parse_os(capped_user_agent),
+      "device" => parse_device(capped_user_agent),
+      "referer" => cap_string(referer, @metadata_string_cap),
       "form_loaded_at" => form_loaded_at,
       "submitted_at" => DateTime.to_iso8601(submitted_at),
       "time_to_submit_seconds" => time_to_submit
     }
   end
 
-  defp get_client_ip(conn) do
-    # Check for forwarded IP (behind proxy/load balancer)
-    forwarded_for = get_req_header(conn, "x-forwarded-for") |> List.first()
+  defp cap_string(nil, _cap), do: nil
 
-    if forwarded_for do
-      forwarded_for
-      |> String.split(",")
-      |> List.first()
-      |> String.trim()
-    else
-      conn.remote_ip
-      |> :inet.ntoa()
-      |> to_string()
+  defp cap_string(value, cap) when is_binary(value) do
+    if byte_size(value) > cap, do: String.slice(value, 0, cap), else: value
+  end
+
+  # Returns the client IP for storage in submission metadata.
+  # Best-effort; falls back to remote_ip when the forwarded value is
+  # missing or malformed. Distinct from `get_rate_limit_ip/1` which
+  # rejects spoofed/private values entirely so they can't multiply
+  # rate-limit buckets.
+  defp get_client_ip(conn) do
+    case parse_forwarded_for(conn) do
+      nil -> remote_ip_string(conn)
+      ip -> ip
     end
   end
+
+  # Returns an IP suitable for use as a rate-limit key. RFC1918 / loopback
+  # / link-local / non-IPv4 values from `X-Forwarded-For` are rejected
+  # back to the conn's `remote_ip` so an attacker can't spoof
+  # `X-Forwarded-For: 1.2.3.4` to get their own per-fake-IP bucket and
+  # bypass the per-IP limit. The conn's `remote_ip` is set by the
+  # endpoint and is the actual TCP peer.
+  defp get_rate_limit_ip(conn) do
+    case parse_forwarded_for(conn) do
+      nil -> remote_ip_string(conn)
+      ip -> if rate_limit_safe_ip?(ip), do: ip, else: remote_ip_string(conn)
+    end
+  end
+
+  defp parse_forwarded_for(conn) do
+    case get_req_header(conn, "x-forwarded-for") |> List.first() do
+      nil ->
+        nil
+
+      header ->
+        header
+        |> String.split(",")
+        |> List.first()
+        |> String.trim()
+        |> case do
+          "" -> nil
+          ip -> ip
+        end
+    end
+  end
+
+  defp remote_ip_string(conn) do
+    conn.remote_ip
+    |> :inet.ntoa()
+    |> to_string()
+  end
+
+  # Strict IPv4 dotted-quad with each octet 0-255, AND rejects RFC1918
+  # ranges, loopback, link-local, and the unspecified address — those
+  # would let an internal/forwarded value fake a public IP bucket.
+  defp rate_limit_safe_ip?(ip) when is_binary(ip) do
+    Regex.match?(~r/^(?:\d{1,3}\.){3}\d{1,3}$/, ip) and not private_or_local_ip?(ip)
+  end
+
+  defp private_or_local_ip?(ip) do
+    case String.split(ip, ".") do
+      [a, b, _, _] ->
+        a_int = String.to_integer(a)
+        b_int = String.to_integer(b)
+        unsafe_octets?(a_int, b_int)
+
+      _ ->
+        true
+    end
+  rescue
+    _ -> true
+  end
+
+  # RFC1918 + loopback + link-local + multicast/reserved (224+).
+  defp unsafe_octets?(0, _), do: true
+  defp unsafe_octets?(10, _), do: true
+  defp unsafe_octets?(127, _), do: true
+  defp unsafe_octets?(169, 254), do: true
+  defp unsafe_octets?(172, b) when b in 16..31, do: true
+  defp unsafe_octets?(192, 168), do: true
+  defp unsafe_octets?(a, _) when a >= 224, do: true
+  defp unsafe_octets?(_, _), do: false
 
   defp parse_browser(user_agent) do
     Enum.find_value(@browser_patterns, "Unknown", fn {pattern, name} ->
@@ -460,10 +542,13 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
   end
 
   # Form statistics tracking
-  # Stats are stored in entity.settings under "public_form_stats"
+  # Stats are stored in entity.settings under "public_form_stats".
+  # Supervised under PhoenixKit.TaskSupervisor — fire-and-forget after
+  # the response is sent. The narrow rescue lets transient `Ecto.StaleEntryError`
+  # from concurrent submissions degrade silently (next submission re-counts);
+  # everything else logs.
   defp increment_form_stats(entity, event_type, security_flags) do
-    # Run async to not block the response
-    Task.start(fn ->
+    Task.Supervisor.start_child(PhoenixKit.TaskSupervisor, fn ->
       try do
         current_settings = entity.settings || %{}
         current_stats = Map.get(current_settings, "public_form_stats", %{})
@@ -481,7 +566,17 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
         # Update entity settings directly via Repo
         Entities.update_entity(entity, %{"settings" => updated_settings})
       rescue
-        _ -> :ok
+        Ecto.StaleEntryError ->
+          # Concurrent submission updated stats first — next one re-counts.
+          :ok
+
+        e ->
+          Logger.warning(
+            "[EntityFormController] form-stats update failed for entity #{entity.uuid}: " <>
+              Exception.message(e)
+          )
+
+          {:error, e}
       end
     end)
   end

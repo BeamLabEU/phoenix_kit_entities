@@ -300,7 +300,7 @@ defmodule PhoenixKitEntities.SitemapSource do
         lastmod: entity.date_updated || entity.date_created,
         changefreq: "daily",
         priority: 0.7,
-        title: "#{entity.display_name || String.capitalize(entity.name)} - Index",
+        title: "#{entity.display_name || entity.display_name_plural || entity.name} - Index",
         category: entity.display_name || entity.name,
         source: :entities,
         canonical_path: canonical_path

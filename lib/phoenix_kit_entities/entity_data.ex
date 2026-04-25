@@ -239,7 +239,9 @@ defmodule PhoenixKitEntities.EntityData do
         changeset
 
       uuid ->
-        case Entities.get_entity!(uuid) do
+        # Use `get_entity/1` (returns nil) instead of `get_entity!/1` so the
+        # missing-FK case flows through `add_error` rather than `rescue`.
+        case Entities.get_entity(uuid) do
           nil ->
             add_error(changeset, :entity_uuid, gettext("does not exist"))
 
@@ -248,7 +250,7 @@ defmodule PhoenixKitEntities.EntityData do
         end
     end
   rescue
-    Ecto.NoResultsError ->
+    Ecto.QueryError ->
       add_error(changeset, :entity_uuid, gettext("does not exist"))
   end
 
@@ -469,11 +471,15 @@ defmodule PhoenixKitEntities.EntityData do
 
   defp resolve_entity_uuid_from_pairs(_), do: nil
 
-  # Mirror export helpers for auto-sync (per-entity settings)
+  # Mirror export helpers for auto-sync (per-entity settings).
+  # Supervised under PhoenixKit.TaskSupervisor for fire-and-forget
+  # after-DB-commit work — a crashing exporter shouldn't propagate.
   defp maybe_mirror_data(entity_data) do
     with entity when not is_nil(entity) <- Entities.get_entity(entity_data.entity_uuid),
          true <- Entities.mirror_data_enabled?(entity) do
-      Task.start(fn -> Exporter.export_entity_data(entity_data) end)
+      Task.Supervisor.start_child(PhoenixKit.TaskSupervisor, fn ->
+        Exporter.export_entity_data(entity_data)
+      end)
     end
 
     :ok
@@ -482,7 +488,9 @@ defmodule PhoenixKitEntities.EntityData do
   defp maybe_delete_mirrored_data(entity_data) do
     with entity when not is_nil(entity) <- Entities.get_entity(entity_data.entity_uuid),
          true <- Entities.mirror_data_enabled?(entity) do
-      Task.start(fn -> Exporter.export_entity(entity) end)
+      Task.Supervisor.start_child(PhoenixKit.TaskSupervisor, fn ->
+        Exporter.export_entity(entity)
+      end)
     end
 
     :ok

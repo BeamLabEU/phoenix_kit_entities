@@ -293,6 +293,7 @@ defmodule PhoenixKitEntities.Web.Entities do
                               class="btn btn-xs btn-outline btn-info tooltip tooltip-bottom text-success"
                               phx-click="restore_entity"
                               phx-value-uuid={entity.uuid}
+                              phx-disable-with={gettext("…")}
                               data-tip={gettext("Restore")}
                             >
                               <.icon name="hero-arrow-path" class="w-4 h-4 hidden sm:inline" />
@@ -303,6 +304,7 @@ defmodule PhoenixKitEntities.Web.Entities do
                               class="btn btn-xs btn-outline btn-info tooltip tooltip-bottom text-error"
                               phx-click="archive_entity"
                               phx-value-uuid={entity.uuid}
+                              phx-disable-with={gettext("…")}
                               data-tip={gettext("Archive")}
                             >
                               <.icon name="hero-trash" class="w-4 h-4 hidden sm:inline" />
@@ -397,6 +399,7 @@ defmodule PhoenixKitEntities.Web.Entities do
                           class="btn btn-success btn-sm"
                           phx-click="restore_entity"
                           phx-value-uuid={entity.uuid}
+                          phx-disable-with={gettext("…")}
                           title={gettext("Restore entity")}
                         >
                           <.icon name="hero-arrow-path" class="w-4 h-4" />
@@ -406,6 +409,7 @@ defmodule PhoenixKitEntities.Web.Entities do
                           class="btn btn-error btn-sm"
                           phx-click="archive_entity"
                           phx-value-uuid={entity.uuid}
+                          phx-disable-with={gettext("…")}
                           title={gettext("Archive entity")}
                         >
                           <.icon name="hero-trash" class="w-4 h-4" />

@@ -870,7 +870,15 @@ defmodule PhoenixKitEntities.Web.EntityForm do
         do: entity_params,
         else: Map.put(entity_params, "created_by_uuid", socket.assigns.current_user.uuid)
 
-    changeset = Entities.change_entity(socket.assigns.entity, entity_params)
+    # `change_entity/2` doesn't go through `repo.insert/update`, so the
+    # changeset action defaults to `nil`. `<.input>` only renders inline
+    # errors when `changeset.action != nil`, so without this set, every
+    # validation error is silent. Use `:validate` (matches the event).
+    changeset =
+      socket.assigns.entity
+      |> Entities.change_entity(entity_params)
+      |> Map.put(:action, :validate)
+
     entity = %{socket.assigns.entity | settings: settings}
 
     socket =
@@ -2031,6 +2039,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                                   class="btn btn-error btn-sm"
                                   phx-click="delete_field"
                                   phx-value-index={index}
+                                  phx-disable-with={gettext("…")}
                                   disabled={@readonly?}
                                 >
                                   {gettext("Confirm?")}
@@ -2687,6 +2696,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                     type="button"
                     class="btn btn-primary btn-sm"
                     phx-click="export_entity_now"
+                    phx-disable-with={gettext("Exporting…")}
                     disabled={@readonly?}
                   >
                     <.icon name="hero-arrow-down-tray" class="w-4 h-4" />

@@ -43,6 +43,8 @@ defmodule PhoenixKitEntities.FieldTypes do
       PhoenixKitEntities.FieldTypes.requires_options?("select") # => true
   """
 
+  use Gettext, backend: PhoenixKitWeb.Gettext
+
   alias PhoenixKitEntities.FieldType
 
   @type field_type :: String.t()
@@ -299,13 +301,17 @@ defmodule PhoenixKitEntities.FieldTypes do
       ]
   """
   def category_list do
+    # Each label uses a literal `gettext(...)` call so `mix gettext.extract`
+    # picks them up. A `gettext(label)` over a variable wouldn't be
+    # extracted (extractor only sees literals), and the labels would
+    # never be translated.
     [
-      {:basic, "Basic"},
-      {:numeric, "Numeric"},
-      {:boolean, "Boolean"},
-      {:datetime, "Date & Time"},
-      {:choice, "Choice"},
-      {:advanced, "Advanced"}
+      {:basic, gettext("Basic")},
+      {:numeric, gettext("Numeric")},
+      {:boolean, gettext("Boolean")},
+      {:datetime, gettext("Date & Time")},
+      {:choice, gettext("Choice")},
+      {:advanced, gettext("Advanced")}
     ]
   end
 
