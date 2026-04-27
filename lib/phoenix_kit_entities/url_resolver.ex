@@ -6,6 +6,8 @@ defmodule PhoenixKitEntities.UrlResolver do
   Extracted from SitemapSource to provide a shared API for public URL generation.
   """
 
+  require Logger
+
   alias PhoenixKit.Modules.Languages
   alias PhoenixKit.Modules.Sitemap.RouteResolver
   alias PhoenixKit.Settings
@@ -93,11 +95,14 @@ defmodule PhoenixKitEntities.UrlResolver do
     end)
   end
 
-  # Find catchall content route like /:entity_name/:slug
+  # Find catchall content route like /:entity_name/:slug or /:type/:id.
+  #
+  # Restricted to second-segment :slug or :id so unrelated 2-param routes
+  # (e.g. /:category/:item, /:owner/:repo) are not silently classified as the
+  # entity catchall and rewritten by every public_path/3 call.
   defp find_catchall_content_route(routes) do
     Enum.find(routes, fn route ->
-      # Match patterns like /:entity_name/:slug, /:name/:slug, /:type/:id
-      Regex.match?(~r{^/:[a-z_]+/:[a-z_]+$}, route.path)
+      Regex.match?(~r{^/:[a-z_]+/:(slug|id)$}, route.path)
     end)
   end
 
@@ -184,16 +189,37 @@ defmodule PhoenixKitEntities.UrlResolver do
   # Settings lookup may fail if the Settings table isn't available (tests without
   # a repo, transient DB issues, misinstalled module). In that case we want
   # URL generation to fall through the chain, not crash the caller.
+  #
+  # Rescues are narrowed to the well-known DB-availability exceptions so real
+  # bugs (KeyError, FunctionClauseError, etc.) still surface.
   defp safe_get_setting(key) do
     Settings.get_setting(key)
   rescue
-    _ -> nil
+    e in [
+      DBConnection.ConnectionError,
+      DBConnection.OwnershipError,
+      Postgrex.Error,
+      Ecto.QueryError,
+      RuntimeError,
+      ArgumentError
+    ] ->
+      Logger.debug("UrlResolver.safe_get_setting/1 falling back: #{Exception.message(e)}")
+      nil
   end
 
   defp safe_get_setting(key, default) do
     Settings.get_setting(key, default)
   rescue
-    _ -> default
+    e in [
+      DBConnection.ConnectionError,
+      DBConnection.OwnershipError,
+      Postgrex.Error,
+      Ecto.QueryError,
+      RuntimeError,
+      ArgumentError
+    ] ->
+      Logger.debug("UrlResolver.safe_get_setting/2 falling back: #{Exception.message(e)}")
+      default
   end
 
   @doc """
@@ -247,7 +273,17 @@ defmodule PhoenixKitEntities.UrlResolver do
   defp safe_get_boolean_setting(key, default) do
     Settings.get_boolean_setting(key, default)
   rescue
-    _ -> default
+    e in [
+      DBConnection.ConnectionError,
+      DBConnection.OwnershipError,
+      Postgrex.Error,
+      Ecto.QueryError,
+      RuntimeError,
+      ArgumentError
+    ] ->
+      Logger.debug("UrlResolver.safe_get_boolean_setting/2 falling back: #{Exception.message(e)}")
+
+      default
   end
 
   @doc """
@@ -330,7 +366,18 @@ defmodule PhoenixKitEntities.UrlResolver do
       try do
         Multilang.primary_language()
       rescue
-        _ -> nil
+        e in [
+          DBConnection.ConnectionError,
+          Postgrex.Error,
+          Ecto.QueryError,
+          RuntimeError,
+          ArgumentError
+        ] ->
+          Logger.debug(
+            "UrlResolver.primary_language_base?/1 falling back: #{Exception.message(e)}"
+          )
+
+          nil
       end
 
     case primary do

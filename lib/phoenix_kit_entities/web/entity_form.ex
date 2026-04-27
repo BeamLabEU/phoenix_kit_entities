@@ -408,8 +408,8 @@ defmodule PhoenixKitEntities.Web.EntityForm do
         socket = save_validated_field(socket, validated_field)
         reply_with_broadcast(socket)
       else
-        {:error, error_message} ->
-          socket = assign(socket, :field_error, error_message)
+        {:error, reason} ->
+          socket = assign(socket, :field_error, PhoenixKitEntities.Errors.message(reason))
           reply_with_broadcast(socket)
       end
     else
@@ -870,7 +870,15 @@ defmodule PhoenixKitEntities.Web.EntityForm do
         do: entity_params,
         else: Map.put(entity_params, "created_by_uuid", socket.assigns.current_user.uuid)
 
-    changeset = Entities.change_entity(socket.assigns.entity, entity_params)
+    # `change_entity/2` doesn't go through `repo.insert/update`, so the
+    # changeset action defaults to `nil`. `<.input>` only renders inline
+    # errors when `changeset.action != nil`, so without this set, every
+    # validation error is silent. Use `:validate` (matches the event).
+    changeset =
+      socket.assigns.entity
+      |> Entities.change_entity(entity_params)
+      |> Map.put(:action, :validate)
+
     entity = %{socket.assigns.entity | settings: settings}
 
     socket =
@@ -1232,14 +1240,25 @@ defmodule PhoenixKitEntities.Web.EntityForm do
     |> assign(:field_error, nil)
   end
 
+  # Threads the current user UUID through to context functions that
+  # accept `actor_uuid:` opts.
+  defp actor_opts(socket) do
+    case socket.assigns[:phoenix_kit_current_scope] do
+      %{user: %{uuid: uuid}} -> [actor_uuid: uuid]
+      _ -> []
+    end
+  end
+
   defp save_entity(socket, entity_params) do
+    opts = actor_opts(socket)
+
     if socket.assigns.entity.uuid do
       # Reload entity from database to ensure Ecto detects all changes
       # (socket.assigns.entity may have in-memory modifications that mask changes)
       fresh_entity = Entities.get_entity!(socket.assigns.entity.uuid)
-      Entities.update_entity(fresh_entity, entity_params)
+      Entities.update_entity(fresh_entity, entity_params, opts)
     else
-      Entities.create_entity(entity_params)
+      Entities.create_entity(entity_params, opts)
     end
   end
 
@@ -2020,6 +2039,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                                   class="btn btn-error btn-sm"
                                   phx-click="delete_field"
                                   phx-value-index={index}
+                                  phx-disable-with={gettext("…")}
                                   disabled={@readonly?}
                                 >
                                   {gettext("Confirm?")}
@@ -2676,6 +2696,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                     type="button"
                     class="btn btn-primary btn-sm"
                     phx-click="export_entity_now"
+                    phx-disable-with={gettext("Exporting…")}
                     disabled={@readonly?}
                   >
                     <.icon name="hero-arrow-down-tray" class="w-4 h-4" />

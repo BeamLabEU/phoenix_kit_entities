@@ -261,26 +261,35 @@ defmodule PhoenixKitEntities.FieldTypesTest do
     end
 
     test "rejects missing required keys" do
-      assert {:error, msg} = FieldTypes.validate_field(%{"type" => "text"})
-      assert msg =~ "Missing required keys"
+      assert {:error, {:missing_required_keys, missing}} =
+               FieldTypes.validate_field(%{"type" => "text"})
+
+      assert "key" in missing
+      assert "label" in missing
+
+      assert PhoenixKitEntities.Errors.message({:missing_required_keys, missing}) =~
+               "Missing required keys: "
     end
 
     test "rejects invalid field type" do
       field = %{"type" => "invalid", "key" => "test", "label" => "Test"}
-      assert {:error, msg} = FieldTypes.validate_field(field)
-      assert msg =~ "Invalid field type"
+      assert {:error, {:invalid_field_type, "invalid"}} = FieldTypes.validate_field(field)
+
+      assert PhoenixKitEntities.Errors.message({:invalid_field_type, "invalid"}) ==
+               "Invalid field type: invalid"
     end
 
     test "rejects select field without options" do
       field = %{"type" => "select", "key" => "cat", "label" => "Category"}
-      assert {:error, msg} = FieldTypes.validate_field(field)
-      assert msg =~ "requires options"
+      assert {:error, {:requires_options, "select"}} = FieldTypes.validate_field(field)
+
+      assert PhoenixKitEntities.Errors.message({:requires_options, "select"}) ==
+               "Field type 'select' requires options"
     end
 
     test "rejects select field with empty options" do
       field = %{"type" => "select", "key" => "cat", "label" => "Category", "options" => []}
-      assert {:error, msg} = FieldTypes.validate_field(field)
-      assert msg =~ "requires options"
+      assert {:error, {:requires_options, "select"}} = FieldTypes.validate_field(field)
     end
   end
 

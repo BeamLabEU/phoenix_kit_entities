@@ -307,28 +307,38 @@ The `FieldTypes.validate_field/1` function validates:
 })
 
 # Missing required key
-{:error, "Field missing required keys: type"} = FieldTypes.validate_field(%{
+{:error, {:missing_required_keys, ["type"]}} = FieldTypes.validate_field(%{
   "key" => "title",
   "label" => "Title"
 })
 
 # Invalid type
-{:error, "Invalid field type 'invalid_type'"} = FieldTypes.validate_field(%{
+{:error, {:invalid_field_type, "invalid_type"}} = FieldTypes.validate_field(%{
   "type" => "invalid_type",
   "key" => "title",
   "label" => "Title"
 })
 
 # Select without options
-{:error, "Field type 'select' requires options array"} = FieldTypes.validate_field(%{
+{:error, {:requires_options, "select"}} = FieldTypes.validate_field(%{
   "type" => "select",
   "key" => "category",
   "label" => "Category"
 })
 
-# Duplicate field key (LiveView validation)
+# Duplicate field key (LiveView validation — keeps a string error since
+# this layer translates at the call site rather than via the Errors atom
+# dispatcher)
 {:error, "Field key 'title' already exists. Please use a unique key."} =
   validate_unique_field_key(field_params, existing_fields, editing_index)
+```
+
+Atom-shaped errors flow through `PhoenixKitEntities.Errors.message/1` for
+user-facing strings:
+
+```elixir
+PhoenixKitEntities.Errors.message({:invalid_field_type, "blob"})
+# => "Invalid field type: blob"
 ```
 
 ---
@@ -1470,7 +1480,7 @@ PhoenixKitEntities.get_max_per_user()
 
 # Validate user hasn't exceeded limit
 PhoenixKitEntities.validate_user_entity_limit(user_id)
-# => {:ok, :valid} | {:error, "You have reached the maximum limit of 100 entities"}
+# => {:ok, :valid} | {:error, {:user_entity_limit_reached, 100}}
 
 # Get full config
 PhoenixKitEntities.get_config()

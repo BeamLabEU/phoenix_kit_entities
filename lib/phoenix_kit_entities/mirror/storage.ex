@@ -91,13 +91,48 @@ defmodule PhoenixKitEntities.Mirror.Storage do
 
   Uses custom path from settings if configured, otherwise defaults to
   the parent app's priv/entities/ directory.
+
+  The configured path is expanded via `Path.expand/1` and validated
+  against the parent app's root so an admin-edited setting can't
+  escape to write entity exports under arbitrary filesystem locations
+  (e.g. `../../etc`, `/tmp/foo`). Out-of-bounds paths fall back to
+  the safe default.
   """
   @spec root_path() :: String.t()
   def root_path do
     case Settings.get_setting("entities_mirror_path", "") do
-      path when is_binary(path) and byte_size(path) > 0 -> path
-      _ -> default_path()
+      path when is_binary(path) and byte_size(path) > 0 ->
+        contained_path(path) || default_path()
+
+      _ ->
+        default_path()
     end
+  end
+
+  # Expand the configured path and verify it stays within the parent
+  # app's directory tree. Returns the expanded path on success, nil if
+  # the path escapes the boundary or expansion fails.
+  defp contained_path(raw_path) do
+    expanded = Path.expand(raw_path)
+    boundary = parent_app_root()
+
+    cond do
+      boundary == nil -> expanded
+      String.starts_with?(expanded <> "/", boundary <> "/") -> expanded
+      expanded == boundary -> expanded
+      true -> nil
+    end
+  rescue
+    _ -> nil
+  end
+
+  defp parent_app_root do
+    case Config.get_parent_app() do
+      nil -> nil
+      app -> Application.app_dir(app) |> Path.expand()
+    end
+  rescue
+    _ -> nil
   end
 
   @doc """

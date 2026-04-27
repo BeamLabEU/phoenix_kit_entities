@@ -18,13 +18,15 @@ defmodule PhoenixKitEntities.Web.Entities do
 
     project_title = Settings.get_project_title()
 
+    # Defer DB query to handle_params/3 — mount runs twice (HTTP + WebSocket),
+    # handle_params runs once. See Phoenix iron law.
     socket =
       socket
       |> assign(:current_locale, locale)
       |> assign(:page_title, gettext("Entities"))
       |> assign(:project_title, project_title)
       |> assign(:view_mode, "table")
-      |> assign(:entities, Entities.list_entities(lang: locale))
+      |> assign(:entities, [])
 
     {:ok, socket}
   end
@@ -32,10 +34,12 @@ defmodule PhoenixKitEntities.Web.Entities do
   @impl true
   def handle_params(params, _url, socket) do
     view_mode = Map.get(params, "view", "table")
+    locale = socket.assigns[:current_locale]
 
     socket =
       socket
       |> assign(:view_mode, view_mode)
+      |> assign(:entities, Entities.list_entities(lang: locale))
 
     {:noreply, socket}
   end
@@ -52,7 +56,7 @@ defmodule PhoenixKitEntities.Web.Entities do
     locale = socket.assigns[:current_locale]
     entity = Entities.get_entity!(uuid, lang: locale)
 
-    case Entities.update_entity(entity, %{status: "archived"}) do
+    case Entities.update_entity(entity, %{status: "archived"}, actor_opts(socket)) do
       {:ok, _entity} ->
         socket =
           socket
@@ -73,7 +77,7 @@ defmodule PhoenixKitEntities.Web.Entities do
     locale = socket.assigns[:current_locale]
     entity = Entities.get_entity!(uuid, lang: locale)
 
-    case Entities.update_entity(entity, %{status: "published"}) do
+    case Entities.update_entity(entity, %{status: "published"}, actor_opts(socket)) do
       {:ok, _entity} ->
         socket =
           socket
@@ -103,6 +107,15 @@ defmodule PhoenixKitEntities.Web.Entities do
   def handle_info(_message, socket), do: {:noreply, socket}
 
   # Helper Functions
+
+  # Threads the current user UUID through to context functions that
+  # accept `actor_uuid:` opts.
+  defp actor_opts(socket) do
+    case socket.assigns[:phoenix_kit_current_scope] do
+      %{user: %{uuid: uuid}} -> [actor_uuid: uuid]
+      _ -> []
+    end
+  end
 
   # Extracts the base path (without query string) from the current URL,
   # which already includes the correct locale and prefix segments.
@@ -280,6 +293,7 @@ defmodule PhoenixKitEntities.Web.Entities do
                               class="btn btn-xs btn-outline btn-info tooltip tooltip-bottom text-success"
                               phx-click="restore_entity"
                               phx-value-uuid={entity.uuid}
+                              phx-disable-with={gettext("…")}
                               data-tip={gettext("Restore")}
                             >
                               <.icon name="hero-arrow-path" class="w-4 h-4 hidden sm:inline" />
@@ -290,6 +304,7 @@ defmodule PhoenixKitEntities.Web.Entities do
                               class="btn btn-xs btn-outline btn-info tooltip tooltip-bottom text-error"
                               phx-click="archive_entity"
                               phx-value-uuid={entity.uuid}
+                              phx-disable-with={gettext("…")}
                               data-tip={gettext("Archive")}
                             >
                               <.icon name="hero-trash" class="w-4 h-4 hidden sm:inline" />
@@ -384,6 +399,7 @@ defmodule PhoenixKitEntities.Web.Entities do
                           class="btn btn-success btn-sm"
                           phx-click="restore_entity"
                           phx-value-uuid={entity.uuid}
+                          phx-disable-with={gettext("…")}
                           title={gettext("Restore entity")}
                         >
                           <.icon name="hero-arrow-path" class="w-4 h-4" />
@@ -393,6 +409,7 @@ defmodule PhoenixKitEntities.Web.Entities do
                           class="btn btn-error btn-sm"
                           phx-click="archive_entity"
                           phx-value-uuid={entity.uuid}
+                          phx-disable-with={gettext("…")}
                           title={gettext("Archive entity")}
                         >
                           <.icon name="hero-trash" class="w-4 h-4" />

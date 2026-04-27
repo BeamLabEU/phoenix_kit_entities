@@ -72,6 +72,7 @@ defmodule PhoenixKitEntities.EntityData do
   import Ecto.Changeset
   import Ecto.Query, warn: false
 
+  alias PhoenixKit.Modules.Languages.DialectMapper
   alias PhoenixKit.Users.Auth
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKit.Utils.Date, as: UtilsDate
@@ -89,6 +90,7 @@ defmodule PhoenixKitEntities.EntityData do
   @derive {Jason.Encoder,
            only: [
              :uuid,
+             :entity_uuid,
              :title,
              :slug,
              :status,
@@ -237,7 +239,9 @@ defmodule PhoenixKitEntities.EntityData do
         changeset
 
       uuid ->
-        case Entities.get_entity!(uuid) do
+        # Use `get_entity/1` (returns nil) instead of `get_entity!/1` so the
+        # missing-FK case flows through `add_error` rather than `rescue`.
+        case Entities.get_entity(uuid) do
           nil ->
             add_error(changeset, :entity_uuid, gettext("does not exist"))
 
@@ -246,7 +250,7 @@ defmodule PhoenixKitEntities.EntityData do
         end
     end
   rescue
-    Ecto.NoResultsError ->
+    Ecto.QueryError ->
       add_error(changeset, :entity_uuid, gettext("does not exist"))
   end
 
@@ -390,36 +394,44 @@ defmodule PhoenixKitEntities.EntityData do
     end
   end
 
-  defp notify_data_event({:ok, %__MODULE__{} = entity_data}, :created) do
+  defp notify_data_event({:ok, %__MODULE__{} = entity_data}, :created, opts) do
     Events.broadcast_data_created(entity_data.entity_uuid, entity_data.uuid)
     maybe_mirror_data(entity_data)
-    log_data_activity(entity_data, "entity_data.created")
+    log_data_activity(entity_data, "entity_data.created", opts)
     {:ok, entity_data}
   end
 
-  defp notify_data_event({:ok, %__MODULE__{} = entity_data}, :updated) do
+  defp notify_data_event({:ok, %__MODULE__{} = entity_data}, :updated, opts) do
     Events.broadcast_data_updated(entity_data.entity_uuid, entity_data.uuid)
     maybe_mirror_data(entity_data)
-    log_data_activity(entity_data, "entity_data.updated")
+    log_data_activity(entity_data, "entity_data.updated", opts)
     {:ok, entity_data}
   end
 
-  defp notify_data_event({:ok, %__MODULE__{} = entity_data}, :deleted) do
+  defp notify_data_event({:ok, %__MODULE__{} = entity_data}, :deleted, opts) do
     Events.broadcast_data_deleted(entity_data.entity_uuid, entity_data.uuid)
     maybe_delete_mirrored_data(entity_data)
-    log_data_activity(entity_data, "entity_data.deleted")
+    log_data_activity(entity_data, "entity_data.deleted", opts)
     {:ok, entity_data}
   end
 
-  defp notify_data_event(result, _event), do: result
+  defp notify_data_event({:error, _} = result, event, opts) do
+    log_data_error_activity(event, opts)
+    result
+  end
 
-  # Records a data-record-lifecycle activity entry. Non-crashing — see
-  # `PhoenixKitEntities.ActivityLog` for the guard semantics.
-  defp log_data_activity(%__MODULE__{} = entity_data, action) do
+  defp notify_data_event(result, _event, _opts), do: result
+
+  # Records a data-record-lifecycle activity entry. Actor UUID comes
+  # from caller's `:actor_uuid` opt (the user performing the mutation)
+  # rather than `entity_data.created_by_uuid` (the original creator).
+  # Non-crashing — see `PhoenixKitEntities.ActivityLog` for the guard
+  # semantics.
+  defp log_data_activity(%__MODULE__{} = entity_data, action, opts) do
     PhoenixKitEntities.ActivityLog.log(%{
       action: action,
       mode: "manual",
-      actor_uuid: entity_data.created_by_uuid,
+      actor_uuid: Keyword.get(opts, :actor_uuid) || entity_data.created_by_uuid,
       resource_type: "entity_data",
       resource_uuid: entity_data.uuid,
       metadata: %{
@@ -428,6 +440,19 @@ defmodule PhoenixKitEntities.EntityData do
         "slug" => entity_data.slug,
         "status" => entity_data.status
       }
+    })
+  end
+
+  # Records a user-initiated data-record action even when the changeset
+  # failed. Marked with `db_pending: true` so consumers can distinguish
+  # from successful rows.
+  defp log_data_error_activity(event, opts) do
+    PhoenixKitEntities.ActivityLog.log(%{
+      action: "entity_data.#{event}",
+      mode: "manual",
+      actor_uuid: Keyword.get(opts, :actor_uuid),
+      resource_type: "entity_data",
+      metadata: %{"db_pending" => true}
     })
   end
 
@@ -446,11 +471,15 @@ defmodule PhoenixKitEntities.EntityData do
 
   defp resolve_entity_uuid_from_pairs(_), do: nil
 
-  # Mirror export helpers for auto-sync (per-entity settings)
+  # Mirror export helpers for auto-sync (per-entity settings).
+  # Supervised under PhoenixKit.TaskSupervisor for fire-and-forget
+  # after-DB-commit work — a crashing exporter shouldn't propagate.
   defp maybe_mirror_data(entity_data) do
     with entity when not is_nil(entity) <- Entities.get_entity(entity_data.entity_uuid),
          true <- Entities.mirror_data_enabled?(entity) do
-      Task.start(fn -> Exporter.export_entity_data(entity_data) end)
+      Task.Supervisor.start_child(PhoenixKit.TaskSupervisor, fn ->
+        Exporter.export_entity_data(entity_data)
+      end)
     end
 
     :ok
@@ -459,7 +488,9 @@ defmodule PhoenixKitEntities.EntityData do
   defp maybe_delete_mirrored_data(entity_data) do
     with entity when not is_nil(entity) <- Entities.get_entity(entity_data.entity_uuid),
          true <- Entities.mirror_data_enabled?(entity) do
-      Task.start(fn -> Exporter.export_entity(entity) end)
+      Task.Supervisor.start_child(PhoenixKit.TaskSupervisor, fn ->
+        Exporter.export_entity(entity)
+      end)
     end
 
     :ok
@@ -632,7 +663,8 @@ defmodule PhoenixKitEntities.EntityData do
   but only if at least one user exists in the system. If no users exist, the changeset
   will fail with a validation error on `created_by`.
   """
-  def create(attrs \\ %{}) do
+  @spec create(map(), keyword()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
+  def create(attrs \\ %{}, opts \\ []) do
     # Transaction ensures next_position read + insert are atomic
     repo().transaction(fn ->
       attrs =
@@ -645,7 +677,7 @@ defmodule PhoenixKitEntities.EntityData do
         {:error, changeset} -> repo().rollback(changeset)
       end
     end)
-    |> notify_data_event(:created)
+    |> notify_data_event(:created, opts)
   end
 
   # Auto-fill created_by_uuid with first admin if not provided
@@ -867,11 +899,12 @@ defmodule PhoenixKitEntities.EntityData do
       iex> PhoenixKitEntities.EntityData.update(record, %{title: ""})
       {:error, %Ecto.Changeset{}}
   """
-  def update(%__MODULE__{} = entity_data, attrs) do
+  @spec update(t(), map(), keyword()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
+  def update(%__MODULE__{} = entity_data, attrs, opts \\ []) do
     entity_data
     |> changeset(attrs)
     |> repo().update()
-    |> notify_data_event(:updated)
+    |> notify_data_event(:updated, opts)
   end
 
   @doc """
@@ -885,9 +918,10 @@ defmodule PhoenixKitEntities.EntityData do
       iex> PhoenixKitEntities.EntityData.delete(record)
       {:error, %Ecto.Changeset{}}
   """
-  def delete(%__MODULE__{} = entity_data) do
+  @spec delete(t(), keyword()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
+  def delete(%__MODULE__{} = entity_data, opts \\ []) do
     repo().delete(entity_data)
-    |> notify_data_event(:deleted)
+    |> notify_data_event(:deleted, opts)
   end
 
   @doc """
@@ -1086,6 +1120,97 @@ defmodule PhoenixKitEntities.EntityData do
   end
 
   @doc """
+  Returns hreflang alternates and a canonical URL for a record across all
+  enabled languages.
+
+  When the same record serves at both the unprefixed primary-language URL
+  (`/products/my-item`) and a per-locale prefixed URL (`/es/products/mi-item`),
+  search engines can index both as duplicate content. Use this helper to emit
+  `<link rel="alternate" hreflang="...">` and `<link rel="canonical">` tags
+  alongside `public_path/3` so the duplication is declared rather than
+  competing.
+
+  ## Output shape
+
+      %{
+        canonical: "https://site.com/products/my-item",
+        alternates: [
+          %{locale: "en", href: "https://site.com/products/my-item"},
+          %{locale: "es", href: "https://site.com/es/products/mi-item"},
+          %{locale: "x-default", href: "https://site.com/products/my-item"}
+        ]
+      }
+
+  Locales are emitted as base codes (`"en"`, `"es"`) — matching the locale
+  prefix policy used in `public_path/3` and Google's hreflang docs (which
+  recommend `xx` over `xx-XX` unless region targeting is required).
+
+  ## Options
+
+    * `:base_url` — explicit absolute URL prefix (e.g. `"https://shop.example.com"`).
+      Falls back to the `site_url` setting, then `""` (which yields path-only
+      `href` values — useful in tests but not in production HTML).
+    * `:routes_cache` — pre-built cache from `UrlResolver.build_routes_cache/0`
+      (avoid rebuilding per call when emitting many records).
+    * `:primary_locale` — overrides the locale considered "canonical".
+      Defaults to `Multilang.primary_language/0` with rescue fallback to the
+      first enabled locale.
+
+  When the Multilang module is unavailable or only one language is enabled,
+  the result has a single canonical entry and no `:alternates`.
+  """
+  @spec public_alternates(map(), map(), keyword()) :: %{
+          canonical: String.t(),
+          alternates: [%{locale: String.t(), href: String.t()}]
+        }
+  def public_alternates(entity, record, opts \\ []) do
+    cache = Keyword.get(opts, :routes_cache) || UrlResolver.build_routes_cache()
+    opts_with_cache = Keyword.put(opts, :routes_cache, cache)
+
+    locales = enabled_locales()
+    primary_dialect = Keyword.get(opts, :primary_locale) || safe_primary_language(locales)
+
+    canonical_locale_url =
+      public_url(entity, record, Keyword.put(opts_with_cache, :locale, primary_dialect))
+
+    alternates =
+      locales
+      |> Enum.map(fn dialect ->
+        href = public_url(entity, record, Keyword.put(opts_with_cache, :locale, dialect))
+        %{locale: locale_base(dialect), href: href}
+      end)
+      |> Enum.uniq_by(& &1.locale)
+
+    alternates =
+      case alternates do
+        [_ | _] = list -> list ++ [%{locale: "x-default", href: canonical_locale_url}]
+        _ -> []
+      end
+
+    %{canonical: canonical_locale_url, alternates: alternates}
+  end
+
+  defp enabled_locales do
+    Multilang.enabled_languages()
+  rescue
+    _ -> []
+  end
+
+  defp safe_primary_language(fallback_locales) do
+    Multilang.primary_language()
+  rescue
+    _ -> List.first(fallback_locales)
+  end
+
+  defp locale_base(dialect) when is_binary(dialect) do
+    DialectMapper.extract_base(dialect)
+  rescue
+    _ -> dialect
+  end
+
+  defp locale_base(_), do: nil
+
+  @doc """
   Alias for list_all/1 for consistency with LiveView naming.
   """
   def list_all_data(opts \\ []), do: list_all(opts)
@@ -1117,43 +1242,98 @@ defmodule PhoenixKitEntities.EntityData do
   @doc """
   Alias for delete/1 for consistency with LiveView naming.
   """
-  def delete_data(entity_data), do: __MODULE__.delete(entity_data)
+  @spec delete_data(t(), keyword()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
+  def delete_data(entity_data, opts \\ []), do: __MODULE__.delete(entity_data, opts)
 
   @doc """
   Alias for update/2 for consistency with LiveView naming.
   """
-  def update_data(entity_data, attrs), do: __MODULE__.update(entity_data, attrs)
+  @spec update_data(t(), map(), keyword()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
+  def update_data(entity_data, attrs, opts \\ []),
+    do: __MODULE__.update(entity_data, attrs, opts)
 
   @doc """
   Bulk updates the status of multiple records by UUIDs.
 
-  Returns a tuple with the count of updated records and nil.
+  Returns a tuple with the count of updated records and nil. Logs a
+  single `entity_data.bulk_status_changed` activity row carrying the
+  count + new status. Per-record `entity_data.updated` rows are NOT
+  emitted — bulk operations log at the operation level so the audit
+  trail doesn't explode.
+
+  ## Options
+
+    * `:actor_uuid` — UUID of the user performing the bulk update.
+      Threaded through to the activity log entry.
 
   ## Examples
 
-      iex> PhoenixKitEntities.EntityData.bulk_update_status(["uuid1", "uuid2"], "archived")
+      iex> PhoenixKitEntities.EntityData.bulk_update_status(["uuid1", "uuid2"], "archived",
+      ...>   actor_uuid: admin.uuid)
       {2, nil}
   """
-  def bulk_update_status(uuids, status) when is_list(uuids) and status in @valid_statuses do
+  @spec bulk_update_status([String.t()], String.t(), keyword()) :: {non_neg_integer(), nil}
+  def bulk_update_status(uuids, status, opts \\ [])
+      when is_list(uuids) and status in @valid_statuses do
     now = UtilsDate.utc_now()
 
-    from(d in __MODULE__, where: d.uuid in ^uuids)
-    |> repo().update_all(set: [status: status, date_updated: now])
+    {count, _} =
+      result =
+      from(d in __MODULE__, where: d.uuid in ^uuids)
+      |> repo().update_all(set: [status: status, date_updated: now])
+
+    PhoenixKitEntities.ActivityLog.log(%{
+      action: "entity_data.bulk_status_changed",
+      mode: "manual",
+      actor_uuid: Keyword.get(opts, :actor_uuid),
+      resource_type: "entity_data",
+      metadata: %{
+        "status" => status,
+        "count" => count,
+        "uuid_count" => length(uuids)
+      }
+    })
+
+    result
   end
 
   @doc """
   Bulk deletes multiple records by UUIDs.
 
-  Returns a tuple with the count of deleted records and nil.
+  Returns a tuple with the count of deleted records and nil. Logs a
+  single `entity_data.bulk_deleted` activity row carrying the count
+  (not the uuids — they're already gone, and listing them in metadata
+  bloats the audit row).
+
+  ## Options
+
+    * `:actor_uuid` — UUID of the user performing the bulk delete.
+      Threaded through to the activity log entry.
 
   ## Examples
 
-      iex> PhoenixKitEntities.EntityData.bulk_delete(["uuid1", "uuid2"])
+      iex> PhoenixKitEntities.EntityData.bulk_delete(["uuid1", "uuid2"], actor_uuid: admin.uuid)
       {2, nil}
   """
-  def bulk_delete(uuids) when is_list(uuids) do
-    from(d in __MODULE__, where: d.uuid in ^uuids)
-    |> repo().delete_all()
+  @spec bulk_delete([String.t()], keyword()) :: {non_neg_integer(), nil}
+  def bulk_delete(uuids, opts \\ []) when is_list(uuids) do
+    {count, _} =
+      result =
+      from(d in __MODULE__, where: d.uuid in ^uuids)
+      |> repo().delete_all()
+
+    PhoenixKitEntities.ActivityLog.log(%{
+      action: "entity_data.bulk_deleted",
+      mode: "manual",
+      actor_uuid: Keyword.get(opts, :actor_uuid),
+      resource_type: "entity_data",
+      metadata: %{
+        "count" => count,
+        "uuid_count" => length(uuids)
+      }
+    })
+
+    result
   end
 
   @doc """

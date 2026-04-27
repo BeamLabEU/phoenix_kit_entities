@@ -82,13 +82,24 @@ defmodule PhoenixKitEntities.FormBuilder do
     assigns = %{
       fields_definition: fields_definition,
       changeset: changeset,
-      opts: opts
+      opts: opts,
+      lang_suffix: lang_code || "primary"
     }
 
+    # Each wrapper carries a language-specific id so that switching the
+    # language tab causes LiveView's DOM patcher to drop and re-create
+    # the input elements — without this, browser-owned input state from
+    # the previous tab leaks across (e.g. the user types "Acme" in EN-US,
+    # switches to ES, and the ES input still shows "Acme" because the
+    # `<input>` matched by id and the new server-rendered value=""
+    # doesn't override the live DOM value).
     ~H"""
     <div class="space-y-6">
       <%= for field <- @fields_definition do %>
-        <div class={["form-field-wrapper", @opts[:wrapper_class]]}>
+        <div
+          class={["form-field-wrapper", @opts[:wrapper_class]]}
+          id={"entity-field-#{field["key"]}-#{@lang_suffix}"}
+        >
           {build_field(field, @changeset, @opts)}
         </div>
       <% end %>
@@ -96,16 +107,28 @@ defmodule PhoenixKitEntities.FormBuilder do
     """
   end
 
-  # When a lang_code is provided, extract that language's data (merged with
-  # primary) and replace the :data field in the changeset so downstream
+  # When a lang_code is provided, extract that language's RAW (override-only)
+  # data and replace the :data field in the changeset so downstream
   # build_field calls read the correct values via get_field_value/2.
+  #
+  # Important: uses `get_raw_language_data/2` (override-only), NOT
+  # `get_language_data/2` (which merges primary into secondary). With the
+  # merged form, switching to a secondary tab with no overrides would show
+  # the primary values as input values rather than empty fields, defeating
+  # the placeholder pattern for non-text fields. The text-field path used
+  # to compensate via `inherited_value?/2` but boolean / date / select /
+  # radio / checkbox / file inputs read `get_field_value/2` directly and
+  # had no such guard, so they incorrectly inherited primary values.
+  #
+  # On the primary tab `lang_code == primary`, so raw data == primary's
+  # data — no behaviour change vs. the merged view.
   defp maybe_apply_language_view(changeset, _entity, nil), do: changeset
 
   defp maybe_apply_language_view(%Phoenix.HTML.Form{} = form, _entity, lang_code) do
     data = Ecto.Changeset.get_field(form.source, :data)
 
     if Multilang.multilang_data?(data) do
-      lang_data = Multilang.get_language_data(data, lang_code)
+      lang_data = Multilang.get_raw_language_data(data, lang_code)
       updated_changeset = Ecto.Changeset.put_change(form.source, :data, lang_data)
       %{form | source: updated_changeset}
     else
@@ -117,7 +140,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     data = Ecto.Changeset.get_field(changeset, :data)
 
     if Multilang.multilang_data?(data) do
-      lang_data = Multilang.get_language_data(data, lang_code)
+      lang_data = Multilang.get_raw_language_data(data, lang_code)
       Ecto.Changeset.put_change(changeset, :data, lang_data)
     else
       changeset

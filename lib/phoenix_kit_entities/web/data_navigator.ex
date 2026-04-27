@@ -22,7 +22,6 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
       params["locale"] || socket.assigns[:current_locale]
 
     project_title = Settings.get_project_title()
-    entities = Entities.list_entities(lang: locale)
 
     # Subscribe to entity definition events so we know about creates/updates/deletes
     if connected?(socket) do
@@ -30,13 +29,15 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
       Events.subscribe_to_all_data()
     end
 
-    # Set defaults only — entity resolution and data loading deferred to handle_params
+    # Set defaults only — entity list, entity resolution, and data loading
+    # deferred to handle_params. Mount runs twice (HTTP + WebSocket); handle_params
+    # runs once. See Phoenix iron law.
     socket =
       socket
       |> assign(:current_locale, locale)
       |> assign(:page_title, gettext("Data Navigator"))
       |> assign(:project_title, project_title)
-      |> assign(:entities, entities)
+      |> assign(:entities, [])
       |> assign(:total_records, 0)
       |> assign(:published_records, 0)
       |> assign(:draft_records, 0)
@@ -54,6 +55,10 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
 
   @impl true
   def handle_params(params, _url, socket) do
+    # Load entity definitions list once per page load (see mount comment).
+    socket =
+      assign(socket, :entities, Entities.list_entities(lang: socket.assigns.current_locale))
+
     # Resolve entity from slug in params
     {entity, entity_uuid} = resolve_entity_from_params(params, socket)
 
@@ -80,6 +85,16 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
       |> apply_filters()
 
     {:noreply, socket}
+  end
+
+  # Threads the current user UUID through to context functions that
+  # accept `actor_uuid:` opts. Returns `[]` for logged-out / system
+  # contexts so the activity row simply has `actor_uuid: nil`.
+  defp actor_opts(socket) do
+    case socket.assigns[:phoenix_kit_current_scope] do
+      %{user: %{uuid: uuid}} -> [actor_uuid: uuid]
+      _ -> []
+    end
   end
 
   # Resolve entity and entity_uuid from URL params
@@ -240,7 +255,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
     if Scope.admin?(socket.assigns.phoenix_kit_current_scope) do
       data_record = EntityData.get!(uuid)
 
-      case EntityData.update_data(data_record, %{status: "archived"}) do
+      case EntityData.update_data(data_record, %{status: "archived"}, actor_opts(socket)) do
         {:ok, _data} ->
           socket =
             socket
@@ -262,7 +277,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
     if Scope.admin?(socket.assigns.phoenix_kit_current_scope) do
       data_record = EntityData.get!(uuid)
 
-      case EntityData.update_data(data_record, %{status: "published"}) do
+      case EntityData.update_data(data_record, %{status: "published"}, actor_opts(socket)) do
         {:ok, _data} ->
           socket =
             socket
@@ -291,7 +306,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
           "archived" -> "draft"
         end
 
-      case EntityData.update_data(data_record, %{status: new_status}) do
+      case EntityData.update_data(data_record, %{status: new_status}, actor_opts(socket)) do
         {:ok, _updated_data} ->
           socket =
             socket
@@ -340,7 +355,8 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
       if MapSet.size(uuids) == 0 do
         {:noreply, put_flash(socket, :error, gettext("No records selected"))}
       else
-        {count, _} = EntityData.bulk_update_status(MapSet.to_list(uuids), "archived")
+        {count, _} =
+          EntityData.bulk_update_status(MapSet.to_list(uuids), "archived", actor_opts(socket))
 
         {:noreply,
          socket
@@ -361,7 +377,8 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
       if MapSet.size(uuids) == 0 do
         {:noreply, put_flash(socket, :error, gettext("No records selected"))}
       else
-        {count, _} = EntityData.bulk_update_status(MapSet.to_list(uuids), "published")
+        {count, _} =
+          EntityData.bulk_update_status(MapSet.to_list(uuids), "published", actor_opts(socket))
 
         {:noreply,
          socket
@@ -382,7 +399,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
       if MapSet.size(uuids) == 0 do
         {:noreply, put_flash(socket, :error, gettext("No records selected"))}
       else
-        {count, _} = EntityData.bulk_delete(MapSet.to_list(uuids))
+        {count, _} = EntityData.bulk_delete(MapSet.to_list(uuids), actor_opts(socket))
 
         {:noreply,
          socket
@@ -403,7 +420,8 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
       if MapSet.size(uuids) == 0 do
         {:noreply, put_flash(socket, :error, gettext("No records selected"))}
       else
-        {count, _} = EntityData.bulk_update_status(MapSet.to_list(uuids), status)
+        {count, _} =
+          EntityData.bulk_update_status(MapSet.to_list(uuids), status, actor_opts(socket))
 
         {:noreply,
          socket
@@ -1197,6 +1215,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
                             class="btn btn-outline btn-xs text-success tooltip tooltip-bottom"
                             phx-click="restore_data"
                             phx-value-uuid={data_record.uuid}
+                            phx-disable-with={gettext("…")}
                             data-tip={gettext("Restore")}
                           >
                             <.icon name="hero-arrow-path" class="w-4 h-4 hidden sm:inline" />
@@ -1207,6 +1226,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
                             class="btn btn-outline btn-xs text-error tooltip tooltip-bottom"
                             phx-click="archive_data"
                             phx-value-uuid={data_record.uuid}
+                            phx-disable-with={gettext("…")}
                             data-tip={gettext("Archive")}
                           >
                             <.icon name="hero-trash" class="w-4 h-4 hidden sm:inline" />
@@ -1343,6 +1363,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
                           class="btn btn-success btn-sm"
                           phx-click="restore_data"
                           phx-value-uuid={data_record.uuid}
+                          phx-disable-with={gettext("…")}
                           title={gettext("Restore data record")}
                         >
                           <.icon name="hero-arrow-path" class="w-4 h-4" />
@@ -1352,6 +1373,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
                           class="btn btn-error btn-sm"
                           phx-click="archive_data"
                           phx-value-uuid={data_record.uuid}
+                          phx-disable-with={gettext("…")}
                           title={gettext("Archive data record")}
                         >
                           <.icon name="hero-trash" class="w-4 h-4" />

@@ -61,7 +61,10 @@ defmodule PhoenixKitEntities.MixProject do
 
       # Code quality
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+
+      # Test-only HTML parser used by Phoenix.LiveViewTest under :test.
+      {:lazy_html, "~> 0.1", only: :test}
     ]
   end
 

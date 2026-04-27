@@ -91,6 +91,7 @@ defmodule PhoenixKitEntities do
   import Ecto.Query, warn: false
 
   alias PhoenixKit.Dashboard.Tab
+  alias PhoenixKit.Modules.Languages.DialectMapper
   alias PhoenixKit.Settings
   alias PhoenixKit.Users.Auth
   alias PhoenixKit.Users.Auth.User
@@ -281,36 +282,45 @@ defmodule PhoenixKitEntities do
     end
   end
 
-  defp notify_entity_event({:ok, %__MODULE__{} = entity}, :created) do
+  defp notify_entity_event({:ok, %__MODULE__{} = entity}, :created, opts) do
     Events.broadcast_entity_created(entity.uuid)
     maybe_mirror_entity(entity)
-    log_entity_activity(entity, "entity.created")
+    log_entity_activity(entity, "entity.created", opts)
     {:ok, entity}
   end
 
-  defp notify_entity_event({:ok, %__MODULE__{} = entity}, :updated) do
+  defp notify_entity_event({:ok, %__MODULE__{} = entity}, :updated, opts) do
     Events.broadcast_entity_updated(entity.uuid)
     maybe_mirror_entity(entity)
-    log_entity_activity(entity, "entity.updated")
+    log_entity_activity(entity, "entity.updated", opts)
     {:ok, entity}
   end
 
-  defp notify_entity_event({:ok, %__MODULE__{} = entity}, :deleted) do
+  defp notify_entity_event({:ok, %__MODULE__{} = entity}, :deleted, opts) do
     Events.broadcast_entity_deleted(entity.uuid)
     maybe_delete_mirrored_entity(entity)
-    log_entity_activity(entity, "entity.deleted")
+    log_entity_activity(entity, "entity.deleted", opts)
     {:ok, entity}
   end
 
-  defp notify_entity_event(result, _event), do: result
+  defp notify_entity_event({:error, _} = result, event, opts) do
+    log_entity_error_activity(event, opts)
+    result
+  end
 
-  # Records an entity-lifecycle activity entry. Non-crashing — see
-  # `PhoenixKitEntities.ActivityLog` for the guard semantics.
-  defp log_entity_activity(%__MODULE__{} = entity, action) do
+  defp notify_entity_event(result, _event, _opts), do: result
+
+  # Records an entity-lifecycle activity entry. The actor UUID comes
+  # from the caller's `:actor_uuid` opt (the user performing the
+  # mutation) rather than `entity.created_by_uuid` (the original
+  # creator) — they are not the same person on update/delete.
+  # Non-crashing — see `PhoenixKitEntities.ActivityLog` for the guard
+  # semantics.
+  defp log_entity_activity(%__MODULE__{} = entity, action, opts) do
     PhoenixKitEntities.ActivityLog.log(%{
       action: action,
       mode: "manual",
-      actor_uuid: entity.created_by_uuid,
+      actor_uuid: Keyword.get(opts, :actor_uuid) || entity.created_by_uuid,
       resource_type: "entity",
       resource_uuid: entity.uuid,
       metadata: %{
@@ -321,10 +331,29 @@ defmodule PhoenixKitEntities do
     })
   end
 
-  # Mirror export helpers for auto-sync (per-entity settings)
+  # Records the user-initiated action even when the changeset failed,
+  # so the audit trail covers attempts (not just successes). Marked
+  # with `db_pending: true` so consumers can distinguish from
+  # successful rows.
+  defp log_entity_error_activity(event, opts) do
+    PhoenixKitEntities.ActivityLog.log(%{
+      action: "entity.#{event}",
+      mode: "manual",
+      actor_uuid: Keyword.get(opts, :actor_uuid),
+      resource_type: "entity",
+      metadata: %{"db_pending" => true}
+    })
+  end
+
+  # Mirror export helpers for auto-sync (per-entity settings).
+  # Filesystem export is fire-and-forget after the DB commit returns;
+  # supervised under PhoenixKit.TaskSupervisor so a crashing exporter
+  # doesn't take down the caller and the task is restartable.
   defp maybe_mirror_entity(entity) do
     if mirror_definitions_enabled?(entity) do
-      Task.start(fn -> Exporter.export_entity(entity) end)
+      Task.Supervisor.start_child(PhoenixKit.TaskSupervisor, fn ->
+        Exporter.export_entity(entity)
+      end)
     end
   end
 
@@ -332,7 +361,7 @@ defmodule PhoenixKitEntities do
     # Delete the file if it exists (regardless of current setting)
     # This ensures cleanup when entity is deleted
     if Storage.entity_exists?(entity.name) do
-      Task.start(fn ->
+      Task.Supervisor.start_child(PhoenixKit.TaskSupervisor, fn ->
         Storage.delete_entity(entity.name)
       end)
     end
@@ -346,6 +375,7 @@ defmodule PhoenixKitEntities do
       iex> PhoenixKitEntities.list_entities()
       [%PhoenixKit.Entities{}, ...]
   """
+  @spec list_entities(keyword()) :: [t()]
   def list_entities(opts \\ []) do
     __MODULE__
     |> order_by([e], desc: e.date_created)
@@ -404,7 +434,8 @@ defmodule PhoenixKitEntities do
   # Resolves display_name / display_name_plural / description on a summary map,
   # matching the behaviour of resolve_language/2 without a struct round-trip.
   defp resolve_summary_language(summary, lang_code) do
-    translations = get_in(summary, [:settings, "translations", lang_code]) || %{}
+    translations_map = get_in(summary, [:settings, "translations"]) || %{}
+    translations = lookup_translation(translations_map, lang_code)
 
     summary
     |> maybe_put_translation(:display_name, translations["display_name"])
@@ -415,6 +446,49 @@ defmodule PhoenixKitEntities do
   defp maybe_put_translation(summary, _field, nil), do: summary
   defp maybe_put_translation(summary, _field, ""), do: summary
   defp maybe_put_translation(summary, field, value), do: Map.put(summary, field, value)
+
+  # Looks up translation overrides by locale, tolerating base/dialect mismatches.
+  #
+  # Translations are stored under whatever key `set_entity_translation` saw —
+  # typically the dialect form (e.g. `"es-ES"`). Callers may query with either
+  # the dialect (`Gettext.get_locale/1` returns `"en-US"` etc.) or a base code
+  # (URL params expose `"en"`). Without normalization the dialect/base mismatch
+  # silently misses and the UI falls back to primary-language labels.
+  #
+  # Match priority:
+  # 1. Exact key match (`"es-ES"` → `"es-ES"`).
+  # 2. Same base code (`"es"` → first `"es-*"` translation, deterministic via
+  #    sort).
+  defp lookup_translation(translations_map, lang_code)
+       when is_map(translations_map) and is_binary(lang_code) do
+    case Map.get(translations_map, lang_code) do
+      %{} = exact ->
+        exact
+
+      _ ->
+        base = safe_extract_base(lang_code)
+
+        translations_map
+        |> Enum.filter(fn {key, _v} ->
+          is_binary(key) and safe_extract_base(key) == base and base != nil
+        end)
+        |> Enum.sort_by(&elem(&1, 0))
+        |> case do
+          [{_key, value} | _] when is_map(value) -> value
+          _ -> %{}
+        end
+    end
+  end
+
+  defp lookup_translation(_translations_map, _lang_code), do: %{}
+
+  defp safe_extract_base(code) when is_binary(code) and code != "" do
+    DialectMapper.extract_base(code)
+  rescue
+    _ -> nil
+  end
+
+  defp safe_extract_base(_), do: nil
 
   @doc """
   Gets a single entity by integer ID or UUID.
@@ -437,6 +511,7 @@ defmodule PhoenixKitEntities do
       iex> PhoenixKitEntities.get_entity(456)
       nil
   """
+  @spec get_entity(term(), keyword()) :: t() | nil
   def get_entity(uuid, opts \\ [])
 
   def get_entity(uuid, opts) when is_binary(uuid) do
@@ -465,6 +540,7 @@ defmodule PhoenixKitEntities do
       iex> PhoenixKitEntities.get_entity!(456)
       ** (Ecto.NoResultsError)
   """
+  @spec get_entity!(term(), keyword()) :: t()
   def get_entity!(id, opts \\ []) do
     case get_entity(id, opts) do
       nil -> raise Ecto.NoResultsError, queryable: __MODULE__
@@ -485,6 +561,7 @@ defmodule PhoenixKitEntities do
       iex> PhoenixKitEntities.get_entity_by_name("invalid")
       nil
   """
+  @spec get_entity_by_name(String.t(), keyword()) :: t() | nil
   def get_entity_by_name(name, opts \\ []) when is_binary(name) do
     case repo().get_by(__MODULE__, name: name) do
       nil -> nil
@@ -507,13 +584,14 @@ defmodule PhoenixKitEntities do
   but only if at least one user exists in the system. If no users exist, the changeset
   will fail with a validation error on `created_by`.
   """
-  def create_entity(attrs \\ %{}) do
+  @spec create_entity(map(), keyword()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
+  def create_entity(attrs \\ %{}, opts \\ []) do
     attrs = maybe_add_created_by(attrs)
 
     %__MODULE__{}
     |> changeset(attrs)
     |> repo().insert()
-    |> notify_entity_event(:created)
+    |> notify_entity_event(:created, opts)
   end
 
   # Auto-fill created_by_uuid with first admin if not provided
@@ -540,11 +618,12 @@ defmodule PhoenixKitEntities do
       iex> PhoenixKitEntities.update_entity(entity, %{name: ""})
       {:error, %Ecto.Changeset{}}
   """
-  def update_entity(%__MODULE__{} = entity, attrs) do
+  @spec update_entity(t(), map(), keyword()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
+  def update_entity(%__MODULE__{} = entity, attrs, opts \\ []) do
     entity
     |> changeset(attrs)
     |> repo().update()
-    |> notify_entity_event(:updated)
+    |> notify_entity_event(:updated, opts)
   end
 
   @doc """
@@ -561,9 +640,10 @@ defmodule PhoenixKitEntities do
       iex> PhoenixKitEntities.delete_entity(entity)
       {:error, %Ecto.Changeset{}}
   """
-  def delete_entity(%__MODULE__{} = entity) do
+  @spec delete_entity(t(), keyword()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
+  def delete_entity(%__MODULE__{} = entity, opts \\ []) do
     repo().delete(entity)
-    |> notify_entity_event(:deleted)
+    |> notify_entity_event(:deleted, opts)
   end
 
   @doc """
@@ -574,6 +654,7 @@ defmodule PhoenixKitEntities do
       iex> PhoenixKitEntities.change_entity(entity)
       %Ecto.Changeset{data: %PhoenixKit.Entities{}}
   """
+  @spec change_entity(t(), map()) :: Ecto.Changeset.t()
   def change_entity(%__MODULE__{} = entity, attrs \\ %{}) do
     changeset(entity, attrs)
   end
@@ -614,6 +695,7 @@ defmodule PhoenixKitEntities do
       iex> PhoenixKitEntities.count_user_entities(1)
       5
   """
+  @spec count_user_entities(String.t()) :: non_neg_integer()
   def count_user_entities(user_uuid) when is_binary(user_uuid) do
     from(e in __MODULE__, where: e.created_by_uuid == ^user_uuid, select: count(e.uuid))
     |> repo().one()
@@ -627,6 +709,7 @@ defmodule PhoenixKitEntities do
       iex> PhoenixKitEntities.count_entities()
       15
   """
+  @spec count_entities() :: non_neg_integer()
   def count_entities do
     from(e in __MODULE__, select: count(e.uuid))
     |> repo().one()
@@ -657,8 +740,13 @@ defmodule PhoenixKitEntities do
       {:ok, :valid}
 
       iex> PhoenixKitEntities.validate_user_entity_limit(1)
-      {:error, "You have reached the maximum limit of 100 entities"}
+      {:error, {:user_entity_limit_reached, 100}}
+
+  Error tuples flow through `PhoenixKitEntities.Errors.message/1` for
+  user-facing strings.
   """
+  @spec validate_user_entity_limit(String.t()) ::
+          {:ok, :valid} | {:error, {:user_entity_limit_reached, non_neg_integer()}}
   def validate_user_entity_limit(user_uuid) when is_binary(user_uuid) do
     max_entities = get_max_per_user()
     current_count = count_user_entities(user_uuid)
@@ -666,7 +754,7 @@ defmodule PhoenixKitEntities do
     if current_count < max_entities do
       {:ok, :valid}
     else
-      {:error, "You have reached the maximum limit of #{max_entities} entities"}
+      {:error, {:user_entity_limit_reached, max_entities}}
     end
   end
 
@@ -681,40 +769,78 @@ defmodule PhoenixKitEntities do
       iex> PhoenixKitEntities.enabled?()
       false
   """
+  @spec enabled?() :: boolean()
   def enabled? do
     Settings.get_boolean_setting("entities_enabled", false)
   rescue
     _ -> false
+  catch
+    # Settings supervisor may exit during sandbox shutdown; treat as disabled.
+    :exit, _ -> false
   end
 
   @impl PhoenixKit.Module
   @doc """
   Enables the entities system.
 
-  Sets the "entities_enabled" setting to true.
+  Sets the "entities_enabled" setting to true and logs a
+  `module.entities.enabled` activity row.
+
+  ## Options
+
+    * `:actor_uuid` — UUID of the user toggling the system. Threaded
+      through to the activity log entry. `nil` is allowed when the
+      caller doesn't have a scope (system jobs).
 
   ## Examples
 
-      iex> PhoenixKitEntities.enable_system()
+      iex> PhoenixKitEntities.enable_system(actor_uuid: admin.uuid)
       {:ok, %Setting{}}
   """
-  def enable_system do
-    Settings.update_boolean_setting_with_module("entities_enabled", true, module_key())
+  @spec enable_system(keyword()) :: {:ok, term()} | {:error, term()}
+  def enable_system(opts \\ []) do
+    result = Settings.update_boolean_setting_with_module("entities_enabled", true, module_key())
+    log_module_toggle("module.entities.enabled", result, opts)
+    result
   end
 
   @impl PhoenixKit.Module
   @doc """
   Disables the entities system.
 
-  Sets the "entities_enabled" setting to false.
+  Sets the "entities_enabled" setting to false and logs a
+  `module.entities.disabled` activity row.
+
+  ## Options
+
+    * `:actor_uuid` — see `enable_system/1`.
 
   ## Examples
 
-      iex> PhoenixKitEntities.disable_system()
+      iex> PhoenixKitEntities.disable_system(actor_uuid: admin.uuid)
       {:ok, %Setting{}}
   """
-  def disable_system do
-    Settings.update_boolean_setting_with_module("entities_enabled", false, module_key())
+  @spec disable_system(keyword()) :: {:ok, term()} | {:error, term()}
+  def disable_system(opts \\ []) do
+    result = Settings.update_boolean_setting_with_module("entities_enabled", false, module_key())
+    log_module_toggle("module.entities.disabled", result, opts)
+    result
+  end
+
+  defp log_module_toggle(action, result, opts) do
+    metadata =
+      case result do
+        {:ok, _} -> %{"setting" => "entities_enabled"}
+        {:error, _} -> %{"setting" => "entities_enabled", "db_pending" => true}
+      end
+
+    PhoenixKitEntities.ActivityLog.log(%{
+      action: action,
+      mode: "manual",
+      actor_uuid: Keyword.get(opts, :actor_uuid),
+      resource_type: "module",
+      metadata: metadata
+    })
   end
 
   @doc """
@@ -742,16 +868,29 @@ defmodule PhoenixKitEntities do
 
       iex> PhoenixKitEntities.get_config()
       %{enabled: false, max_per_user: 100, allow_relations: true, file_upload: false, entity_count: 0, total_data_count: 0}
+
+  Count queries are wrapped in `safe_count/1` so `get_config/0` works
+  outside of a sandbox checkout (e.g. unit-test contexts that don't
+  use `DataCase`) — same defensive pattern as `enabled?/0`.
   """
+  @spec get_config() :: map()
   def get_config do
     %{
       enabled: enabled?(),
       max_per_user: get_max_per_user(),
       allow_relations: Settings.get_boolean_setting("entities_allow_relations", true),
       file_upload: Settings.get_boolean_setting("entities_file_upload", false),
-      entity_count: count_entities(),
-      total_data_count: count_all_entity_data()
+      entity_count: safe_count(&count_entities/0),
+      total_data_count: safe_count(&count_all_entity_data/0)
     }
+  end
+
+  defp safe_count(fun) when is_function(fun, 0) do
+    fun.()
+  rescue
+    _ -> 0
+  catch
+    :exit, _ -> 0
   end
 
   # ============================================================================
@@ -759,9 +898,11 @@ defmodule PhoenixKitEntities do
   # ============================================================================
 
   @impl PhoenixKit.Module
+  @spec module_key() :: String.t()
   def module_key, do: "entities"
 
   @impl PhoenixKit.Module
+  @spec module_name() :: String.t()
   def module_name, do: "Entities"
 
   @impl PhoenixKit.Module
@@ -918,11 +1059,14 @@ defmodule PhoenixKitEntities do
   end
 
   @impl PhoenixKit.Module
+  @spec children() :: [module()]
   def children, do: [PhoenixKitEntities.Presence]
 
+  @spec css_sources() :: [atom()]
   def css_sources, do: [:phoenix_kit_entities]
 
   @impl PhoenixKit.Module
+  @spec version() :: String.t()
   def version, do: "0.1.4"
 
   @impl PhoenixKit.Module
@@ -1220,7 +1364,7 @@ defmodule PhoenixKitEntities do
     }
 
     translations = get_entity_translations(entity)
-    lang_overrides = Map.get(translations, lang_code, %{})
+    lang_overrides = lookup_translation(translations, lang_code)
 
     Map.merge(primary, lang_overrides)
   end

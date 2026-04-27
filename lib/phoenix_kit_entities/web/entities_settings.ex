@@ -114,7 +114,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
   end
 
   def handle_event("enable_entities", _params, socket) do
-    case Entities.enable_system() do
+    case Entities.enable_system(actor_opts(socket)) do
       {:ok, _setting} ->
         settings = Map.put(socket.assigns.settings, :entities_enabled, true)
 
@@ -140,7 +140,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
   end
 
   def handle_event("disable_entities", _params, socket) do
-    case Entities.disable_system() do
+    case Entities.disable_system(actor_opts(socket)) do
       {:ok, _setting} ->
         settings = Map.put(socket.assigns.settings, :entities_enabled, false)
 
@@ -446,7 +446,12 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
     Entities.update_mirror_settings(entity, %{"mirror_data" => new_value})
   end
 
-  defp maybe_export_entity(entity, true), do: Task.start(fn -> Exporter.export_entity(entity) end)
+  defp maybe_export_entity(entity, true) do
+    Task.Supervisor.start_child(PhoenixKit.TaskSupervisor, fn ->
+      Exporter.export_entity(entity)
+    end)
+  end
+
   defp maybe_export_entity(_entity, false), do: :ok
 
   defp refresh_entities_list(socket) do
@@ -539,6 +544,16 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
   def handle_info(_message, socket), do: {:noreply, socket}
 
   # Private Functions
+
+  # Threads the current user UUID through to context functions that
+  # accept `actor_uuid:` opts. Returns `[]` for logged-out / system
+  # contexts so the activity row simply has `actor_uuid: nil`.
+  defp actor_opts(socket) do
+    case socket.assigns[:phoenix_kit_current_scope] do
+      %{user: %{uuid: uuid}} -> [actor_uuid: uuid]
+      _ -> []
+    end
+  end
 
   defp build_changeset(settings, action \\ nil) do
     types = %{
@@ -778,6 +793,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                     <button
                       class="btn btn-error btn-sm"
                       phx-click="disable_entities"
+                      phx-disable-with={gettext("Disabling…")}
                       data-confirm={
                         gettext(
                           "Are you sure you want to disable the entities system? This will make all entities and data inaccessible."
@@ -790,6 +806,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                     <button
                       class="btn btn-success btn-sm"
                       phx-click="enable_entities"
+                      phx-disable-with={gettext("Enabling…")}
                     >
                       <.icon name="hero-check" class="w-4 h-4 mr-1" /> {gettext("Enable System")}
                     </button>
@@ -848,13 +865,21 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                   class="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-52"
                 >
                   <li>
-                    <button phx-click="enable_all_definitions" class="text-success">
+                    <button
+                      phx-click="enable_all_definitions"
+                      phx-disable-with={gettext("…")}
+                      class="text-success"
+                    >
                       <.icon name="hero-check" class="w-4 h-4" />
                       {gettext("Enable All")}
                     </button>
                   </li>
                   <li>
-                    <button phx-click="disable_all_definitions" class="text-error">
+                    <button
+                      phx-click="disable_all_definitions"
+                      phx-disable-with={gettext("…")}
+                      class="text-error"
+                    >
                       <.icon name="hero-x-mark" class="w-4 h-4" />
                       {gettext("Disable All")}
                     </button>
@@ -873,13 +898,21 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                   class="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-52"
                 >
                   <li>
-                    <button phx-click="enable_all_data" class="text-success">
+                    <button
+                      phx-click="enable_all_data"
+                      phx-disable-with={gettext("…")}
+                      class="text-success"
+                    >
                       <.icon name="hero-check" class="w-4 h-4" />
                       {gettext("Enable All")}
                     </button>
                   </li>
                   <li>
-                    <button phx-click="disable_all_data" class="text-error">
+                    <button
+                      phx-click="disable_all_data"
+                      phx-disable-with={gettext("…")}
+                      class="text-error"
+                    >
                       <.icon name="hero-x-mark" class="w-4 h-4" />
                       {gettext("Disable All")}
                     </button>
@@ -890,6 +923,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
               <button
                 class="btn btn-sm btn-primary"
                 phx-click="export_now"
+                phx-disable-with={gettext("Exporting…")}
                 disabled={@exporting}
               >
                 <%= if @exporting do %>
@@ -960,6 +994,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                                   class="btn btn-outline btn-success btn-xs tooltip tooltip-bottom"
                                   phx-click="toggle_entity_definitions"
                                   phx-value-uuid={entity.uuid}
+                                  phx-disable-with={gettext("…")}
                                   data-tip={gettext("Disable Definition sync")}
                                 >
                                   <.icon name="hero-check" class="w-3 h-3 hidden sm:inline" />
@@ -972,6 +1007,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                                   class="btn btn-outline btn-xs tooltip tooltip-bottom"
                                   phx-click="toggle_entity_definitions"
                                   phx-value-uuid={entity.uuid}
+                                  phx-disable-with={gettext("…")}
                                   data-tip={gettext("Enable Definition sync")}
                                 >
                                   <.icon name="hero-x-mark" class="w-3 h-3 hidden sm:inline" />
@@ -991,6 +1027,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                                     class="btn btn-outline btn-success btn-xs tooltip tooltip-bottom"
                                     phx-click="toggle_entity_data"
                                     phx-value-uuid={entity.uuid}
+                                    phx-disable-with={gettext("…")}
                                     data-tip={gettext("Disable Records sync")}
                                   >
                                     <.icon name="hero-check" class="w-3 h-3 hidden sm:inline" />
@@ -1003,6 +1040,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                                     class="btn btn-outline btn-xs tooltip tooltip-bottom"
                                     phx-click="toggle_entity_data"
                                     phx-value-uuid={entity.uuid}
+                                    phx-disable-with={gettext("…")}
                                     data-tip={gettext("Enable Records sync")}
                                   >
                                     <.icon name="hero-x-mark" class="w-3 h-3 hidden sm:inline" />
@@ -1028,6 +1066,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                             class="btn btn-ghost btn-xs tooltip tooltip-bottom"
                             phx-click="export_entity_now"
                             phx-value-uuid={entity.uuid}
+                            phx-disable-with={gettext("…")}
                             data-tip={gettext("Export now")}
                           >
                             <.icon name="hero-arrow-up-tray" class="w-4 h-4 hidden sm:inline" />
@@ -1162,36 +1201,37 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                             <% end %>
                           </div>
                           <label class="select select-sm">
-                          <select
-                            phx-change="set_definition_action"
-                            phx-value-entity={entity.name}
-                            name="action"
-                          >
-                            <option
-                              value="skip"
-                              selected={
-                                get_definition_action(@import_selections, entity.name) == :skip
-                              }
+                            <select
+                              phx-change="set_definition_action"
+                              phx-value-entity={entity.name}
+                              name="action"
                             >
-                              {gettext("Skip")}
-                            </option>
-                            <option
-                              value="overwrite"
-                              selected={
-                                get_definition_action(@import_selections, entity.name) == :overwrite
-                              }
-                            >
-                              {gettext("Import/Overwrite")}
-                            </option>
-                            <option
-                              value="merge"
-                              selected={
-                                get_definition_action(@import_selections, entity.name) == :merge
-                              }
-                            >
-                              {gettext("Merge")}
-                            </option>
-                          </select>
+                              <option
+                                value="skip"
+                                selected={
+                                  get_definition_action(@import_selections, entity.name) == :skip
+                                }
+                              >
+                                {gettext("Skip")}
+                              </option>
+                              <option
+                                value="overwrite"
+                                selected={
+                                  get_definition_action(@import_selections, entity.name) ==
+                                    :overwrite
+                                }
+                              >
+                                {gettext("Import/Overwrite")}
+                              </option>
+                              <option
+                                value="merge"
+                                selected={
+                                  get_definition_action(@import_selections, entity.name) == :merge
+                                }
+                              >
+                                {gettext("Merge")}
+                              </option>
+                            </select>
                           </label>
                         </div>
                       </div>
@@ -1275,49 +1315,49 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                                   <td class="truncate max-w-32">{record[:title] || "-"}</td>
                                   <td class="text-right">
                                     <label class="select select-xs">
-                                    <select
-                                      phx-change="set_record_action"
-                                      phx-value-entity={entity.name}
-                                      phx-value-slug={record.slug}
-                                      name="action"
-                                    >
-                                      <option
-                                        value="skip"
-                                        selected={
-                                          get_record_action(
-                                            @import_selections,
-                                            entity.name,
-                                            record.slug
-                                          ) == :skip
-                                        }
+                                      <select
+                                        phx-change="set_record_action"
+                                        phx-value-entity={entity.name}
+                                        phx-value-slug={record.slug}
+                                        name="action"
                                       >
-                                        {gettext("Skip")}
-                                      </option>
-                                      <option
-                                        value="overwrite"
-                                        selected={
-                                          get_record_action(
-                                            @import_selections,
-                                            entity.name,
-                                            record.slug
-                                          ) == :overwrite
-                                        }
-                                      >
-                                        {gettext("Import")}
-                                      </option>
-                                      <option
-                                        value="merge"
-                                        selected={
-                                          get_record_action(
-                                            @import_selections,
-                                            entity.name,
-                                            record.slug
-                                          ) == :merge
-                                        }
-                                      >
-                                        {gettext("Merge")}
-                                      </option>
-                                    </select>
+                                        <option
+                                          value="skip"
+                                          selected={
+                                            get_record_action(
+                                              @import_selections,
+                                              entity.name,
+                                              record.slug
+                                            ) == :skip
+                                          }
+                                        >
+                                          {gettext("Skip")}
+                                        </option>
+                                        <option
+                                          value="overwrite"
+                                          selected={
+                                            get_record_action(
+                                              @import_selections,
+                                              entity.name,
+                                              record.slug
+                                            ) == :overwrite
+                                          }
+                                        >
+                                          {gettext("Import")}
+                                        </option>
+                                        <option
+                                          value="merge"
+                                          selected={
+                                            get_record_action(
+                                              @import_selections,
+                                              entity.name,
+                                              record.slug
+                                            ) == :merge
+                                          }
+                                        >
+                                          {gettext("Merge")}
+                                        </option>
+                                      </select>
                                     </label>
                                   </td>
                                 </tr>
@@ -1351,6 +1391,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                   class="btn btn-secondary btn-outline"
                   phx-click="do_import_entity"
                   phx-value-entity={@import_active_tab}
+                  phx-disable-with={gettext("Importing…")}
                   disabled={@import_preview == nil or @import_active_tab == nil}
                 >
                   <.icon name="hero-arrow-down-tray" class="w-4 h-4 mr-1" />
@@ -1359,6 +1400,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
                 <button
                   class="btn btn-primary"
                   phx-click="do_import"
+                  phx-disable-with={gettext("Importing…")}
                   disabled={@import_preview == nil or length(@import_preview.entities) == 0}
                 >
                   <.icon name="hero-arrow-down-tray" class="w-4 h-4 mr-1" />

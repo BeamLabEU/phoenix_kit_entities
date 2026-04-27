@@ -43,6 +43,8 @@ defmodule PhoenixKitEntities.FieldTypes do
       PhoenixKitEntities.FieldTypes.requires_options?("select") # => true
   """
 
+  use Gettext, backend: PhoenixKitWeb.Gettext
+
   alias PhoenixKitEntities.FieldType
 
   @type field_type :: String.t()
@@ -299,13 +301,17 @@ defmodule PhoenixKitEntities.FieldTypes do
       ]
   """
   def category_list do
+    # Each label uses a literal `gettext(...)` call so `mix gettext.extract`
+    # picks them up. A `gettext(label)` over a variable wouldn't be
+    # extracted (extractor only sees literals), and the labels would
+    # never be translated.
     [
-      {:basic, "Basic"},
-      {:numeric, "Numeric"},
-      {:boolean, "Boolean"},
-      {:datetime, "Date & Time"},
-      {:choice, "Choice"},
-      {:advanced, "Advanced"}
+      {:basic, gettext("Basic")},
+      {:numeric, gettext("Numeric")},
+      {:boolean, gettext("Boolean")},
+      {:datetime, gettext("Date & Time")},
+      {:choice, gettext("Choice")},
+      {:advanced, gettext("Advanced")}
     ]
   end
 
@@ -386,7 +392,10 @@ defmodule PhoenixKitEntities.FieldTypes do
 
       iex> invalid_field = %{"type" => "invalid", "key" => "test"}
       iex> PhoenixKitEntities.FieldTypes.validate_field(invalid_field)
-      {:error, "Invalid field type: invalid"}
+      {:error, {:invalid_field_type, "invalid"}}
+
+  Error tuples flow through `PhoenixKitEntities.Errors.message/1` for
+  user-facing strings.
   """
   def validate_field(field) when is_map(field) do
     with {:ok, field} <- validate_required_keys(field),
@@ -402,7 +411,7 @@ defmodule PhoenixKitEntities.FieldTypes do
     if Enum.empty?(missing) do
       {:ok, field}
     else
-      {:error, "Missing required keys: #{Enum.join(missing, ", ")}"}
+      {:error, {:missing_required_keys, missing}}
     end
   end
 
@@ -410,7 +419,7 @@ defmodule PhoenixKitEntities.FieldTypes do
     if valid_type?(field["type"]) do
       {:ok, field}
     else
-      {:error, "Invalid field type: #{field["type"]}"}
+      {:error, {:invalid_field_type, to_string(field["type"])}}
     end
   end
 
@@ -421,7 +430,7 @@ defmodule PhoenixKitEntities.FieldTypes do
       if is_list(options) && not Enum.empty?(options) do
         {:ok, field}
       else
-        {:error, "Field type '#{field["type"]}' requires options"}
+        {:error, {:requires_options, to_string(field["type"])}}
       end
     else
       {:ok, field}
