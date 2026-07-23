@@ -6,11 +6,14 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
 
   The host LiveView owns everything outside the fields themselves:
 
-  - Loading `record` (an `%EntityData{}`). If its `:entity` association is
-    already preloaded, this component reuses it and never touches the
-    database; otherwise it loads the entity via
-    `PhoenixKitEntities.get_entity!/2` (one query per `update/2` unless
-    the entity was already resolved for the same `entity_uuid`).
+  - Loading `record` (an `%EntityData{}`) — **expected to arrive with its
+    `:entity` association preloaded**. When it is, this component reuses
+    it and never touches the database, keeping both `:readonly` render
+    and the initial `:edit` render fully DB-free. When it isn't, `entity`
+    is instead loaded via `PhoenixKitEntities.get_entity!/2` (one query
+    per `update/2`, unless the entity was already resolved for the same
+    `entity_uuid` on a previous update) — a correctness fallback, not the
+    intended calling convention.
   - PubSub — this component neither subscribes nor publishes.
     `PhoenixKitEntities.EntityData.update/3` already broadcasts changes.
   - `record.status` — autosave never changes it; a draft record stays a
@@ -31,7 +34,9 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
   ## Attributes
 
   - `record` (required) — the `%PhoenixKitEntities.EntityData{}` being
-    displayed or edited.
+    displayed or edited. Preload its `:entity` association before passing
+    it in — that's what keeps this component DB-free to render; see
+    "The host LiveView owns" above.
   - `mode` (required) — `:edit` renders a live, autosaving form; `:readonly`
     renders static "label: value" output with no inputs.
   - `lang` — locale passed straight through to
