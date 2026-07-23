@@ -86,6 +86,7 @@ defmodule PhoenixKitEntities.EntityData do
   alias PhoenixKit.Utils.UUID, as: UUIDUtils
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.Events
+  alias PhoenixKitEntities.FieldTypes
   alias PhoenixKitEntities.Mirror.Exporter
   alias PhoenixKitEntities.UrlResolver
   @type t :: %__MODULE__{}
@@ -502,7 +503,7 @@ defmodule PhoenixKitEntities.EntityData do
   defp validate_select_field(changeset, field_def, value) do
     options = field_def["options"] || []
 
-    if value in options or field_def["allow_other"] == true do
+    if value in options or FieldTypes.allow_other?(field_def) do
       changeset
     else
       add_error(

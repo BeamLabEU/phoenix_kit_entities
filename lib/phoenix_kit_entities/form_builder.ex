@@ -41,6 +41,7 @@ defmodule PhoenixKitEntities.FormBuilder do
 
   alias PhoenixKit.Utils.Format
   alias PhoenixKit.Utils.Multilang
+  alias PhoenixKitEntities.FieldTypes
 
   # Sentinel value for the synthetic "Other" option on radio/select/checkbox
   # fields with `"allow_other" => true`. Submitted alongside a companion
@@ -526,7 +527,7 @@ defmodule PhoenixKitEntities.FormBuilder do
   # Select Dropdown
   def build_field(%{"type" => "select"} = field, changeset, opts) do
     current_value = get_field_value(changeset, field["key"])
-    allow_other = field["allow_other"] == true
+    allow_other = FieldTypes.allow_other?(field)
     other_value = allow_other && custom_other_value(current_value, field["options"])
 
     assigns = %{
@@ -588,7 +589,7 @@ defmodule PhoenixKitEntities.FormBuilder do
   # Radio Buttons
   def build_field(%{"type" => "radio"} = field, changeset, opts) do
     current_value = get_field_value(changeset, field["key"])
-    allow_other = field["allow_other"] == true
+    allow_other = FieldTypes.allow_other?(field)
     other_value = allow_other && custom_other_value(current_value, field["options"])
 
     assigns = %{
@@ -654,7 +655,7 @@ defmodule PhoenixKitEntities.FormBuilder do
   # Checkbox Group
   def build_field(%{"type" => "checkbox"} = field, changeset, opts) do
     current_values = get_field_value(changeset, field["key"]) || []
-    allow_other = field["allow_other"] == true
+    allow_other = FieldTypes.allow_other?(field)
     other_value = allow_other && checkbox_other_value(current_values, field["options"])
 
     assigns = %{
@@ -1039,7 +1040,7 @@ defmodule PhoenixKitEntities.FormBuilder do
   def merge_other_params(fields_definition, params) when is_map(params) do
     other_keys =
       for field <- fields_definition,
-          field["allow_other"] == true,
+          FieldTypes.allow_other?(field),
           field["type"] in ["radio", "select", "checkbox"],
           do: field["key"]
 
@@ -1059,7 +1060,15 @@ defmodule PhoenixKitEntities.FormBuilder do
   defp resolve_other_param({key, values}, acc, other_keys, params) when is_list(values) do
     if key in other_keys and @other_sentinel in values do
       text = Map.get(params, "#{key}__other", "")
-      Map.put(acc, key, Enum.map(values, &if(&1 == @other_sentinel, do: text, else: &1)))
+
+      resolved =
+        values
+        |> Enum.map(&if(&1 == @other_sentinel, do: text, else: &1))
+        # An "Other" checkbox ticked with no text typed shouldn't leave a
+        # blank entry in the stored list.
+        |> Enum.reject(&(&1 == ""))
+
+      Map.put(acc, key, resolved)
     else
       acc
     end
@@ -1144,7 +1153,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     cond do
       value in [nil, ""] -> {:ok, nil}
       value in options -> {:ok, value}
-      field["allow_other"] == true and is_binary(value) -> {:ok, value}
+      FieldTypes.allow_other?(field) and is_binary(value) -> {:ok, value}
       true -> {:error, [gettext("must be one of: %{options}", options: Enum.join(options, ", "))]}
     end
   end
@@ -1154,7 +1163,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     cond do
       value in [nil, ""] -> {:ok, nil}
       value in options -> {:ok, value}
-      field["allow_other"] == true and is_binary(value) -> {:ok, value}
+      FieldTypes.allow_other?(field) and is_binary(value) -> {:ok, value}
       true -> {:error, [gettext("must be one of: %{options}", options: Enum.join(options, ", "))]}
     end
   end
@@ -1167,7 +1176,7 @@ defmodule PhoenixKitEntities.FormBuilder do
       Enum.empty?(invalid_values) ->
         {:ok, values}
 
-      field["allow_other"] == true ->
+      FieldTypes.allow_other?(field) ->
         {:ok, values}
 
       true ->

@@ -69,6 +69,43 @@ defmodule PhoenixKitEntities.FormBuilderOtherTest do
       params = %{"varv" => "Must", "name" => "Jaan"}
       assert FormBuilder.merge_other_params(fields, params) == params
     end
+
+    test "an Other checkbox ticked with no text typed doesn't leave a blank entry" do
+      field = %{@field | "type" => "checkbox"}
+      params = %{"varv" => ["Must", "__other__"], "varv__other" => ""}
+      assert FormBuilder.merge_other_params([field], params) == %{"varv" => ["Must"]}
+    end
+
+    test "an Other checkbox ticked with a missing companion field doesn't leave a blank entry" do
+      field = %{@field | "type" => "checkbox"}
+      params = %{"varv" => ["Must", "__other__"]}
+      assert FormBuilder.merge_other_params([field], params) == %{"varv" => ["Must"]}
+    end
+  end
+
+  # The admin field-definition builder (entity_form.ex) submits the toggle
+  # as an HTML checkbox — the value that actually lands in the persisted
+  # `fields_definition` JSONB is the string "true", never the Elixir
+  # boolean. Every consumer must treat both as equivalent; these mirror the
+  # `@field`-based tests above but with the flag exactly as the UI stores it.
+  describe "allow_other as the UI actually stores it (string \"true\", not boolean)" do
+    @string_field %{@field | "allow_other" => "true"}
+
+    test "merge_other_params resolves the sentinel" do
+      params = %{"varv" => "__other__", "varv__other" => "Punane"}
+      assert FormBuilder.merge_other_params([@string_field], params) == %{"varv" => "Punane"}
+    end
+
+    test "build_field renders the Other option" do
+      html = FormBuilder.build_field(@string_field, changeset(%{})) |> rendered_to_string()
+      assert html =~ "__other__"
+    end
+
+    test "validate_data accepts a custom value" do
+      fields = [@string_field]
+      merged = FormBuilder.merge_other_params(fields, %{"varv" => "Roheline"})
+      assert {:ok, %{"varv" => "Roheline"}} = FormBuilder.validate_data(entity(fields), merged)
+    end
   end
 
   describe "validate_data/2 — end-to-end through merge_other_params" do

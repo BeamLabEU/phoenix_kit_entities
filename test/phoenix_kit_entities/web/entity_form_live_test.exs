@@ -2,6 +2,7 @@ defmodule PhoenixKitEntities.Web.EntityFormLiveTest do
   use PhoenixKitEntities.LiveCase, async: false
 
   alias PhoenixKitEntities, as: Entities
+  alias PhoenixKitEntities.FormBuilder
 
   setup do
     actor_uuid = Ecto.UUID.generate()
@@ -22,6 +23,17 @@ defmodule PhoenixKitEntities.Web.EntityFormLiveTest do
       )
 
     {:ok, entity: entity, actor_uuid: actor_uuid}
+  end
+
+  # Scopes assertions to the allow_other *checkbox* — the field editor also
+  # renders a hidden `field[allow_other]` fallback input (needed so
+  # unticking the box actually submits "false" instead of nothing), so a
+  # bare `Regex.run` would match that hidden input first instead.
+  defp allow_other_checkbox_tag(html) do
+    case Regex.run(~r/<input type="checkbox"[^>]*name="field\[allow_other\]"[^>]*>/, html) do
+      [tag] -> tag
+      nil -> ""
+    end
   end
 
   describe "mount new" do
@@ -241,14 +253,75 @@ defmodule PhoenixKitEntities.Web.EntityFormLiveTest do
       html = render_hook(view, "edit_field", %{"index" => "1"})
 
       assert html =~ ~s(name="field[allow_other]")
+      assert allow_other_checkbox_tag(html) =~ "checked"
+    end
 
-      # Scope the "checked" assertion to the allow_other toggle itself —
-      # a bare `html =~ "checked"` would pass even if pre-fill were broken,
-      # since other checkboxes in the same modal may legitimately be checked.
-      [allow_other_input] =
-        Regex.run(~r/<input[^>]*name="field\[allow_other\]"[^>]*>/, html) |> List.wrap()
+    test "allow_other toggle can be switched back off (hidden false fallback)",
+         %{conn: conn} = ctx do
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, "/en/admin/entities/#{ctx.entity.uuid}/edit")
 
-      assert allow_other_input =~ "checked"
+      render_hook(view, "add_field", %{})
+
+      render_hook(view, "update_field_form", %{
+        "field" => %{"type" => "radio", "label" => "Color", "key" => "color"}
+      })
+
+      render_hook(view, "add_option", %{})
+      render_hook(view, "update_option", %{"index" => "0", "value" => "Red"})
+
+      render_hook(view, "update_field_form", %{"field" => %{"allow_other" => "true"}})
+
+      # Ticked checkboxes submit "true"; the browser never omits the key
+      # entirely because of the hidden `value="false"` fallback rendered
+      # before it — unticking sends "false" (only the hidden input fires),
+      # not a missing key. That's exactly what this simulates.
+      html = render_hook(view, "update_field_form", %{"field" => %{"allow_other" => "false"}})
+
+      assert allow_other_checkbox_tag(html) =~ ~s(name="field[allow_other]")
+      refute allow_other_checkbox_tag(html) =~ "checked"
+
+      render_hook(view, "save_field", %{"field" => %{}})
+
+      # Field is index 1 — index 0 is the "name" field from the fixture entity.
+      html = render_hook(view, "edit_field", %{"index" => "1"})
+      refute allow_other_checkbox_tag(html) =~ "checked"
+    end
+
+    test "a field built through the admin editor round-trips through storage and renders Other",
+         %{conn: conn} = ctx do
+      # Full circle: the exact bug the reviewer caught only shows up once
+      # a field goes through save_field -> Entities.update_entity ->
+      # get_entity (persisting/reading "allow_other" as the JSONB string
+      # "true", never the Elixir boolean) -> build_field. Fixtures built
+      # with `"allow_other" => true` by hand never exercise this path.
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, "/en/admin/entities/#{ctx.entity.uuid}/edit")
+
+      render_hook(view, "add_field", %{})
+
+      render_hook(view, "update_field_form", %{
+        "field" => %{"type" => "radio", "label" => "Color", "key" => "color"}
+      })
+
+      render_hook(view, "add_option", %{})
+      render_hook(view, "update_option", %{"index" => "0", "value" => "Red"})
+      render_hook(view, "update_field_form", %{"field" => %{"allow_other" => "true"}})
+      render_hook(view, "save_field", %{"field" => %{}})
+
+      view
+      |> form("form", entities: %{display_name: ctx.entity.display_name})
+      |> render_submit()
+
+      reread = Entities.get_entity(ctx.entity.uuid)
+      saved_field = Enum.find(reread.fields_definition, &(&1["key"] == "color"))
+
+      assert saved_field["allow_other"] == "true"
+
+      changeset = Ecto.Changeset.cast(%PhoenixKitEntities.EntityData{data: %{}}, %{}, [])
+      html = FormBuilder.build_field(saved_field, changeset) |> rendered_to_string()
+
+      assert html =~ "__other__"
     end
 
     test "required/default controls are hidden while editing a heading field",

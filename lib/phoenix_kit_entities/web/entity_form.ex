@@ -3185,12 +3185,13 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                     <% end %>
 
                     <.label class="label cursor-pointer justify-start gap-2 mt-2">
+                      <input type="hidden" name="field[allow_other]" value="false" />
                       <input
                         type="checkbox"
                         name="field[allow_other]"
                         class="toggle toggle-primary toggle-sm"
                         value="true"
-                        checked={@field_form["allow_other"]}
+                        checked={FieldTypes.allow_other?(@field_form)}
                       />
                       <span class="label-text">{gettext("Allow custom option (Muu)")}</span>
                     </.label>
