@@ -66,6 +66,16 @@ defmodule PhoenixKitEntities.FormBuilder do
   - `:wrapper_class` - CSS class for field wrapper divs
   - `:input_class` - CSS class for input elements
   - `:label_class` - CSS class for label elements
+  - `:id_prefix` - extra segment folded into each field wrapper's DOM id
+    (`"entity-field-\#{id_prefix}-\#{key}-\#{lang}"`). Every page that has
+    historically called this function renders exactly one form per entity
+    (admin `DataForm`, the public entity form), so the default (`nil`,
+    omitted from the id) is unchanged. Pages embedding more than one
+    instance of the *same* entity's fields at once — e.g.
+    `PhoenixKitEntities.Components.LiveDataForm` used once per record in a
+    list — MUST pass something unique per instance (the record's uuid) or
+    LiveView raises "Duplicate id found while testing LiveView" (in tests)
+    / silently misdirects DOM patches between instances (at runtime).
 
   ## Examples
 
@@ -91,7 +101,8 @@ defmodule PhoenixKitEntities.FormBuilder do
       fields_definition: fields_definition,
       changeset: changeset,
       opts: opts,
-      lang_suffix: lang_code || "primary"
+      lang_suffix: lang_code || "primary",
+      id_prefix: id_prefix_segment(opts[:id_prefix])
     }
 
     # Each wrapper carries a language-specific id so that switching the
@@ -100,13 +111,15 @@ defmodule PhoenixKitEntities.FormBuilder do
     # the previous tab leaks across (e.g. the user types "Acme" in EN-US,
     # switches to ES, and the ES input still shows "Acme" because the
     # `<input>` matched by id and the new server-rendered value=""
-    # doesn't override the live DOM value).
+    # doesn't override the live DOM value). `id_prefix` (see moduledoc)
+    # additionally scopes it per record instance for pages embedding more
+    # than one form for the same entity at once.
     ~H"""
     <div class="space-y-6">
       <%= for field <- @fields_definition do %>
         <div
           class={["form-field-wrapper", @opts[:wrapper_class]]}
-          id={"entity-field-#{field["key"]}-#{@lang_suffix}"}
+          id={"entity-field-#{@id_prefix}#{field["key"]}-#{@lang_suffix}"}
         >
           {build_field(field, @changeset, @opts)}
         </div>
@@ -114,6 +127,9 @@ defmodule PhoenixKitEntities.FormBuilder do
     </div>
     """
   end
+
+  defp id_prefix_segment(nil), do: ""
+  defp id_prefix_segment(prefix), do: "#{prefix}-"
 
   # When a lang_code is provided, extract that language's RAW (override-only)
   # data and replace the :data field in the changeset so downstream

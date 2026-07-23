@@ -327,7 +327,11 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
         phx-target={@myself}
         class="space-y-6"
       >
-        {FormBuilder.build_fields(@entity, @form, wrapper_class: "mb-4", lang_code: @lang)}
+        {FormBuilder.build_fields(@entity, @form,
+          wrapper_class: "mb-4",
+          lang_code: @lang,
+          id_prefix: @record.uuid
+        )}
 
         <%= if @submit_label do %>
           <div class="flex justify-end">
