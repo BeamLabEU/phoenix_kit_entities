@@ -613,7 +613,7 @@ defmodule PhoenixKitEntities.EntityData do
   defp notify_data_event({:ok, %__MODULE__{} = entity_data}, :updated, opts) do
     Events.broadcast_data_updated(entity_data.entity_uuid, entity_data.uuid)
     maybe_mirror_data(entity_data)
-    log_data_activity(entity_data, "entity_data.updated", opts)
+    maybe_log_data_activity(entity_data, "entity_data.updated", opts)
     {:ok, entity_data}
   end
 
@@ -646,6 +646,23 @@ defmodule PhoenixKitEntities.EntityData do
   end
 
   defp notify_data_event(result, _event, _opts), do: result
+
+  # `opts[:activity_log]` defaults to `true`. Passing `false` skips the
+  # activity-log entry for this update while leaving the PubSub
+  # broadcast and mirror export (both above, in `notify_data_event/3`)
+  # untouched — those still need to fire so live views/mirrors stay in
+  # sync. Used by high-frequency callers (`LiveDataForm` autosave) so a
+  # client that's still typing doesn't produce one activity row per
+  # debounced keystroke. Only wired into the `:updated` path — the other
+  # lifecycle events (create/delete/trash/restore) are one-shot actions
+  # that should always log.
+  defp maybe_log_data_activity(entity_data, action, opts) do
+    if Keyword.get(opts, :activity_log, true) do
+      log_data_activity(entity_data, action, opts)
+    else
+      :ok
+    end
+  end
 
   # Records a data-record-lifecycle activity entry. Actor UUID comes
   # from caller's `:actor_uuid` opt (the user performing the mutation)
@@ -1373,6 +1390,16 @@ defmodule PhoenixKitEntities.EntityData do
 
   @doc """
   Updates an entity data record.
+
+  ## Options
+
+    * `:actor_uuid` — the user performing the update, recorded on the
+      activity log entry.
+    * `:activity_log` — defaults to `true`; pass `false` to skip logging
+      this update's activity entry (the PubSub broadcast and mirror
+      export still fire regardless). Intended for high-frequency callers
+      like `LiveDataForm`'s autosave, where logging every debounced
+      keystroke would flood the activity log.
 
   ## Examples
 

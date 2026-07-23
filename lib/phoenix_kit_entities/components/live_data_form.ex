@@ -279,8 +279,9 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
       |> then(&Map.merge(record.data || %{}, &1))
 
     data_to_persist = coerce_or_pass_through(entity, merged_data, log_context)
+    update_opts = actor_opts(socket) ++ activity_log_opts(log_context)
 
-    case EntityData.update(record, %{"data" => data_to_persist}, actor_opts(socket)) do
+    case EntityData.update(record, %{"data" => data_to_persist}, update_opts) do
       {:ok, updated_record} ->
         {:ok, updated_record}
 
@@ -307,6 +308,13 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
     known_keys = MapSet.new(fields_definition, & &1["key"])
     Map.filter(params, fn {key, _value} -> MapSet.member?(known_keys, key) end)
   end
+
+  # Autosave fires on every change (debounced 500ms) — logging an
+  # `entity_data.updated` activity row for each one would flood the
+  # activity log for a user who's simply still typing. Submit is a
+  # deliberate, one-time action and keeps the default (logged) behavior.
+  defp activity_log_opts("autosave"), do: [activity_log: false]
+  defp activity_log_opts(_log_context), do: []
 
   # `FormBuilder.validate_data/3` runs here WITHOUT `lang_code` — even
   # though `lang` is available on the socket — deliberately, not as an

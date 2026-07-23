@@ -371,6 +371,38 @@ defmodule PhoenixKitEntities.LiveDataFormIntegrationTest do
     end
   end
 
+  describe "activity logging" do
+    test "autosave does not log an entity_data.updated activity row" do
+      entity = create_entity!()
+      record = create_record!(entity, %{"name" => "Old"})
+      socket = socket(record, entity)
+
+      {:noreply, _socket} =
+        LiveDataForm.handle_event(
+          "autosave",
+          %{"phoenix_kit_entity_data" => %{"data" => %{"name" => "New"}}},
+          socket
+        )
+
+      refute_activity_logged("entity_data.updated", resource_uuid: record.uuid)
+    end
+
+    test "submit still logs an entity_data.updated activity row" do
+      entity = create_entity!()
+      record = create_record!(entity, %{"name" => "Old"})
+      socket = socket(record, entity, submit_label: "Kinnitan")
+
+      {:noreply, _socket} =
+        LiveDataForm.handle_event(
+          "submit",
+          %{"phoenix_kit_entity_data" => %{"data" => %{"name" => "Final"}}},
+          socket
+        )
+
+      assert_activity_logged("entity_data.updated", resource_uuid: record.uuid)
+    end
+  end
+
   describe "submit" do
     # Contract (revised): submit persists the params `phx-submit` just
     # sent — same merge-over-`record.data` path as autosave — so the
