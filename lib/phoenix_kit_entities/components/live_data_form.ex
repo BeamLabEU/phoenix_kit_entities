@@ -8,22 +8,38 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
 
   - Loading `record` (an `%EntityData{}`) — **expected to arrive with its
     `:entity` association preloaded**. When it is, this component reuses
-    it and never touches the database, keeping both `:readonly` render
-    and the initial `:edit` render fully DB-free. When it isn't, `entity`
-    is instead loaded via `PhoenixKitEntities.get_entity!/2` (one query
-    per `update/2`, unless the entity was already resolved for the same
-    `entity_uuid` on a previous update) — a correctness fallback, not the
-    intended calling convention.
+    it and never touches the database — `:readonly` render is always
+    DB-free, and so is the initial `:edit` render as long as `lang` is
+    `nil` (a non-nil `lang` makes `FormBuilder.build_fields/3` do one
+    cacheable `Multilang`/settings read; see the `lang` attribute below).
+    When `:entity` isn't preloaded, it's instead loaded via
+    `PhoenixKitEntities.get_entity!/2` (one query per `update/2`, unless
+    the entity was already resolved for the same `entity_uuid` on a
+    previous update) — a correctness fallback, not the intended calling
+    convention.
   - PubSub — this component neither subscribes nor publishes.
     `PhoenixKitEntities.EntityData.update/3` already broadcasts changes.
   - `record.status` — autosave never changes it; a draft record stays a
     draft, a published one stays published.
-  - Required-field completeness. Every save runs the merged data through
+  - Required-field completeness — **only partially, and this matters**.
+    Every save runs the merged data through
     `PhoenixKitEntities.FormBuilder.validate_data/2` on a best-effort
-    basis (for type coercion — number strings, URL normalization — not
-    as a hard gate: see `coerce_or_pass_through/3`), so an incomplete
-    required field never blocks a mid-survey autosave. Deciding whether
-    the record is "complete enough" to submit is the parent's call.
+    basis (for type coercion — number strings, URL normalization — never
+    as a hard gate: see `coerce_or_pass_through/3`). *However*,
+    `EntityData.update/3` → `EntityData.changeset/2` runs its own,
+    unconditional required-field check across the **entire** entity on
+    every single save, independent of `FormBuilder` and not bypassable
+    from here. In practice: for an entity with required fields, an
+    autosave only actually persists once every required field has *some*
+    value across the whole record (thanks to merging over `record.data`,
+    filling in the last one saves everything typed before it in one
+    shot) — an autosave attempt while any required field is still empty
+    logs an error and keeps the previous `record` unpersisted, exactly
+    like any other save rejection. Genuine incremental "save my progress
+    so far" for a record with required fields is **not yet guaranteed**;
+    treat that as a known limitation pending a decision on whether/how to
+    relax `EntityData.changeset/2`'s validation for this use case, not as
+    something this component already solved.
 
   ## Usage
 
@@ -45,14 +61,16 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
     "The host LiveView owns" above.
   - `mode` (required) — `:edit` renders a live, autosaving form; `:readonly`
     renders static "label: value" output with no inputs.
-  - `lang` — locale passed straight through to
-    `PhoenixKitEntities.FormBuilder.build_fields/3` as `lang_code` (and to
-    entity loading, when the entity isn't already preloaded).
-  - `actor` — the acting user (a struct with a `:uuid` field) or `nil`.
-    Threaded through to `EntityData.update/3` as `actor_uuid:` for
-    activity logging.
-  - `submit_label` — `nil` hides the submit button entirely; any other
-    string renders it as the button's text.
+  - `lang` (optional, defaults to `nil` — safe to omit entirely) — locale
+    passed straight through to `PhoenixKitEntities.FormBuilder.build_fields/3`
+    as `lang_code` (and to entity loading, when the entity isn't already
+    preloaded).
+  - `actor` (optional, defaults to `nil` — safe to omit entirely) — the
+    acting user (a struct with a `:uuid` field) or `nil`. Threaded through
+    to `EntityData.update/3` as `actor_uuid:` for activity logging.
+  - `submit_label` (optional, defaults to `nil` — safe to omit entirely) —
+    `nil` hides the submit button entirely; any other string renders it
+    as the button's text.
 
   ## Messages sent to the parent
 
@@ -87,6 +105,15 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
     socket =
       socket
       |> assign(assigns)
+      # `record` and `mode` are required — omitting them is a caller bug,
+      # and should crash. `lang`/`actor`/`submit_label` are documented as
+      # optional (safe to omit entirely, not just pass as explicit nil);
+      # without these defaults, an omitted key stays absent from
+      # `socket.assigns` (`assign/2` only sets keys actually present in
+      # `assigns`) and `render/1`'s `@lang`/`@submit_label` raise `KeyError`.
+      |> assign_new(:lang, fn -> nil end)
+      |> assign_new(:actor, fn -> nil end)
+      |> assign_new(:submit_label, fn -> nil end)
       |> assign(:entity, entity)
       |> assign_form()
 
@@ -125,7 +152,15 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
     {:noreply, do_autosave(socket, Map.get(data_params, "data", %{}))}
   end
 
-  def handle_event("autosave", _params, socket), do: {:noreply, socket}
+  # Mirrors the "submit" fallback clause below rather than no-op'ing: a
+  # `phx-change` from a form where every input is an unticked checkbox (or
+  # a checkbox group plus only `heading` fields) submits no
+  # `"phoenix_kit_entity_data"` key at all — there's nothing else in the
+  # payload to carry it. Treating that as "nothing changed" would silently
+  # ignore exactly the case `normalize_absent_checkboxes/2` exists to
+  # handle (unticking the last box). An empty map still flows through the
+  # same merge/coercion/persist path as any other autosave.
+  def handle_event("autosave", _params, socket), do: {:noreply, do_autosave(socket, %{})}
 
   # Submit persists the params `phx-submit` just sent — the same
   # merge-over-`record.data` path as autosave — rather than trusting
@@ -227,7 +262,18 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
   defp coerce_or_pass_through(entity, merged_data, log_context) do
     case FormBuilder.validate_data(entity, merged_data) do
       {:ok, validated_data} ->
-        Map.merge(merged_data, validated_data)
+        # `validate_data/2` returns one entry per NON-heading field on the
+        # entity, including fields never touched (as `nil`) — restricting
+        # to keys already present in `merged_data` before merging avoids
+        # writing brand-new explicit `null`s for fields nobody has filled
+        # in yet, which would otherwise break a `Map.has_key?/2` "is this
+        # field answered" check on the read side. Keys already present
+        # (touched, even if previously "") still get their coerced value;
+        # legacy keys outside the current `fields_definition` are
+        # untouched either way since they never appear in `validated_data`.
+        validated_data
+        |> Map.take(Map.keys(merged_data))
+        |> then(&Map.merge(merged_data, &1))
 
       {:error, errors} ->
         Logger.warning(
@@ -360,6 +406,7 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
   defp readonly_text(value) when is_binary(value), do: value
   defp readonly_text(value), do: to_string(value)
 
+  defp readonly_boolean(nil), do: dash()
   defp readonly_boolean(value) when value in [true, "true", "1", 1], do: gettext("Yes")
   defp readonly_boolean(_value), do: gettext("No")
 

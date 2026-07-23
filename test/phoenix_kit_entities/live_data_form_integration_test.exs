@@ -140,6 +140,38 @@ defmodule PhoenixKitEntities.LiveDataFormIntegrationTest do
       assert socket.assigns.record.data["tools"] == []
     end
 
+    test "unchecking the only field on the form (checkbox-only entity) still clears it" do
+      # When EVERY input on the form is a checkbox group (no text/other
+      # field to anchor a "phoenix_kit_entity_data" key), unticking the
+      # last box makes phx-change submit params with no
+      # "phoenix_kit_entity_data" key at all — just LiveView's internal
+      # "_target". The fallback `handle_event("autosave", _params, socket)`
+      # clause must still run the merge/persist path (with an empty map)
+      # rather than no-op'ing, or this case would silently never clear.
+      fields = [
+        %{
+          "type" => "checkbox",
+          "key" => "tools",
+          "label" => "Tools",
+          "options" => ["Hammer", "Drill"]
+        }
+      ]
+
+      entity = create_entity!(fields)
+      record = create_record!(entity, %{"tools" => ["Hammer"]})
+      socket = socket(record, entity)
+
+      {:noreply, socket} =
+        LiveDataForm.handle_event("autosave", %{"_target" => ["nonexistent"]}, socket)
+
+      assert socket.assigns.record.data["tools"] == []
+      assert_received {:live_data_form, :saved, updated_record}
+      assert updated_record.data["tools"] == []
+
+      reloaded = EntityData.get!(record.uuid)
+      assert reloaded.data["tools"] == []
+    end
+
     test "resolves an allow_other sentinel before persisting" do
       fields = [
         %{
@@ -180,13 +212,20 @@ defmodule PhoenixKitEntities.LiveDataFormIntegrationTest do
       broken_record = %{record | entity_uuid: Ecto.UUID.generate()}
       socket = socket(broken_record, entity)
 
-      {:noreply, socket} =
-        LiveDataForm.handle_event(
-          "autosave",
-          %{"phoenix_kit_entity_data" => %{"data" => %{"name" => "New"}}},
-          socket
-        )
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          {:noreply, updated_socket} =
+            LiveDataForm.handle_event(
+              "autosave",
+              %{"phoenix_kit_entity_data" => %{"data" => %{"name" => "New"}}},
+              socket
+            )
 
+          send(self(), {:updated_socket, updated_socket})
+        end)
+
+      assert log =~ "LiveDataForm autosave failed"
+      assert_received {:updated_socket, socket}
       assert socket.assigns.record == broken_record
       refute_received {:live_data_form, :saved, _}
 

@@ -238,4 +238,36 @@ defmodule PhoenixKitEntities.LiveDataFormTest do
       assert html =~ "Name"
     end
   end
+
+  describe "optional attrs (lang, actor, submit_label) can be omitted entirely" do
+    # `update/2` only sets a key on `socket.assigns` for what the caller
+    # actually passes in — a caller that omits `:lang`/`:actor`/
+    # `:submit_label` (not even `nil`) used to leave `render/1`'s
+    # `@lang`/`@submit_label` raising `KeyError`, since these are
+    # documented as optional. `assign_new/3` in `update/2` now backfills
+    # `nil` for each. `record` and `mode` stay genuinely required — no
+    # test for omitting those; a caller bug there should crash.
+    test ":readonly renders fine with only record and mode given" do
+      fields = [%{"type" => "text", "key" => "name", "label" => "Name"}]
+      e = entity(fields)
+      r = record(e, %{"name" => "Jaan"})
+
+      html =
+        render_component(LiveDataForm, %{id: "live-data-form-omit-1", record: r, mode: :readonly})
+
+      assert html =~ "Jaan"
+    end
+
+    test ":edit renders fine with only record and mode given — no submit button" do
+      fields = [%{"type" => "text", "key" => "name", "label" => "Name"}]
+      e = entity(fields)
+      r = record(e)
+
+      html =
+        render_component(LiveDataForm, %{id: "live-data-form-omit-2", record: r, mode: :edit})
+
+      assert html =~ ~s(phx-change="autosave")
+      refute html =~ ~s(type="submit")
+    end
+  end
 end
