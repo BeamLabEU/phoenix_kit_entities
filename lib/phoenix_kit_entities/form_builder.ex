@@ -1108,7 +1108,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     end
   end
 
-  defp validate_required(%{"required" => true}, value) when value in [nil, ""] do
+  defp validate_required(%{"required" => true}, value) when value in [nil, "", []] do
     {:error, [gettext("is required")]}
   end
 
