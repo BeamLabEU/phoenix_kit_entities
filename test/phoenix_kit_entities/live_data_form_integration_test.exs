@@ -252,14 +252,17 @@ defmodule PhoenixKitEntities.LiveDataFormIntegrationTest do
       assert reloaded.data["qty"] == 5.0
     end
 
-    test "data that fails FormBuilder.validate_data/2 is persisted as-is and logs a warning" do
-      # `radio` fields are validated strictly by `FormBuilder.validate_type/2`
-      # (value must be one of `options`, absent `allow_other`) but have NO
-      # type-specific branch in `EntityData.changeset/2`'s own
-      # `validate_field_type/2` — so an out-of-options value fails the
-      # FormBuilder pass while still sailing through `EntityData.update/3`,
-      # exercising the "log and persist raw" branch specifically (as
-      # opposed to the hard-blocking changeset failure above).
+    test "an out-of-options radio value fails EntityData's changeset too, so the save is rejected" do
+      # Historically `radio` fields were validated strictly by
+      # `FormBuilder.validate_type/2` (value must be one of `options`,
+      # absent `allow_other`) but had NO type-specific branch in
+      # `EntityData.changeset/2`'s own `validate_field_type/2` — so an
+      # out-of-options value failed the FormBuilder pass while still
+      # sailing through `EntityData.update/3` and getting persisted
+      # as-is. `EntityData.changeset/2` now validates radio the same way
+      # `select` always has, closing that gap: this now hits the
+      # hard-blocking changeset-failure path instead (like the
+      # `broken_record` test above), and the previous record is kept.
       fields = [
         %{
           "type" => "radio",
@@ -285,12 +288,13 @@ defmodule PhoenixKitEntities.LiveDataFormIntegrationTest do
           send(self(), {:updated_socket, updated_socket})
         end)
 
-      assert log =~ "failed FormBuilder validation"
+      assert log =~ "LiveDataForm autosave failed"
       assert_received {:updated_socket, updated_socket}
-      assert updated_socket.assigns.record.data["priority"] == "Medium"
+      assert updated_socket.assigns.record.data == %{}
+      refute_received {:live_data_form, :saved, _}
 
       reloaded = EntityData.get!(record.uuid)
-      assert reloaded.data["priority"] == "Medium"
+      assert reloaded.data == %{}
     end
   end
 
