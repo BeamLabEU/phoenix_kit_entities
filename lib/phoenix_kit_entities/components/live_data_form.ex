@@ -22,13 +22,20 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
   - `record.status` — autosave never changes it; a draft record stays a
     draft, a published one stays published.
   - Guarding who can persist — `handle_event/3` only runs the
-    autosave/submit path when `mode == :edit`; in `:readonly` both events
-    are silently ignored. This isn't just UI polish: a `LiveComponent`'s
+    autosave/submit path when `mode == :edit`; every other mode silently
+    ignores both events. This isn't just UI polish: a `LiveComponent`'s
     `handle_event/3` is reachable for any event it defines via the
     component's `cid`, independent of what the rendered template actually
-    wires up, so a `:readonly` instance would otherwise still accept a
+    wires up, so a non-`:edit` instance would otherwise still accept a
     crafted "autosave"/"submit" push and persist attacker-controlled data
     into a record the UI is displaying as read-only.
+  - `render/1` mirrors the same fail-closed rule: only `mode == :edit`
+    renders the live, autosaving form. Every other value — `:readonly`,
+    anything else, or `mode` omitted entirely (a caller bug) — renders
+    the static readonly view. The alternative (rendering the form
+    whenever `mode` isn't literally `:readonly`) would let a forgotten
+    `mode` produce a form that *looks* editable while `handle_event/3`'s
+    own guard silently drops everything typed into it.
   - Required-field completeness — **incremental autosave is guaranteed
     only for entities without required fields; entities with required
     fields save all-or-nothing per attempt, by design**. Every save runs
@@ -68,8 +75,12 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
     displayed or edited. Preload its `:entity` association before passing
     it in — that's what keeps this component DB-free to render; see
     "The host LiveView owns" above.
-  - `mode` (required) — `:edit` renders a live, autosaving form; `:readonly`
-    renders static "label: value" output with no inputs.
+  - `mode` (required) — `:edit` renders a live, autosaving form. Any
+    other value renders static "label: value" output with no inputs;
+    this includes `:readonly` (the intended non-editing value) but also
+    a caller bug that omits `mode` altogether — the component fails
+    closed to the safe, non-interactive view rather than rendering an
+    editable-looking form that silently drops every edit.
   - `lang` (optional, defaults to `nil` — safe to omit entirely) — locale
     passed straight through to `PhoenixKitEntities.FormBuilder.build_fields/3`
     as `lang_code` (and to entity loading, when the entity isn't already
@@ -388,17 +399,6 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
     end
   end
 
-  @impl true
-  def render(%{mode: :readonly} = assigns) do
-    ~H"""
-    <div class="space-y-4">
-      <%= for field <- @entity.fields_definition || [] do %>
-        {readonly_field(field, @record.data || %{})}
-      <% end %>
-    </div>
-    """
-  end
-
   # `id_prefix: @record.uuid || @id` — falls back to the component's own
   # `id` (always present, required by `live_component`) when `record.uuid`
   # is `nil` (a not-yet-persisted, in-memory `%EntityData{}` being built).
@@ -406,7 +406,17 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
   # ids scoped to `nil`, so two of them on the same page would collide —
   # exactly the "Duplicate id found" failure `id_prefix` exists to avoid
   # (see `FormBuilder.build_fields/3`'s moduledoc).
-  def render(assigns) do
+  #
+  # Matches ONLY `mode: :edit` explicitly — fail-closed. Every other
+  # clause (below) renders the readonly view, including a caller bug that
+  # omits `mode` entirely. The alternative (falling through to this
+  # editable-looking form whenever `mode` isn't literally `:readonly`)
+  # would pair badly with `handle_event/3`'s own `mode == :edit` guard:
+  # a forgotten `mode` would render a form that LOOKS interactive but
+  # silently drops every autosave/submit, which is worse than an
+  # obviously-static readonly view.
+  @impl true
+  def render(%{mode: :edit} = assigns) do
     ~H"""
     <div>
       <.form
@@ -431,6 +441,18 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
           </div>
         <% end %>
       </.form>
+    </div>
+    """
+  end
+
+  # Fail-closed default — `:readonly`, any other value, or `mode` missing
+  # entirely all land here.
+  def render(assigns) do
+    ~H"""
+    <div class="space-y-4">
+      <%= for field <- @entity.fields_definition || [] do %>
+        {readonly_field(field, @record.data || %{})}
+      <% end %>
     </div>
     """
   end

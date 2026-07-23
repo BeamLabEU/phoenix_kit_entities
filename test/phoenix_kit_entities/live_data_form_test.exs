@@ -353,8 +353,12 @@ defmodule PhoenixKitEntities.LiveDataFormTest do
     # `:submit_label` (not even `nil`) used to leave `render/1`'s
     # `@lang`/`@submit_label` raising `KeyError`, since these are
     # documented as optional. `assign_new/3` in `update/2` now backfills
-    # `nil` for each. `record` and `mode` stay genuinely required — no
-    # test for omitting those; a caller bug there should crash.
+    # `nil` for each. `record` stays genuinely required — no test for
+    # omitting it; a caller bug there should crash. `mode`, however,
+    # does NOT crash when omitted — `update/2` never required it to be
+    # present, and `render/1` fails closed to the readonly view for any
+    # `mode` other than an explicit `:edit` (see the "fail-closed render"
+    # describe block below).
     test ":readonly renders fine with only record and mode given" do
       fields = [%{"type" => "text", "key" => "name", "label" => "Name"}]
       e = entity(fields)
@@ -376,6 +380,45 @@ defmodule PhoenixKitEntities.LiveDataFormTest do
 
       assert html =~ ~s(phx-change="autosave")
       refute html =~ ~s(type="submit")
+    end
+  end
+
+  describe "fail-closed render (missing/invalid mode)" do
+    # `render/1` matches ONLY `mode: :edit` for the editable form; every
+    # other clause — including a caller that forgets to pass `mode` at
+    # all — renders the static readonly view. This matters together with
+    # `handle_event/3`'s own `mode == :edit` guard: if a missing `mode`
+    # rendered the form instead (e.g. by falling through a catch-all),
+    # the result would be an editable-LOOKING form that silently drops
+    # every autosave/submit, which is worse than an obviously-static
+    # readonly view.
+    test "omitting mode entirely renders the readonly view, not the form" do
+      fields = [%{"type" => "text", "key" => "name", "label" => "Name"}]
+      e = entity(fields)
+      r = record(e, %{"name" => "Jaan"})
+
+      html = render_component(LiveDataForm, %{id: "live-data-form-no-mode", record: r})
+
+      refute html =~ "<form"
+      refute html =~ ~s(phx-change="autosave")
+      assert html =~ "Jaan"
+    end
+
+    test "an unrecognized mode value also renders the readonly view" do
+      fields = [%{"type" => "text", "key" => "name", "label" => "Name"}]
+      e = entity(fields)
+      r = record(e, %{"name" => "Jaan"})
+
+      html =
+        render_component(LiveDataForm, %{
+          id: "live-data-form-bad-mode",
+          record: r,
+          mode: :bogus
+        })
+
+      refute html =~ "<form"
+      refute html =~ ~s(phx-change="autosave")
+      assert html =~ "Jaan"
     end
   end
 end
