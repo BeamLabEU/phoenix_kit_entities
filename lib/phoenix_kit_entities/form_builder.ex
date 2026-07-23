@@ -622,7 +622,7 @@ defmodule PhoenixKitEntities.FormBuilder do
         {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
       <div class="flex flex-col gap-2">
-        <%= for {option, index} <- Enum.with_index(@field["options"] || []) do %>
+        <%= for option <- @field["options"] || [] do %>
           <label class="flex items-center cursor-pointer">
             <input
               type="radio"
@@ -688,7 +688,7 @@ defmodule PhoenixKitEntities.FormBuilder do
         {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
       <div class="flex flex-col gap-2">
-        <%= for {option, index} <- Enum.with_index(@field["options"] || []) do %>
+        <%= for option <- @field["options"] || [] do %>
           <label class="flex items-center cursor-pointer">
             <input
               type="checkbox"

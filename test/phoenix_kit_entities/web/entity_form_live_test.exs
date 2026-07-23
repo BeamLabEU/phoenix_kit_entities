@@ -360,6 +360,33 @@ defmodule PhoenixKitEntities.Web.EntityFormLiveTest do
       assert render(view) =~ "Edit"
     end
 
+    test "the field selector excludes heading fields — they're display-only, never public form data",
+         %{conn: conn} = ctx do
+      {:ok, entity} =
+        Entities.create_entity(
+          %{
+            name: "ef_test_heading_#{System.unique_integer([:positive])}",
+            display_name: "EF Heading Test",
+            display_name_plural: "EF Heading Tests",
+            fields_definition: [
+              %{"type" => "heading", "key" => "sec", "label" => "Section Heading"},
+              %{"type" => "text", "key" => "name", "label" => "Name"}
+            ],
+            status: "published",
+            created_by_uuid: ctx.actor_uuid
+          },
+          actor_uuid: ctx.actor_uuid
+        )
+
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, "/en/admin/entities/#{entity.uuid}/edit")
+
+      html = render_hook(view, "toggle_public_form", %{})
+
+      assert html =~ ~s(phx-value-field="name")
+      refute html =~ ~s(phx-value-field="sec")
+    end
+
     test "security setting toggles + actions",
          %{conn: conn} = ctx do
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))

@@ -2342,7 +2342,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                       </p>
 
                       <div class="space-y-2 max-h-64 overflow-y-auto border border-base-300 rounded-lg p-3">
-                        <%= for field <- @fields do %>
+                        <%= for field <- @fields, field["type"] != "heading" do %>
                           <label class="flex items-center gap-3 p-2 hover:bg-base-200 rounded cursor-pointer">
                             <input
                               type="checkbox"
