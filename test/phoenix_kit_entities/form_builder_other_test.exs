@@ -24,6 +24,8 @@ defmodule PhoenixKitEntities.FormBuilderOtherTest do
   defp changeset(data),
     do: Ecto.Changeset.cast(%PhoenixKitEntities.EntityData{data: data}, %{}, [])
 
+  defp entity(fields), do: %PhoenixKitEntities{fields_definition: fields}
+
   # radio/checkbox render `value="__other__"` and `checked` as separate
   # (non-adjacent) HTML attributes — pull out just that `<input>` tag so
   # assertions don't depend on attribute ordering.
@@ -66,6 +68,36 @@ defmodule PhoenixKitEntities.FormBuilderOtherTest do
       fields = [@field, %{"type" => "text", "key" => "name"}]
       params = %{"varv" => "Must", "name" => "Jaan"}
       assert FormBuilder.merge_other_params(fields, params) == params
+    end
+  end
+
+  describe "validate_data/2 — end-to-end through merge_other_params" do
+    # This is the exact pipeline do_validate/do_save (data_form.ex) and
+    # handle_submission (entity_form_controller.ex) run in production:
+    # raw submitted params -> merge_other_params -> validate_data. Confirms
+    # the loosened validate_type clause (form_builder.ex) only kicks in
+    # when allow_other is actually set — a field without it keeps the
+    # strict options check.
+    test "a custom value survives validation for an allow_other field" do
+      fields = [@field]
+      raw_params = %{"varv" => "__other__", "varv__other" => "Punane"}
+      merged = FormBuilder.merge_other_params(fields, raw_params)
+
+      assert {:ok, %{"varv" => "Punane"}} = FormBuilder.validate_data(entity(fields), merged)
+    end
+
+    test "the same raw sentinel is rejected when the field lacks allow_other" do
+      field = Map.delete(@field, "allow_other")
+      fields = [field]
+      raw_params = %{"varv" => "__other__", "varv__other" => "Punane"}
+
+      # merge_other_params is a no-op here (no allow_other), so the literal
+      # sentinel reaches validate_data unresolved and must fail options
+      # validation just like any other value outside the fixed list.
+      merged = FormBuilder.merge_other_params(fields, raw_params)
+      assert merged == raw_params
+
+      assert {:error, %{"varv" => _}} = FormBuilder.validate_data(entity(fields), merged)
     end
   end
 
