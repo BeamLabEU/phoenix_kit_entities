@@ -18,6 +18,12 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
     `PhoenixKitEntities.EntityData.update/3` already broadcasts changes.
   - `record.status` — autosave never changes it; a draft record stays a
     draft, a published one stays published.
+  - Required-field completeness. Every save runs the merged data through
+    `PhoenixKitEntities.FormBuilder.validate_data/2` on a best-effort
+    basis (for type coercion — number strings, URL normalization — not
+    as a hard gate: see `coerce_or_pass_through/3`), so an incomplete
+    required field never blocks a mid-survey autosave. Deciding whether
+    the record is "complete enough" to submit is the parent's call.
 
   ## Usage
 
@@ -180,7 +186,9 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
       |> then(&FormBuilder.merge_other_params(fields_definition, &1))
       |> then(&Map.merge(record.data || %{}, &1))
 
-    case EntityData.update(record, %{"data" => merged_data}, actor_opts(socket)) do
+    data_to_persist = coerce_or_pass_through(entity, merged_data, log_context)
+
+    case EntityData.update(record, %{"data" => data_to_persist}, actor_opts(socket)) do
       {:ok, updated_record} ->
         {:ok, updated_record}
 
@@ -191,6 +199,43 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
         )
 
         :error
+    end
+  end
+
+  # `FormBuilder.validate_data/3` runs here WITHOUT `lang_code` — even
+  # though `lang` is available on the socket — deliberately, not as an
+  # oversight. Passing a non-nil `lang_code` that happens to differ from
+  # `Multilang.primary_language/0` routes into `validate_data/3`'s
+  # secondary-language branch, which treats the payload as translation
+  # overrides and skips EVERY required-field check entirely. This
+  # component's `record.data` is a flat, non-multilang map — there is no
+  # "secondary language" for it — so always validating as the full/primary
+  # path is the only correct choice; threading `lang` through here would
+  # silently reopen exactly the required-field hole this call exists to
+  # help close.
+  #
+  # Used for type coercion (e.g. number strings -> floats, URL
+  # normalization) on a best-effort basis — never as a hard gate. Errors
+  # (including a still-incomplete required field) are logged and merged
+  # data is persisted as-is: `validate_data/3` validates the ENTIRE
+  # entity on every call, so treating its errors as blocking would mean a
+  # multi-field survey never saves ANY progress until every required
+  # field is filled — defeating incremental autosave of a draft. The
+  # final arbiter of what actually lands in the database is
+  # `EntityData.changeset/2` inside `EntityData.update/3` above; a
+  # rejection there still logs and keeps the previous `record`.
+  defp coerce_or_pass_through(entity, merged_data, log_context) do
+    case FormBuilder.validate_data(entity, merged_data) do
+      {:ok, validated_data} ->
+        Map.merge(merged_data, validated_data)
+
+      {:error, errors} ->
+        Logger.warning(
+          "LiveDataForm #{log_context} data failed FormBuilder validation (persisting as-is): " <>
+            "#{inspect(errors)} (entity_uuid=#{inspect(entity.uuid)})"
+        )
+
+        merged_data
     end
   end
 

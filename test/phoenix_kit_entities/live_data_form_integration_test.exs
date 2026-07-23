@@ -169,12 +169,14 @@ defmodule PhoenixKitEntities.LiveDataFormIntegrationTest do
       assert socket.assigns.record.data["color"] == "Crimson"
     end
 
-    test "an update that fails validation logs and keeps the previous record" do
+    test "an EntityData.changeset failure logs and keeps the previous record" do
       entity = create_entity!()
       record = create_record!(entity, %{"name" => "Old"})
       # entity_uuid pointing at a deleted/unknown entity trips
       # `validate_entity_reference`/`validate_data_against_entity` inside
-      # `EntityData.changeset/2`, forcing the `{:error, changeset}` branch.
+      # `EntityData.changeset/2`, forcing the `{:error, changeset}` branch —
+      # this is the FINAL, hard-blocking validator (unlike
+      # `FormBuilder.validate_data/2` below, which never blocks a save).
       broken_record = %{record | entity_uuid: Ecto.UUID.generate()}
       socket = socket(broken_record, entity)
 
@@ -190,6 +192,66 @@ defmodule PhoenixKitEntities.LiveDataFormIntegrationTest do
 
       reloaded = EntityData.get!(record.uuid)
       assert reloaded.data["name"] == "Old"
+    end
+
+    test "a number field's string value is coerced to a float on persist" do
+      fields = [%{"type" => "number", "key" => "qty", "label" => "Quantity"}]
+      entity = create_entity!(fields)
+      record = create_record!(entity, %{})
+      socket = socket(record, entity)
+
+      {:noreply, socket} =
+        LiveDataForm.handle_event(
+          "autosave",
+          %{"phoenix_kit_entity_data" => %{"data" => %{"qty" => "5"}}},
+          socket
+        )
+
+      assert socket.assigns.record.data["qty"] == 5.0
+
+      reloaded = EntityData.get!(record.uuid)
+      assert reloaded.data["qty"] == 5.0
+    end
+
+    test "data that fails FormBuilder.validate_data/2 is persisted as-is and logs a warning" do
+      # `radio` fields are validated strictly by `FormBuilder.validate_type/2`
+      # (value must be one of `options`, absent `allow_other`) but have NO
+      # type-specific branch in `EntityData.changeset/2`'s own
+      # `validate_field_type/2` — so an out-of-options value fails the
+      # FormBuilder pass while still sailing through `EntityData.update/3`,
+      # exercising the "log and persist raw" branch specifically (as
+      # opposed to the hard-blocking changeset failure above).
+      fields = [
+        %{
+          "type" => "radio",
+          "key" => "priority",
+          "label" => "Priority",
+          "options" => ["Low", "High"]
+        }
+      ]
+
+      entity = create_entity!(fields)
+      record = create_record!(entity, %{})
+      socket = socket(record, entity)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          {:noreply, updated_socket} =
+            LiveDataForm.handle_event(
+              "autosave",
+              %{"phoenix_kit_entity_data" => %{"data" => %{"priority" => "Medium"}}},
+              socket
+            )
+
+          send(self(), {:updated_socket, updated_socket})
+        end)
+
+      assert log =~ "failed FormBuilder validation"
+      assert_received {:updated_socket, updated_socket}
+      assert updated_socket.assigns.record.data["priority"] == "Medium"
+
+      reloaded = EntityData.get!(record.uuid)
+      assert reloaded.data["priority"] == "Medium"
     end
   end
 
