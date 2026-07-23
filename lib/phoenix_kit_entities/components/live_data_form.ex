@@ -21,25 +21,26 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
     `PhoenixKitEntities.EntityData.update/3` already broadcasts changes.
   - `record.status` — autosave never changes it; a draft record stays a
     draft, a published one stays published.
-  - Required-field completeness — **only partially, and this matters**.
-    Every save runs the merged data through
+  - Required-field completeness — **incremental autosave is guaranteed
+    only for entities without required fields; entities with required
+    fields save all-or-nothing per attempt, by design**. Every save runs
+    the merged data through
     `PhoenixKitEntities.FormBuilder.validate_data/2` on a best-effort
     basis (for type coercion — number strings, URL normalization — never
     as a hard gate: see `coerce_or_pass_through/3`). *However*,
     `EntityData.update/3` → `EntityData.changeset/2` runs its own,
     unconditional required-field check across the **entire** entity on
-    every single save, independent of `FormBuilder` and not bypassable
-    from here. In practice: for an entity with required fields, an
-    autosave only actually persists once every required field has *some*
-    value across the whole record (thanks to merging over `record.data`,
-    filling in the last one saves everything typed before it in one
-    shot) — an autosave attempt while any required field is still empty
-    logs an error and keeps the previous `record` unpersisted, exactly
-    like any other save rejection. Genuine incremental "save my progress
-    so far" for a record with required fields is **not yet guaranteed**;
-    treat that as a known limitation pending a decision on whether/how to
-    relax `EntityData.changeset/2`'s validation for this use case, not as
-    something this component already solved.
+    every single save, independent of `FormBuilder` and deliberately left
+    untouched here — relaxing it would also affect the admin `DataForm`
+    and the public entity form, which both rely on it staying strict. In
+    practice: for an entity with required fields, an autosave attempt
+    while any required field is still empty logs an error and keeps the
+    previous `record` unpersisted, exactly like any other save rejection;
+    filling in the last required field then persists everything typed
+    before it in one shot (thanks to merging over `record.data`). Entities
+    with no required fields autosave incrementally with no such gap.
+    Checking whether a record is "complete enough" to submit is the
+    parent's responsibility either way.
 
   ## Usage
 
