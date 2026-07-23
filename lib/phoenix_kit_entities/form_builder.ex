@@ -766,7 +766,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     assigns = %{field: field}
 
     ~H"""
-    <h3 class="text-base font-semibold border-b border-base-300 pb-1 mt-6 mb-2 col-span-full">
+    <h3 class="text-base font-semibold border-b border-base-300 pb-1 mt-6 mb-2">
       {@field["label"]}
     </h3>
     """

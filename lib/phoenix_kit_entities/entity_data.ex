@@ -403,6 +403,9 @@ defmodule PhoenixKitEntities.EntityData do
     end)
   end
 
+  # Display-only — no data to validate or require.
+  defp validate_single_data_field(changeset, %{"type" => "heading"}, _data), do: changeset
+
   defp validate_single_data_field(changeset, field_def, data) do
     field_key = field_def["key"]
     field_value = data[field_key]

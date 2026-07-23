@@ -13,6 +13,7 @@ defmodule PhoenixKitEntities.FieldTypes do
   - **email**: Email address with validation
   - **url**: URL with validation
   - **rich_text**: Rich HTML editor (TinyMCE/CKEditor-like)
+  - **heading**: Display-only section heading (no data), category `:basic`
 
   ### Numeric Types
   - **number**: Numeric input (integer or decimal)
@@ -27,9 +28,6 @@ defmodule PhoenixKitEntities.FieldTypes do
   - **select**: Dropdown selection (single choice)
   - **radio**: Radio button group (single choice)
   - **checkbox**: Checkbox group (multiple choices)
-
-  ### Layout Types
-  - **heading**: Display-only section heading (no data)
 
   ## Usage Examples
 

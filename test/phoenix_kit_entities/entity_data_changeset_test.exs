@@ -183,4 +183,37 @@ defmodule PhoenixKitEntities.EntityDataChangesetTest do
       refute errors_on(cs)[:position]
     end
   end
+
+  describe "heading fields" do
+    setup ctx do
+      {:ok, heading_entity} =
+        Entities.create_entity(
+          %{
+            name: "data_cs_heading_test",
+            display_name: "Data CS Heading Test",
+            display_name_plural: "Data CS Heading Tests",
+            fields_definition: [
+              %{"type" => "heading", "key" => "sec_ahi", "label" => "Ahi", "required" => true},
+              %{"type" => "text", "key" => "name", "label" => "Name"}
+            ],
+            created_by_uuid: ctx.actor_uuid
+          },
+          actor_uuid: ctx.actor_uuid
+        )
+
+      {:ok, heading_entity: heading_entity}
+    end
+
+    test "required=true on a heading never blocks saving the record", ctx do
+      cs =
+        EntityData.changeset(%EntityData{}, %{
+          entity_uuid: ctx.heading_entity.uuid,
+          title: "Heading Record",
+          created_by_uuid: ctx.actor_uuid,
+          data: %{"name" => "value"}
+        })
+
+      refute errors_on(cs)[:data]
+    end
+  end
 end
