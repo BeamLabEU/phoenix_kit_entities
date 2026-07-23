@@ -21,6 +21,14 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
     `PhoenixKitEntities.EntityData.update/3` already broadcasts changes.
   - `record.status` — autosave never changes it; a draft record stays a
     draft, a published one stays published.
+  - Guarding who can persist — `handle_event/3` only runs the
+    autosave/submit path when `mode == :edit`; in `:readonly` both events
+    are silently ignored. This isn't just UI polish: a `LiveComponent`'s
+    `handle_event/3` is reachable for any event it defines via the
+    component's `cid`, independent of what the rendered template actually
+    wires up, so a `:readonly` instance would otherwise still accept a
+    crafted "autosave"/"submit" push and persist attacker-controlled data
+    into a record the UI is displaying as read-only.
   - Required-field completeness — **incremental autosave is guaranteed
     only for entities without required fields; entities with required
     fields save all-or-nothing per attempt, by design**. Every save runs
@@ -89,6 +97,16 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
   keeps the previous `record` — it never crashes the LiveView, and on a
   failed submit specifically it does not send `:submitted` (the parent
   must not treat unpersisted data as agreed-upon).
+
+  Ordering caveat: a debounced autosave that was already in flight when
+  Submit was pressed can still land afterwards, so the parent may see
+  `{:live_data_form, :saved, _}` arrive *after*
+  `{:live_data_form, :submitted, _}` for the same record. Both messages
+  carry the freshly-persisted record, so this is harmless as long as the
+  parent treats each message as "here is the current server copy" rather
+  than assuming `:submitted` is always the last word — read the record's
+  own `status`/fields rather than inferring lifecycle order from message
+  arrival, the way the host app (andi) does.
   """
 
   use PhoenixKitWeb, :live_component
@@ -148,8 +166,25 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
     assign(socket, :form, to_form(changeset, as: :phoenix_kit_entity_data))
   end
 
+  # SECURITY: every clause below that actually persists (`do_autosave/2`,
+  # `do_submit/2`) is guarded on `mode == :edit`. `handle_event/3` is
+  # reachable for ANY event this module defines regardless of what the
+  # rendered HTML wires up — LiveView dispatches a component event by
+  # `cid` alone, so an authenticated client can push a crafted "autosave"
+  # or "submit" payload straight at a `:readonly` instance's cid from the
+  # browser console (devtools `pushEventTo`-style), even though the
+  # `:readonly` template never renders a `<form>` with these bindings.
+  # Without the guard that would silently persist attacker-controlled
+  # data into a record the UI is showing as read-only — e.g. an already
+  # "Kinnitatud" (submitted) survey whose status never changes, so the
+  # tampering is invisible to whoever reviews it next. The fallback
+  # clause at the bottom makes both events inert in any non-`:edit` mode.
   @impl true
-  def handle_event("autosave", %{"phoenix_kit_entity_data" => data_params}, socket) do
+  def handle_event(
+        "autosave",
+        %{"phoenix_kit_entity_data" => data_params},
+        %{assigns: %{mode: :edit}} = socket
+      ) do
     {:noreply, do_autosave(socket, Map.get(data_params, "data", %{}))}
   end
 
@@ -161,7 +196,8 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
   # ignore exactly the case `normalize_absent_checkboxes/2` exists to
   # handle (unticking the last box). An empty map still flows through the
   # same merge/coercion/persist path as any other autosave.
-  def handle_event("autosave", _params, socket), do: {:noreply, do_autosave(socket, %{})}
+  def handle_event("autosave", _params, %{assigns: %{mode: :edit}} = socket),
+    do: {:noreply, do_autosave(socket, %{})}
 
   # Submit persists the params `phx-submit` just sent — the same
   # merge-over-`record.data` path as autosave — rather than trusting
@@ -173,11 +209,30 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
   # the freshly-updated record — on a successful save; a failed save
   # logs and does not notify the parent, since it must not treat
   # unpersisted data as agreed-upon.
-  def handle_event("submit", %{"phoenix_kit_entity_data" => data_params}, socket) do
+  def handle_event(
+        "submit",
+        %{"phoenix_kit_entity_data" => data_params},
+        %{assigns: %{mode: :edit}} = socket
+      ) do
     {:noreply, do_submit(socket, Map.get(data_params, "data", %{}))}
   end
 
-  def handle_event("submit", _params, socket), do: {:noreply, do_submit(socket, %{})}
+  def handle_event("submit", _params, %{assigns: %{mode: :edit}} = socket),
+    do: {:noreply, do_submit(socket, %{})}
+
+  # Catch-all for both events in any mode other than `:edit` (`:readonly`
+  # today, and any future mode). Deliberately silent/inert rather than
+  # crashing or `Logger.warning` — a legitimate client can still have a
+  # stray debounced autosave in flight around a mode transition, so this
+  # isn't necessarily an attack every time it fires; `debug` is enough to
+  # trace it when needed without adding log noise.
+  def handle_event(event, _params, socket) when event in ["autosave", "submit"] do
+    Logger.debug(
+      "LiveDataForm ignored #{event}: mode is #{inspect(socket.assigns[:mode])}, not :edit"
+    )
+
+    {:noreply, socket}
+  end
 
   # Merges the submitted field values over the record's existing (flat)
   # data map and persists them, preserving `status` untouched. Never

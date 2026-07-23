@@ -239,6 +239,82 @@ defmodule PhoenixKitEntities.LiveDataFormTest do
     end
   end
 
+  describe "mode guard (security)" do
+    # `handle_event/3` is reachable for any event this component defines
+    # regardless of what the rendered template wires up — LiveView
+    # dispatches a component event by `cid` alone. A `:readonly` instance
+    # never renders a `<form phx-change="autosave" ...>`, but that alone
+    # doesn't stop a crafted client-side push from reaching this
+    # `handle_event/3` clause. These are handle_event/3 called directly
+    # (no live process needed — mirrors the DB-backed tests in
+    # `live_data_form_integration_test.exs`), and specifically DON'T need
+    # the database: the mode guard must reject the event before
+    # `persist_data/3` (and therefore `EntityData.update/3`) ever runs.
+    defp readonly_socket(record, entity) do
+      %Phoenix.LiveView.Socket{
+        assigns: %{
+          __changed__: %{},
+          record: record,
+          entity: entity,
+          mode: :readonly,
+          lang: nil,
+          actor: nil,
+          submit_label: nil
+        }
+      }
+    end
+
+    test "autosave is a no-op in :readonly mode" do
+      fields = [%{"type" => "text", "key" => "name", "label" => "Name"}]
+      e = entity(fields)
+      r = record(e, %{"name" => "Old"})
+      socket = readonly_socket(r, e)
+
+      {:noreply, updated_socket} =
+        LiveDataForm.handle_event(
+          "autosave",
+          %{"phoenix_kit_entity_data" => %{"data" => %{"name" => "Hacked"}}},
+          socket
+        )
+
+      assert updated_socket.assigns.record.data == %{"name" => "Old"}
+      refute_received {:live_data_form, :saved, _}
+    end
+
+    test "submit is a no-op in :readonly mode" do
+      fields = [%{"type" => "text", "key" => "name", "label" => "Name"}]
+      e = entity(fields)
+      r = record(e, %{"name" => "Old"})
+      socket = readonly_socket(r, e)
+
+      {:noreply, updated_socket} =
+        LiveDataForm.handle_event(
+          "submit",
+          %{"phoenix_kit_entity_data" => %{"data" => %{"name" => "Hacked"}}},
+          socket
+        )
+
+      assert updated_socket.assigns.record.data == %{"name" => "Old"}
+      refute_received {:live_data_form, :submitted, _}
+    end
+
+    test "the fallback autosave clause (no phoenix_kit_entity_data key) is also a no-op in :readonly mode" do
+      fields = [
+        %{"type" => "checkbox", "key" => "tools", "label" => "Tools", "options" => ["Hammer"]}
+      ]
+
+      e = entity(fields)
+      r = record(e, %{"tools" => ["Hammer"]})
+      socket = readonly_socket(r, e)
+
+      {:noreply, updated_socket} =
+        LiveDataForm.handle_event("autosave", %{"_target" => ["nonexistent"]}, socket)
+
+      assert updated_socket.assigns.record.data == %{"tools" => ["Hammer"]}
+      refute_received {:live_data_form, :saved, _}
+    end
+  end
+
   describe "optional attrs (lang, actor, submit_label) can be omitted entirely" do
     # `update/2` only sets a key on `socket.assigns` for what the caller
     # actually passes in — a caller that omits `:lang`/`:actor`/

@@ -294,6 +294,51 @@ defmodule PhoenixKitEntities.LiveDataFormIntegrationTest do
     end
   end
 
+  describe "mode guard (security)" do
+    # Same guard as the unit tests in `live_data_form_test.exs`, but here
+    # with a real, DB-persisted record — confirms the guard rejects the
+    # event before `EntityData.update/3` ever runs, not merely that the
+    # in-memory socket assign looks untouched.
+    test "autosave against a :readonly socket does not persist and sends no :saved" do
+      entity = create_entity!()
+      record = create_record!(entity, %{"name" => "Old", "tools" => ["Hammer"]}, "published")
+      socket = socket(record, entity, mode: :readonly)
+
+      {:noreply, updated_socket} =
+        LiveDataForm.handle_event(
+          "autosave",
+          %{"phoenix_kit_entity_data" => %{"data" => %{"name" => "Hacked"}}},
+          socket
+        )
+
+      assert updated_socket.assigns.record.data["name"] == "Old"
+      refute_received {:live_data_form, :saved, _}
+
+      reloaded = EntityData.get!(record.uuid)
+      assert reloaded.data["name"] == "Old"
+    end
+
+    test "submit against a :readonly socket does not persist and sends no :submitted" do
+      entity = create_entity!()
+      record = create_record!(entity, %{"name" => "Old"}, "published")
+      socket = socket(record, entity, mode: :readonly, submit_label: "Kinnitan")
+
+      {:noreply, updated_socket} =
+        LiveDataForm.handle_event(
+          "submit",
+          %{"phoenix_kit_entity_data" => %{"data" => %{"name" => "Hacked"}}},
+          socket
+        )
+
+      assert updated_socket.assigns.record.data["name"] == "Old"
+      refute_received {:live_data_form, :submitted, _}
+      refute_received {:live_data_form, :saved, _}
+
+      reloaded = EntityData.get!(record.uuid)
+      assert reloaded.data["name"] == "Old"
+    end
+  end
+
   describe "submit" do
     # Contract (revised): submit persists the params `phx-submit` just
     # sent — same merge-over-`record.data` path as autosave — so the
