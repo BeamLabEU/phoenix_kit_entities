@@ -1415,6 +1415,10 @@ defmodule PhoenixKitEntities.EntityData do
       When the status does match, the changeset is built against the
       freshly-read row (not the possibly-stale `entity_data` argument),
       so any other field also reflects the latest DB state going in.
+      Must be a list — a bare status string (e.g. `require_status:
+      "draft"` instead of `require_status: ["draft"]`) raises
+      `ArgumentError` immediately rather than reaching a confusing
+      `CaseClauseError`.
 
   ## Examples
 
@@ -1439,6 +1443,11 @@ defmodule PhoenixKitEntities.EntityData do
 
       statuses when is_list(statuses) ->
         update_with_status_guard(entity_data, attrs, statuses, opts)
+
+      status when is_binary(status) ->
+        raise ArgumentError,
+              "require_status expects a list of statuses, got a binary " <>
+                "(#{inspect(status)}) — wrap it in a list, e.g. require_status: [#{inspect(status)}]"
     end
   end
 

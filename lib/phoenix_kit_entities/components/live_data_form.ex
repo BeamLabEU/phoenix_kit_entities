@@ -44,9 +44,11 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
     still-pending autosave lands afterwards, `mode == :edit` is
     satisfied in both — the second tab genuinely IS in edit mode, it's
     just editing a record that has since moved on. Closing that
-    data-level race is what the `persist_statuses` attribute (below) is
-    for: it's optional (`nil` by default, matching every caller before
-    it existed) precisely because it needs the host LiveView to state
+    *status-transition* race — NOT general concurrent-edit/optimistic
+    locking, see the `persist_statuses` attribute's own doc for the
+    distinction — is what `persist_statuses` (below) is for: it's
+    optional (`nil` by default, matching every caller before it
+    existed) precisely because it needs the host LiveView to state
     which statuses this instance is allowed to write into.
   - Required-field completeness — **incremental autosave is guaranteed
     only for entities without required fields; entities with required
@@ -116,7 +118,15 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
     fails exactly like any other rejected save (see "Messages sent to
     the parent" below) — logged at `debug` (not `error`; the guard
     doing its job isn't a failure), previous `record` kept, no
-    `:saved`/`:submitted` message sent.
+    `:saved`/`:submitted` message sent. Be precise about what this
+    guards: it's a **status-transition** check, not optimistic locking
+    on `data`. Two sessions both legitimately editing the same record
+    while its status stays within `persist_statuses` (e.g. both still
+    "draft") are NOT protected from each other — whichever save lands
+    last still wins, silently overwriting the other's edits. Closing
+    *that* race (concurrent edits within the same allowed status) is
+    out of scope here; this attribute only stops a save from landing
+    once the record has moved to a status the caller didn't allow.
 
   ## Messages sent to the parent
 
