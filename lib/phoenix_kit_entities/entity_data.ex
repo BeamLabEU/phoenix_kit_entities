@@ -413,7 +413,15 @@ defmodule PhoenixKitEntities.EntityData do
     is_required = field_def["required"] || false
 
     cond do
-      is_required && (is_nil(field_value) || field_value == "") ->
+      # `[]` is what an unticked (or never-touched) required checkbox
+      # group submits — it must count as "absent" here the same way
+      # `FormBuilder.validate_required/2` (form_builder.ex) already treats
+      # `value in [nil, "", []]` as missing. Before this, an empty
+      # required checkbox sailed through this changeset check (only
+      # `nil`/`""` were caught) while `FormBuilder.validate_data/2`
+      # rejected it — the two disagreed, and `LiveDataForm` relies on
+      # this changeset being the final, strict word.
+      is_required && field_value in [nil, "", []] ->
         add_error(
           changeset,
           :data,

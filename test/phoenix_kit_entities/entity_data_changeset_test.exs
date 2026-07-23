@@ -297,4 +297,54 @@ defmodule PhoenixKitEntities.EntityDataChangesetTest do
       assert errors_on(cs)[:data]
     end
   end
+
+  describe "required checkbox field — [] counts as empty" do
+    setup ctx do
+      {:ok, entity} =
+        Entities.create_entity(
+          %{
+            name: "data_cs_required_checkbox_test",
+            display_name: "Data CS Required Checkbox Test",
+            display_name_plural: "Data CS Required Checkbox Tests",
+            fields_definition: [
+              %{
+                "type" => "checkbox",
+                "key" => "tools",
+                "label" => "Tools",
+                "options" => ["Hammer", "Drill"],
+                "required" => true
+              }
+            ],
+            created_by_uuid: ctx.actor_uuid
+          },
+          actor_uuid: ctx.actor_uuid
+        )
+
+      {:ok, required_checkbox_entity: entity}
+    end
+
+    test "an empty list is rejected as missing, same as a required text field", ctx do
+      cs =
+        EntityData.changeset(%EntityData{}, %{
+          entity_uuid: ctx.required_checkbox_entity.uuid,
+          title: "Required Checkbox Record",
+          created_by_uuid: ctx.actor_uuid,
+          data: %{"tools" => []}
+        })
+
+      assert errors_on(cs)[:data]
+    end
+
+    test "a non-empty list satisfies the requirement", ctx do
+      cs =
+        EntityData.changeset(%EntityData{}, %{
+          entity_uuid: ctx.required_checkbox_entity.uuid,
+          title: "Required Checkbox Record",
+          created_by_uuid: ctx.actor_uuid,
+          data: %{"tools" => ["Hammer"]}
+        })
+
+      refute errors_on(cs)[:data]
+    end
+  end
 end
