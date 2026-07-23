@@ -164,6 +164,13 @@ defmodule PhoenixKitEntities.FormBuilderRenderTest do
       html = rendered_to_string(rendered)
       assert html =~ "entity-field-title-es"
     end
+
+    test "with id_prefix opt, wrapper id folds in the prefix", ctx do
+      changeset = Ecto.Changeset.cast(ctx.record, %{}, [])
+      rendered = FormBuilder.build_fields(ctx.entity, changeset, id_prefix: "abc")
+      html = rendered_to_string(rendered)
+      assert html =~ ~s(id="entity-field-abc-title-primary")
+    end
   end
 
   describe "get_field_value/2" do
