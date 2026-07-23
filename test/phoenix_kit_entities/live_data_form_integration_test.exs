@@ -172,6 +172,34 @@ defmodule PhoenixKitEntities.LiveDataFormIntegrationTest do
       assert reloaded.data["tools"] == []
     end
 
+    test "a key with no matching field definition is dropped before persisting" do
+      # A crafted/legacy param riding along with a legitimate autosave
+      # payload — `whitelist_known_fields/2` (live_data_form.ex) filters
+      # it out after `merge_other_params/2`, so it never lands in
+      # `record.data` even though the changeset itself has no opinion on
+      # unknown keys (JSONB `data` accepts anything).
+      entity = create_entity!()
+      record = create_record!(entity, %{})
+      socket = socket(record, entity)
+
+      {:noreply, socket} =
+        LiveDataForm.handle_event(
+          "autosave",
+          %{
+            "phoenix_kit_entity_data" => %{
+              "data" => %{"name" => "Jaan", "role" => "admin"}
+            }
+          },
+          socket
+        )
+
+      assert socket.assigns.record.data["name"] == "Jaan"
+      refute Map.has_key?(socket.assigns.record.data, "role")
+
+      reloaded = EntityData.get!(record.uuid)
+      refute Map.has_key?(reloaded.data, "role")
+    end
+
     test "resolves an allow_other sentinel before persisting" do
       fields = [
         %{

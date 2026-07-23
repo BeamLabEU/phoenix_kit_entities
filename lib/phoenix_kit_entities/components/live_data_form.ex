@@ -275,6 +275,7 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
       fields_definition
       |> normalize_absent_checkboxes(raw_data_params)
       |> then(&FormBuilder.merge_other_params(fields_definition, &1))
+      |> whitelist_known_fields(fields_definition)
       |> then(&Map.merge(record.data || %{}, &1))
 
     data_to_persist = coerce_or_pass_through(entity, merged_data, log_context)
@@ -291,6 +292,20 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
 
         :error
     end
+  end
+
+  # Drops any submitted key that isn't a real field on this entity —
+  # companion `<key>__other` keys are already gone by this point
+  # (`merge_other_params/2` drops them), so this only needs to guard
+  # against keys that were never part of the form at all (a crafted
+  # param, or a stale key from a since-changed entity definition).
+  # Legacy keys already stored in `record.data` are unaffected — they
+  # survive via the `Map.merge/2` in the caller regardless of whether
+  # they're in `fields_definition` today; this only filters what's
+  # newly incoming.
+  defp whitelist_known_fields(params, fields_definition) do
+    known_keys = MapSet.new(fields_definition, & &1["key"])
+    Map.filter(params, fn {key, _value} -> MapSet.member?(known_keys, key) end)
   end
 
   # `FormBuilder.validate_data/3` runs here WITHOUT `lang_code` — even
@@ -332,7 +347,12 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
         |> then(&Map.merge(merged_data, &1))
 
       {:error, errors} ->
-        Logger.warning(
+        # `debug`, not `warning`: an incomplete required field mid-draft is
+        # the expected, normal state of a form someone is still filling
+        # out — autosave hits this on every debounced keystroke until the
+        # last required field is filled, and a `warning` at that rate
+        # floods the logs for something that isn't actually wrong.
+        Logger.debug(
           "LiveDataForm #{log_context} data failed FormBuilder validation (persisting as-is): " <>
             "#{inspect(errors)} (entity_uuid=#{inspect(entity.uuid)})"
         )
@@ -371,6 +391,13 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
     """
   end
 
+  # `id_prefix: @record.uuid || @id` — falls back to the component's own
+  # `id` (always present, required by `live_component`) when `record.uuid`
+  # is `nil` (a not-yet-persisted, in-memory `%EntityData{}` being built).
+  # Without the fallback, every such instance would render field-wrapper
+  # ids scoped to `nil`, so two of them on the same page would collide —
+  # exactly the "Duplicate id found" failure `id_prefix` exists to avoid
+  # (see `FormBuilder.build_fields/3`'s moduledoc).
   def render(assigns) do
     ~H"""
     <div>
@@ -385,7 +412,7 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
         {FormBuilder.build_fields(@entity, @form,
           wrapper_class: "mb-4",
           lang_code: @lang,
-          id_prefix: @record.uuid
+          id_prefix: @record.uuid || @id
         )}
 
         <%= if @submit_label do %>

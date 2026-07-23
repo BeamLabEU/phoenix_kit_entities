@@ -239,6 +239,38 @@ defmodule PhoenixKitEntities.LiveDataFormTest do
     end
   end
 
+  describe "id_prefix fallback for a not-yet-persisted record" do
+    test "falls back to the component's own id when record.uuid is nil" do
+      fields = [%{"type" => "text", "key" => "name", "label" => "Name"}]
+      e = entity(fields)
+      # A record still being built (never saved) has no uuid yet.
+      r = %EntityData{
+        uuid: nil,
+        entity_uuid: e.uuid,
+        entity: e,
+        title: "New",
+        status: "draft",
+        data: %{}
+      }
+
+      html =
+        render_component(LiveDataForm, %{
+          id: "ld-form-new",
+          record: r,
+          mode: :edit,
+          lang: nil,
+          actor: nil,
+          submit_label: nil
+        })
+
+      # Without the `|| @id` fallback this would render
+      # `id="entity-field-name-primary"` (no prefix at all) for every
+      # not-yet-persisted instance, colliding across multiple such
+      # instances on the same page.
+      assert html =~ ~s(id="entity-field-ld-form-new-name-primary")
+    end
+  end
+
   describe "mode guard (security)" do
     # `handle_event/3` is reachable for any event this component defines
     # regardless of what the rendered template wires up — LiveView
