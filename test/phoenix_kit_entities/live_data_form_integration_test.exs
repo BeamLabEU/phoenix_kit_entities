@@ -403,6 +403,82 @@ defmodule PhoenixKitEntities.LiveDataFormIntegrationTest do
     end
   end
 
+  describe "cross-session status guard (persist_statuses)" do
+    # Simulates two browser tabs holding the same record: this test's
+    # `socket` plays the SECOND tab, still holding an :edit view built
+    # from `record` (status "draft") after a FIRST tab has since
+    # submitted/published the same row directly in the DB. Without
+    # `persist_statuses`, `mode == :edit` alone doesn't catch this —
+    # this socket genuinely IS in edit mode, it's just editing a record
+    # that has moved on underneath it.
+    test "autosave refuses once the DB record has moved outside persist_statuses" do
+      entity = create_entity!()
+      record = create_record!(entity, %{"name" => "Old"}, "draft")
+      socket = socket(record, entity, persist_statuses: ["draft"])
+
+      {:ok, _published} =
+        EntityData.update(record, %{status: "published"}, actor_uuid: Ecto.UUID.generate())
+
+      {:noreply, updated_socket} =
+        LiveDataForm.handle_event(
+          "autosave",
+          %{"phoenix_kit_entity_data" => %{"data" => %{"name" => "New"}}},
+          socket
+        )
+
+      assert updated_socket.assigns.record == record
+      refute_received {:live_data_form, :saved, _}
+
+      reloaded = EntityData.get!(record.uuid)
+      assert reloaded.data["name"] == "Old"
+      assert reloaded.status == "published"
+    end
+
+    test "submit refuses once the DB record has moved outside persist_statuses" do
+      entity = create_entity!()
+      record = create_record!(entity, %{"name" => "Old"}, "draft")
+      socket = socket(record, entity, persist_statuses: ["draft"], submit_label: "Kinnitan")
+
+      {:ok, _published} =
+        EntityData.update(record, %{status: "published"}, actor_uuid: Ecto.UUID.generate())
+
+      {:noreply, updated_socket} =
+        LiveDataForm.handle_event(
+          "submit",
+          %{"phoenix_kit_entity_data" => %{"data" => %{"name" => "New"}}},
+          socket
+        )
+
+      assert updated_socket.assigns.record == record
+      refute_received {:live_data_form, :submitted, _}
+      refute_received {:live_data_form, :saved, _}
+
+      reloaded = EntityData.get!(record.uuid)
+      assert reloaded.data["name"] == "Old"
+      assert reloaded.status == "published"
+    end
+
+    test "autosave still succeeds when the record's status is in persist_statuses" do
+      entity = create_entity!()
+      record = create_record!(entity, %{"name" => "Old"}, "draft")
+      socket = socket(record, entity, persist_statuses: ["draft"])
+
+      {:noreply, updated_socket} =
+        LiveDataForm.handle_event(
+          "autosave",
+          %{"phoenix_kit_entity_data" => %{"data" => %{"name" => "New"}}},
+          socket
+        )
+
+      assert updated_socket.assigns.record.data["name"] == "New"
+      assert_received {:live_data_form, :saved, updated_record}
+      assert updated_record.data["name"] == "New"
+
+      reloaded = EntityData.get!(record.uuid)
+      assert reloaded.data["name"] == "New"
+    end
+  end
+
   describe "submit" do
     # Contract (revised): submit persists the params `phx-submit` just
     # sent — same merge-over-`record.data` path as autosave — so the

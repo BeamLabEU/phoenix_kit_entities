@@ -1400,6 +1400,21 @@ defmodule PhoenixKitEntities.EntityData do
       export still fire regardless). Intended for high-frequency callers
       like `LiveDataForm`'s autosave, where logging every debounced
       keystroke would flood the activity log.
+    * `:require_status` — defaults to `nil` (no check, existing
+      behavior unchanged). Pass a list of status strings (e.g.
+      `["draft"]`) to guard against a cross-session race: the record is
+      re-read by `uuid` under `SELECT ... FOR UPDATE` inside a
+      transaction, and the update only proceeds if the record's
+      *current, freshly-read* status is in the list. If it isn't,
+      returns `{:error, :status_mismatch}` without touching the row,
+      the activity log, or PubSub — as if the call never happened. This
+      closes the window where a stale in-memory copy (e.g. a second
+      browser tab still holding an `:edit` view of a record that a
+      first tab has since submitted/published) would otherwise
+      overwrite `data` on a record whose status has since moved on.
+      When the status does match, the changeset is built against the
+      freshly-read row (not the possibly-stale `entity_data` argument),
+      so any other field also reflects the latest DB state going in.
 
   ## Examples
 
@@ -1408,13 +1423,69 @@ defmodule PhoenixKitEntities.EntityData do
 
       iex> PhoenixKitEntities.EntityData.update(record, %{title: ""})
       {:error, %Ecto.Changeset{}}
+
+      iex> PhoenixKitEntities.EntityData.update(record, %{title: "Updated"}, require_status: ["draft"])
+      {:error, :status_mismatch}
   """
-  @spec update(t(), map(), keyword()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
+  @spec update(t(), map(), keyword()) ::
+          {:ok, t()} | {:error, Ecto.Changeset.t() | :status_mismatch}
   def update(%__MODULE__{} = entity_data, attrs, opts \\ []) do
-    entity_data
-    |> changeset(attrs)
-    |> repo().update()
-    |> notify_data_event(:updated, opts)
+    case Keyword.get(opts, :require_status) do
+      nil ->
+        entity_data
+        |> changeset(attrs)
+        |> repo().update()
+        |> notify_data_event(:updated, opts)
+
+      statuses when is_list(statuses) ->
+        update_with_status_guard(entity_data, attrs, statuses, opts)
+    end
+  end
+
+  # Re-reads the row by uuid under `FOR UPDATE` inside a transaction so
+  # the status check and the write are atomic w.r.t. any concurrent
+  # writer — without the lock, two processes could both read a matching
+  # status and both proceed, racing the same way this guard exists to
+  # prevent. Builds the changeset against the freshly-read row (`fresh`),
+  # never the possibly-stale `entity_data` argument, so every field goes
+  # into `repo().update/1` reflecting the latest DB state, not just
+  # `:data`. A status mismatch (or the row having disappeared entirely —
+  # same practical outcome, nothing left to guard) rolls back with no
+  # side effects: no write, no activity log, no PubSub broadcast.
+  defp update_with_status_guard(entity_data, attrs, statuses, opts) do
+    txn =
+      repo().transaction(fn ->
+        from(d in __MODULE__, where: d.uuid == ^entity_data.uuid, lock: "FOR UPDATE")
+        |> repo().one()
+        |> apply_status_guarded_update(statuses, attrs)
+      end)
+
+    case txn do
+      {:ok, updated} ->
+        notify_data_event({:ok, updated}, :updated, opts)
+
+      {:error, :status_mismatch} ->
+        {:error, :status_mismatch}
+
+      {:error, {:changeset_error, changeset}} ->
+        notify_data_event({:error, changeset}, :updated, opts)
+    end
+  end
+
+  # `nil` covers the row having disappeared entirely between the caller
+  # loading it and this re-read — same practical outcome as a status
+  # mismatch (nothing left to guard), so it rolls back the same way.
+  defp apply_status_guarded_update(nil, _statuses, _attrs), do: repo().rollback(:status_mismatch)
+
+  defp apply_status_guarded_update(%__MODULE__{} = fresh, statuses, attrs) do
+    if fresh.status in statuses do
+      case fresh |> changeset(attrs) |> repo().update() do
+        {:ok, updated} -> updated
+        {:error, changeset} -> repo().rollback({:changeset_error, changeset})
+      end
+    else
+      repo().rollback(:status_mismatch)
+    end
   end
 
   @doc """

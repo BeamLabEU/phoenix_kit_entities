@@ -394,4 +394,81 @@ defmodule PhoenixKitEntities.EntityDataExtrasTest do
       assert %Ecto.Changeset{} = EntityData.change(%EntityData{}, %{title: "x"})
     end
   end
+
+  describe "update/3 with :require_status" do
+    test "proceeds normally when the record's current status is in the list", ctx do
+      assert {:ok, updated} =
+               EntityData.update(ctx.beta, %{title: "Beta Renamed"},
+                 actor_uuid: ctx.actor_uuid,
+                 require_status: ["draft"]
+               )
+
+      assert updated.title == "Beta Renamed"
+
+      reloaded = EntityData.get!(ctx.beta.uuid)
+      assert reloaded.title == "Beta Renamed"
+
+      assert_activity_logged("entity_data.updated", resource_uuid: ctx.beta.uuid)
+    end
+
+    test "rejects with :status_mismatch and touches nothing when the status isn't in the list",
+         ctx do
+      assert {:error, :status_mismatch} =
+               EntityData.update(ctx.alpha, %{title: "Alpha Hacked"},
+                 actor_uuid: ctx.actor_uuid,
+                 require_status: ["draft"]
+               )
+
+      reloaded = EntityData.get!(ctx.alpha.uuid)
+      assert reloaded.title == "Alpha"
+
+      refute_activity_logged("entity_data.updated", resource_uuid: ctx.alpha.uuid)
+    end
+
+    test "checks the freshly-read DB status, not the (possibly stale) status on the passed-in struct",
+         ctx do
+      # `stale` represents a caller (e.g. a second browser tab) holding
+      # an in-memory copy from before the record moved to "published".
+      stale = ctx.beta
+      {:ok, _} = EntityData.update(ctx.beta, %{status: "published"}, actor_uuid: ctx.actor_uuid)
+
+      assert {:error, :status_mismatch} =
+               EntityData.update(stale, %{title: "Should Not Land"},
+                 actor_uuid: ctx.actor_uuid,
+                 require_status: ["draft"]
+               )
+
+      reloaded = EntityData.get!(ctx.beta.uuid)
+      assert reloaded.title != "Should Not Land"
+      assert reloaded.status == "published"
+    end
+
+    test "builds the changeset against the freshly-read row, not the stale struct's other fields",
+         ctx do
+      stale = ctx.beta
+
+      {:ok, _} =
+        EntityData.update(ctx.beta, %{title: "Renamed Elsewhere"}, actor_uuid: ctx.actor_uuid)
+
+      # Only `data` changes here — `title` isn't in `attrs` at all, so
+      # the returned/persisted title must reflect the FRESH row
+      # ("Renamed Elsewhere"), not silently revert to `stale`'s title
+      # just because `stale` was the struct handed to update/3.
+      assert {:ok, updated} =
+               EntityData.update(stale, %{data: %{"title" => "New Data"}},
+                 actor_uuid: ctx.actor_uuid,
+                 require_status: ["draft"]
+               )
+
+      assert updated.title == "Renamed Elsewhere"
+      assert updated.data["title"] == "New Data"
+    end
+
+    test "omitting require_status (nil) reproduces the exact pre-existing behavior", ctx do
+      assert {:ok, updated} =
+               EntityData.update(ctx.alpha, %{title: "Alpha Renamed"}, actor_uuid: ctx.actor_uuid)
+
+      assert updated.title == "Alpha Renamed"
+    end
+  end
 end

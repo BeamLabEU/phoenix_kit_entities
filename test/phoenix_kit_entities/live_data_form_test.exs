@@ -347,7 +347,7 @@ defmodule PhoenixKitEntities.LiveDataFormTest do
     end
   end
 
-  describe "optional attrs (lang, actor, submit_label) can be omitted entirely" do
+  describe "optional attrs (lang, actor, submit_label, persist_statuses) can be omitted entirely" do
     # `update/2` only sets a key on `socket.assigns` for what the caller
     # actually passes in — a caller that omits `:lang`/`:actor`/
     # `:submit_label` (not even `nil`) used to leave `render/1`'s
@@ -380,6 +380,23 @@ defmodule PhoenixKitEntities.LiveDataFormTest do
 
       assert html =~ ~s(phx-change="autosave")
       refute html =~ ~s(type="submit")
+    end
+
+    test "renders fine with persist_statuses omitted entirely (not just nil)" do
+      # `persist_statuses` isn't read anywhere in `render/1`'s template
+      # (only by `persist_data/3` at save time), so omitting it can't
+      # raise a `KeyError` here the way omitting `lang`/`submit_label`
+      # used to — this just documents/locks in that omitting it is a
+      # fully supported, ordinary case, same as every other optional attr.
+      fields = [%{"type" => "text", "key" => "name", "label" => "Name"}]
+      e = entity(fields)
+      r = record(e, %{"name" => "Jaan"})
+
+      html =
+        render_component(LiveDataForm, %{id: "live-data-form-omit-3", record: r, mode: :edit})
+
+      assert html =~ ~s(phx-change="autosave")
+      assert html =~ "Jaan"
     end
   end
 

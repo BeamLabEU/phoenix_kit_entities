@@ -36,6 +36,18 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
     whenever `mode` isn't literally `:readonly`) would let a forgotten
     `mode` produce a form that *looks* editable while `handle_event/3`'s
     own guard silently drops everything typed into it.
+  - The `mode == :edit` guard above is a *process-level* check — it says
+    nothing about whether the record ITSELF has moved on since this
+    particular component instance last read it. Two browser tabs can
+    both hold a live `:edit` instance of the same record; if one tab
+    submits (moving the record to, say, `"published"`) and the other's
+    still-pending autosave lands afterwards, `mode == :edit` is
+    satisfied in both — the second tab genuinely IS in edit mode, it's
+    just editing a record that has since moved on. Closing that
+    data-level race is what the `persist_statuses` attribute (below) is
+    for: it's optional (`nil` by default, matching every caller before
+    it existed) precisely because it needs the host LiveView to state
+    which statuses this instance is allowed to write into.
   - Required-field completeness — **incremental autosave is guaranteed
     only for entities without required fields; entities with required
     fields save all-or-nothing per attempt, by design**. Every save runs
@@ -91,6 +103,20 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
   - `submit_label` (optional, defaults to `nil` — safe to omit entirely) —
     `nil` hides the submit button entirely; any other string renders it
     as the button's text.
+  - `persist_statuses` (optional, defaults to `nil` — safe to omit
+    entirely) — a list of status strings (e.g. `["draft"]`), threaded
+    through to `EntityData.update/3` as `require_status:` on both the
+    autosave and submit persist paths. **Recommended for any host
+    LiveView that can have more than one live `:edit` instance of the
+    same record open at once** (e.g. two browser tabs/sessions) — see
+    the cross-session race note above. `nil` (the default) reproduces
+    the exact pre-`persist_statuses` behavior: no status check, save
+    proceeds regardless of the record's current status. When set, a
+    save whose freshly-read record status has moved outside the list
+    fails exactly like any other rejected save (see "Messages sent to
+    the parent" below) — logged at `debug` (not `error`; the guard
+    doing its job isn't a failure), previous `record` kept, no
+    `:saved`/`:submitted` message sent.
 
   ## Messages sent to the parent
 
@@ -117,7 +143,11 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
   parent treats each message as "here is the current server copy" rather
   than assuming `:submitted` is always the last word — read the record's
   own `status`/fields rather than inferring lifecycle order from message
-  arrival, the way the host app (andi) does.
+  arrival, the way the host app (andi) does. This is a *single*
+  component instance racing its own two persist paths — distinct from
+  the *cross-session* race (a second tab's stale `:edit` instance of the
+  same record) that `persist_statuses` guards against; the two are
+  independent and both worth being aware of.
   """
 
   use PhoenixKitWeb, :live_component
@@ -144,6 +174,7 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
       |> assign_new(:lang, fn -> nil end)
       |> assign_new(:actor, fn -> nil end)
       |> assign_new(:submit_label, fn -> nil end)
+      |> assign_new(:persist_statuses, fn -> nil end)
       |> assign(:entity, entity)
       |> assign_form()
 
@@ -290,11 +321,29 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
       |> then(&Map.merge(record.data || %{}, &1))
 
     data_to_persist = coerce_or_pass_through(entity, merged_data, log_context)
-    update_opts = actor_opts(socket) ++ activity_log_opts(log_context)
+
+    update_opts =
+      actor_opts(socket) ++ activity_log_opts(log_context) ++ require_status_opts(socket)
 
     case EntityData.update(record, %{"data" => data_to_persist}, update_opts) do
       {:ok, updated_record} ->
         {:ok, updated_record}
+
+      {:error, :status_mismatch} ->
+        # `persist_statuses` was set and the freshly-read row's status is
+        # no longer in it — some other session moved this record on
+        # (e.g. submitted/published it) since this instance last read
+        # it. `debug`, not `error`: this is the guard doing exactly its
+        # job, not a failure. No row/activity/PubSub touched by
+        # `EntityData.update/3` itself; falling through to `:error` here
+        # keeps the existing behavior of not sending :saved/:submitted
+        # and leaving the previous `record` in place.
+        Logger.debug(
+          "LiveDataForm #{log_context} skipped: record #{inspect(record.uuid)} status no " <>
+            "longer in persist_statuses (entity_uuid=#{inspect(entity.uuid)})"
+        )
+
+        :error
 
       {:error, changeset} ->
         Logger.error(
@@ -303,6 +352,13 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
         )
 
         :error
+    end
+  end
+
+  defp require_status_opts(socket) do
+    case socket.assigns[:persist_statuses] do
+      nil -> []
+      statuses -> [require_status: statuses]
     end
   end
 
