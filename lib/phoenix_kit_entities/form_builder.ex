@@ -760,6 +760,18 @@ defmodule PhoenixKitEntities.FormBuilder do
     """
   end
 
+  # Section Heading — display-only, not bound to the changeset (no data,
+  # no input, never required).
+  def build_field(%{"type" => "heading"} = field, _changeset, _opts) do
+    assigns = %{field: field}
+
+    ~H"""
+    <h3 class="text-base font-semibold border-b border-base-300 pb-1 mt-6 mb-2 col-span-full">
+      {@field["label"]}
+    </h3>
+    """
+  end
+
   # Fallback for unknown field types
   def build_field(field, changeset, opts) do
     assigns = %{field: field, changeset: changeset, opts: opts}
@@ -809,17 +821,22 @@ defmodule PhoenixKitEntities.FormBuilder do
     validated_data = %{}
 
     result =
-      Enum.reduce(fields_definition, {validated_data, errors}, fn field, {data_acc, errors_acc} ->
-        field_key = field["key"]
-        field_value = Map.get(data_params, field_key)
+      Enum.reduce(fields_definition, {validated_data, errors}, fn
+        # Display-only — no data to validate or store.
+        %{"type" => "heading"}, acc ->
+          acc
 
-        case validate_field_value(field, field_value) do
-          {:ok, validated_value} ->
-            {Map.put(data_acc, field_key, validated_value), errors_acc}
+        field, {data_acc, errors_acc} ->
+          field_key = field["key"]
+          field_value = Map.get(data_params, field_key)
 
-          {:error, field_errors} ->
-            {data_acc, Map.put(errors_acc, field_key, field_errors)}
-        end
+          case validate_field_value(field, field_value) do
+            {:ok, validated_value} ->
+              {Map.put(data_acc, field_key, validated_value), errors_acc}
+
+            {:error, field_errors} ->
+              {data_acc, Map.put(errors_acc, field_key, field_errors)}
+          end
       end)
 
     case result do
@@ -848,15 +865,20 @@ defmodule PhoenixKitEntities.FormBuilder do
     fields_definition = entity.fields_definition || []
 
     result =
-      Enum.reduce(fields_definition, {%{}, %{}}, fn field, {data_acc, errors_acc} ->
-        field_key = field["key"]
-        field_value = Map.get(data_params, field_key)
+      Enum.reduce(fields_definition, {%{}, %{}}, fn
+        # Display-only — no data to validate or store.
+        %{"type" => "heading"}, acc ->
+          acc
 
-        if is_nil(field_value) or field_value == "" do
-          {data_acc, errors_acc}
-        else
-          validate_secondary_field(field_key, field, field_value, data_acc, errors_acc)
-        end
+        field, {data_acc, errors_acc} ->
+          field_key = field["key"]
+          field_value = Map.get(data_params, field_key)
+
+          if is_nil(field_value) or field_value == "" do
+            {data_acc, errors_acc}
+          else
+            validate_secondary_field(field_key, field, field_value, data_acc, errors_acc)
+          end
       end)
 
     case result do

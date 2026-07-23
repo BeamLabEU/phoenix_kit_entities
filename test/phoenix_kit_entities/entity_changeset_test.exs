@@ -203,7 +203,7 @@ defmodule PhoenixKitEntities.EntityChangesetTest do
 
     test "valid - all supported field types" do
       types =
-        ~w(text textarea number boolean date email url select radio checkbox rich_text image file relation)
+        ~w(text textarea number boolean date email url select radio checkbox rich_text image file relation heading)
 
       fields =
         Enum.map(types, fn type ->
@@ -216,6 +216,12 @@ defmodule PhoenixKitEntities.EntityChangesetTest do
           end
         end)
 
+      cs = changeset(%{fields_definition: fields})
+      refute errors_on(cs)[:fields_definition]
+    end
+
+    test "valid - heading field type (display-only, no options needed)" do
+      fields = [%{"type" => "heading", "key" => "sec_ahi", "label" => "Ahi"}]
       cs = changeset(%{fields_definition: fields})
       refute errors_on(cs)[:fields_definition]
     end

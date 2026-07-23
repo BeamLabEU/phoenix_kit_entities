@@ -28,6 +28,9 @@ defmodule PhoenixKitEntities.FieldTypes do
   - **radio**: Radio button group (single choice)
   - **checkbox**: Checkbox group (multiple choices)
 
+  ### Layout Types
+  - **heading**: Display-only section heading (no data)
+
   ## Usage Examples
 
       # Get all field types
@@ -189,6 +192,15 @@ defmodule PhoenixKitEntities.FieldTypes do
         "max_file_size" => 15_728_640,
         "accept" => [".pdf", ".jpg", ".jpeg", ".png"]
       }
+    },
+    "heading" => %{
+      name: "heading",
+      label: "Section Heading",
+      description: "Display-only section heading (no data)",
+      category: :basic,
+      icon: "hero-bars-3-bottom-left",
+      requires_options: false,
+      default_props: %{}
     }
   }
 
@@ -338,6 +350,9 @@ defmodule PhoenixKitEntities.FieldTypes do
 
   def description_for("file"),
     do: gettext("File upload field with configurable constraints")
+
+  def description_for("heading"),
+    do: gettext("Display-only section heading (no data)")
 
   def description_for(type_name) when is_binary(type_name) do
     case Map.get(@field_types, type_name) do

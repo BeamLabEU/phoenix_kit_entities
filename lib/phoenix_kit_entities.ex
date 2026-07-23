@@ -260,7 +260,7 @@ defmodule PhoenixKitEntities do
 
   defp validate_field_type(changeset, field) do
     valid_types =
-      ~w(text textarea number boolean date email url select radio checkbox rich_text image file relation)
+      ~w(text textarea number boolean date email url select radio checkbox rich_text image file relation heading)
 
     if field["type"] in valid_types do
       changeset
