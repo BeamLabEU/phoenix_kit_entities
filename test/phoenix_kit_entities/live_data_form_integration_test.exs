@@ -194,40 +194,77 @@ defmodule PhoenixKitEntities.LiveDataFormIntegrationTest do
   end
 
   describe "submit" do
-    # Per contract, `submit` only notifies the parent with the record
-    # already on the socket — it does not itself persist anything (that's
-    # autosave's job on every prior change). These tests fire "submit"
-    # directly with no preceding "autosave" call, mirroring that division
-    # of responsibility exactly.
-    test "sends :submitted with the current record and does not write to the database" do
+    # Contract (revised): submit persists the params `phx-submit` just
+    # sent — same merge-over-`record.data` path as autosave — so the
+    # last edit is never lost to the 500ms debounce window, then sends
+    # `:submitted` with the freshly-updated record. It never touches
+    # `status`.
+    test "persists the submitted params and sends :submitted with the updated record" do
       entity = create_entity!()
       record = create_record!(entity, %{"name" => "Old"})
       socket = socket(record, entity, submit_label: "Kinnitan")
 
-      {:noreply, socket} = LiveDataForm.handle_event("submit", %{}, socket)
+      {:noreply, socket} =
+        LiveDataForm.handle_event(
+          "submit",
+          %{"phoenix_kit_entity_data" => %{"data" => %{"name" => "Final"}}},
+          socket
+        )
 
       assert_received {:live_data_form, :submitted, submitted_record}
       assert submitted_record.uuid == record.uuid
-      assert submitted_record.data == record.data
-      assert socket.assigns.record == record
+      assert submitted_record.data["name"] == "Final"
       refute_received {:live_data_form, :saved, _}
 
+      assert socket.assigns.record.data["name"] == "Final"
+
       reloaded = EntityData.get!(record.uuid)
-      assert reloaded.data == record.data
+      assert reloaded.data["name"] == "Final"
     end
 
-    test "submitting a published record does not change its status" do
+    test "submitting a published record persists data without changing its status" do
       entity = create_entity!()
       record = create_record!(entity, %{"name" => "Old"}, "published")
       socket = socket(record, entity, submit_label: "Kinnitan")
 
-      {:noreply, _socket} = LiveDataForm.handle_event("submit", %{}, socket)
+      {:noreply, _socket} =
+        LiveDataForm.handle_event(
+          "submit",
+          %{"phoenix_kit_entity_data" => %{"data" => %{"name" => "Final"}}},
+          socket
+        )
 
       assert_received {:live_data_form, :submitted, submitted_record}
       assert submitted_record.status == "published"
+      assert submitted_record.data["name"] == "Final"
 
       reloaded = EntityData.get!(record.uuid)
       assert reloaded.status == "published"
+      assert reloaded.data["name"] == "Final"
+    end
+
+    test "a failed save logs, keeps the previous record, and never sends :submitted" do
+      entity = create_entity!()
+      record = create_record!(entity, %{"name" => "Old"})
+      # Same broken-reference trick as the autosave failure test — trips
+      # `EntityData.changeset/2`'s entity validation so `update/3` returns
+      # `{:error, changeset}`.
+      broken_record = %{record | entity_uuid: Ecto.UUID.generate()}
+      socket = socket(broken_record, entity, submit_label: "Kinnitan")
+
+      {:noreply, socket} =
+        LiveDataForm.handle_event(
+          "submit",
+          %{"phoenix_kit_entity_data" => %{"data" => %{"name" => "Final"}}},
+          socket
+        )
+
+      refute_received {:live_data_form, :submitted, _}
+      refute_received {:live_data_form, :saved, _}
+      assert socket.assigns.record == broken_record
+
+      reloaded = EntityData.get!(record.uuid)
+      assert reloaded.data["name"] == "Old"
     end
   end
 end

@@ -52,12 +52,18 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
 
   - `{:live_data_form, :saved, updated_record}` — after a successful
     autosave (fired on every change, debounced 500ms).
-  - `{:live_data_form, :submitted, record}` — after the submit button is
-    pressed. The component never changes `status` — the parent decides
-    what "submitted" means for its workflow.
+  - `{:live_data_form, :submitted, updated_record}` — after the submit
+    button is pressed. Submit persists the params `phx-submit` just sent
+    (the same merge-over-`record.data` path as autosave, so the last
+    edit is never lost to the debounce window) and only sends this
+    message once that save succeeds — `updated_record` reflects it. The
+    component never changes `status` itself — the parent decides what
+    "submitted" means for its workflow.
 
-  On a failed autosave the component logs the error and keeps the
-  previous `record` — it never crashes the LiveView.
+  On a failed save (autosave or submit) the component logs the error and
+  keeps the previous `record` — it never crashes the LiveView, and on a
+  failed submit specifically it does not send `:submitted` (the parent
+  must not treat unpersisted data as agreed-upon).
   """
 
   use PhoenixKitWeb, :live_component
@@ -115,24 +121,55 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
 
   def handle_event("autosave", _params, socket), do: {:noreply, socket}
 
-  # Submit only notifies the parent with whatever `record` autosave has
-  # already persisted — it does not itself write to the database, and it
-  # never touches `status` (the parent decides what "submitted" means
-  # for its workflow). Caveat: a submit click within the 500ms debounce
-  # window of the last keystroke can race the pending autosave, so the
-  # message may carry the record from just before that final edit — a
-  # known trade-off of keeping submit a pure notification, not something
-  # this component works around.
-  def handle_event("submit", _params, socket) do
-    send(self(), {:live_data_form, :submitted, socket.assigns.record})
-    {:noreply, socket}
+  # Submit persists the params `phx-submit` just sent — the same
+  # merge-over-`record.data` path as autosave — rather than trusting
+  # whatever autosave last managed to save. `phx-submit` carries the
+  # form's full, current values regardless of the 500ms debounce window,
+  # so pressing Submit means "the client agreed to exactly this state";
+  # relying solely on a possibly-still-pending autosave would risk
+  # silently dropping the last edit. Only sends `:submitted` — and only
+  # the freshly-updated record — on a successful save; a failed save
+  # logs and does not notify the parent, since it must not treat
+  # unpersisted data as agreed-upon.
+  def handle_event("submit", %{"phoenix_kit_entity_data" => data_params}, socket) do
+    {:noreply, do_submit(socket, Map.get(data_params, "data", %{}))}
   end
+
+  def handle_event("submit", _params, socket), do: {:noreply, do_submit(socket, %{})}
 
   # Merges the submitted field values over the record's existing (flat)
   # data map and persists them, preserving `status` untouched. Never
   # raises on failure — logs and keeps the previous `record` so the form
   # stays usable.
   defp do_autosave(socket, raw_data_params) do
+    case persist_data(socket, raw_data_params, "autosave") do
+      {:ok, updated_record} ->
+        send(self(), {:live_data_form, :saved, updated_record})
+
+        socket
+        |> assign(:record, updated_record)
+        |> assign_form()
+
+      :error ->
+        socket
+    end
+  end
+
+  defp do_submit(socket, raw_data_params) do
+    case persist_data(socket, raw_data_params, "submit") do
+      {:ok, updated_record} ->
+        send(self(), {:live_data_form, :submitted, updated_record})
+
+        socket
+        |> assign(:record, updated_record)
+        |> assign_form()
+
+      :error ->
+        socket
+    end
+  end
+
+  defp persist_data(socket, raw_data_params, log_context) do
     entity = socket.assigns.entity
     record = socket.assigns.record
     fields_definition = entity.fields_definition || []
@@ -145,19 +182,15 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
 
     case EntityData.update(record, %{"data" => merged_data}, actor_opts(socket)) do
       {:ok, updated_record} ->
-        send(self(), {:live_data_form, :saved, updated_record})
-
-        socket
-        |> assign(:record, updated_record)
-        |> assign_form()
+        {:ok, updated_record}
 
       {:error, changeset} ->
         Logger.error(
-          "LiveDataForm autosave failed: #{inspect(changeset.errors)} " <>
+          "LiveDataForm #{log_context} failed: #{inspect(changeset.errors)} " <>
             "(entity_uuid=#{inspect(entity.uuid)} record_uuid=#{inspect(record.uuid)})"
         )
 
-        socket
+        :error
     end
   end
 
