@@ -296,6 +296,232 @@ defmodule PhoenixKitEntities.EntityDataChangesetTest do
 
       assert errors_on(cs)[:data]
     end
+
+    test "the __other__ sentinel itself is always rejected, even with allow_other", ctx do
+      # A UI marker, never a legitimate stored value — reaching the
+      # changeset means `FormBuilder.merge_other_params/2` failed to
+      # resolve it upstream, so this must fail the same as any other
+      # out-of-options value.
+      cs =
+        EntityData.changeset(%EntityData{}, %{
+          entity_uuid: ctx.select_entity.uuid,
+          title: "Select Other Record",
+          created_by_uuid: ctx.actor_uuid,
+          data: %{"color" => "__other__"}
+        })
+
+      assert errors_on(cs)[:data]
+    end
+  end
+
+  describe "radio field validation" do
+    setup ctx do
+      {:ok, radio_entity} =
+        Entities.create_entity(
+          %{
+            name: "data_cs_radio_test",
+            display_name: "Data CS Radio Test",
+            display_name_plural: "Data CS Radio Tests",
+            fields_definition: [
+              %{
+                "type" => "radio",
+                "key" => "priority",
+                "label" => "Priority",
+                "options" => ["Low", "High"],
+                "allow_other" => true
+              }
+            ],
+            created_by_uuid: ctx.actor_uuid
+          },
+          actor_uuid: ctx.actor_uuid
+        )
+
+      {:ok, radio_entity: radio_entity}
+    end
+
+    test "a known option is accepted", ctx do
+      cs =
+        EntityData.changeset(%EntityData{}, %{
+          entity_uuid: ctx.radio_entity.uuid,
+          title: "Radio Record",
+          created_by_uuid: ctx.actor_uuid,
+          data: %{"priority" => "Low"}
+        })
+
+      refute errors_on(cs)[:data]
+    end
+
+    test "a value outside options is accepted when allow_other is true", ctx do
+      cs =
+        EntityData.changeset(%EntityData{}, %{
+          entity_uuid: ctx.radio_entity.uuid,
+          title: "Radio Record",
+          created_by_uuid: ctx.actor_uuid,
+          data: %{"priority" => "Medium"}
+        })
+
+      refute errors_on(cs)[:data]
+    end
+
+    test "the __other__ sentinel is rejected even with allow_other", ctx do
+      cs =
+        EntityData.changeset(%EntityData{}, %{
+          entity_uuid: ctx.radio_entity.uuid,
+          title: "Radio Record",
+          created_by_uuid: ctx.actor_uuid,
+          data: %{"priority" => "__other__"}
+        })
+
+      assert errors_on(cs)[:data]
+    end
+
+    test "without allow_other, a value outside options is rejected", ctx do
+      {:ok, entity} =
+        Entities.create_entity(
+          %{
+            name: "data_cs_radio_strict_test",
+            display_name: "Data CS Radio Strict Test",
+            display_name_plural: "Data CS Radio Strict Tests",
+            fields_definition: [
+              %{
+                "type" => "radio",
+                "key" => "priority",
+                "label" => "Priority",
+                "options" => ["Low", "High"]
+              }
+            ],
+            created_by_uuid: ctx.actor_uuid
+          },
+          actor_uuid: ctx.actor_uuid
+        )
+
+      cs =
+        EntityData.changeset(%EntityData{}, %{
+          entity_uuid: entity.uuid,
+          title: "Radio Strict Record",
+          created_by_uuid: ctx.actor_uuid,
+          data: %{"priority" => "Medium"}
+        })
+
+      assert errors_on(cs)[:data]
+    end
+  end
+
+  describe "checkbox field validation" do
+    setup ctx do
+      {:ok, checkbox_entity} =
+        Entities.create_entity(
+          %{
+            name: "data_cs_checkbox_test",
+            display_name: "Data CS Checkbox Test",
+            display_name_plural: "Data CS Checkbox Tests",
+            fields_definition: [
+              %{
+                "type" => "checkbox",
+                "key" => "tools",
+                "label" => "Tools",
+                "options" => ["Hammer", "Drill"],
+                "allow_other" => true
+              }
+            ],
+            created_by_uuid: ctx.actor_uuid
+          },
+          actor_uuid: ctx.actor_uuid
+        )
+
+      {:ok, checkbox_entity: checkbox_entity}
+    end
+
+    test "a list of known options is accepted", ctx do
+      cs =
+        EntityData.changeset(%EntityData{}, %{
+          entity_uuid: ctx.checkbox_entity.uuid,
+          title: "Checkbox Record",
+          created_by_uuid: ctx.actor_uuid,
+          data: %{"tools" => ["Hammer", "Drill"]}
+        })
+
+      refute errors_on(cs)[:data]
+    end
+
+    test "an empty list is accepted (nothing ticked, not required)", ctx do
+      cs =
+        EntityData.changeset(%EntityData{}, %{
+          entity_uuid: ctx.checkbox_entity.uuid,
+          title: "Checkbox Record",
+          created_by_uuid: ctx.actor_uuid,
+          data: %{"tools" => []}
+        })
+
+      refute errors_on(cs)[:data]
+    end
+
+    test "a value outside options is accepted when allow_other is true", ctx do
+      cs =
+        EntityData.changeset(%EntityData{}, %{
+          entity_uuid: ctx.checkbox_entity.uuid,
+          title: "Checkbox Record",
+          created_by_uuid: ctx.actor_uuid,
+          data: %{"tools" => ["Hammer", "Wrench"]}
+        })
+
+      refute errors_on(cs)[:data]
+    end
+
+    test "the __other__ sentinel in the list is rejected even with allow_other", ctx do
+      cs =
+        EntityData.changeset(%EntityData{}, %{
+          entity_uuid: ctx.checkbox_entity.uuid,
+          title: "Checkbox Record",
+          created_by_uuid: ctx.actor_uuid,
+          data: %{"tools" => ["Hammer", "__other__"]}
+        })
+
+      assert errors_on(cs)[:data]
+    end
+
+    test "without allow_other, a value outside options is rejected", ctx do
+      {:ok, entity} =
+        Entities.create_entity(
+          %{
+            name: "data_cs_checkbox_strict_test",
+            display_name: "Data CS Checkbox Strict Test",
+            display_name_plural: "Data CS Checkbox Strict Tests",
+            fields_definition: [
+              %{
+                "type" => "checkbox",
+                "key" => "tools",
+                "label" => "Tools",
+                "options" => ["Hammer", "Drill"]
+              }
+            ],
+            created_by_uuid: ctx.actor_uuid
+          },
+          actor_uuid: ctx.actor_uuid
+        )
+
+      cs =
+        EntityData.changeset(%EntityData{}, %{
+          entity_uuid: entity.uuid,
+          title: "Checkbox Strict Record",
+          created_by_uuid: ctx.actor_uuid,
+          data: %{"tools" => ["Hammer", "Wrench"]}
+        })
+
+      assert errors_on(cs)[:data]
+    end
+
+    test "a scalar value instead of a list is rejected", ctx do
+      cs =
+        EntityData.changeset(%EntityData{}, %{
+          entity_uuid: ctx.checkbox_entity.uuid,
+          title: "Checkbox Record",
+          created_by_uuid: ctx.actor_uuid,
+          data: %{"tools" => "evil"}
+        })
+
+      assert errors_on(cs)[:data]
+    end
   end
 
   describe "required checkbox field — [] counts as empty" do

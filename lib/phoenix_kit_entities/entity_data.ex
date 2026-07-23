@@ -143,6 +143,16 @@ defmodule PhoenixKitEntities.EntityData do
   @valid_statuses ~w(draft published archived trashed)
   @soft_delete_status "trashed"
 
+  # Mirrors `PhoenixKitEntities.FormBuilder`'s private sentinel for the
+  # synthetic "Other" option rendered on select/radio/checkbox fields with
+  # `allow_other?`. It's a UI marker only — `FormBuilder.merge_other_params/2`
+  # is supposed to resolve it into the companion free-text value before it
+  # ever reaches a changeset. If it somehow shows up here anyway (a caller
+  # that skipped `merge_other_params/2`, or a hand-crafted request), treat
+  # it as any other out-of-options value rather than letting `allow_other?`
+  # wave it through.
+  @other_sentinel "__other__"
+
   @doc """
   Creates a changeset for entity data creation and updates.
 
@@ -443,7 +453,8 @@ defmodule PhoenixKitEntities.EntityData do
       "email" -> validate_email_field(changeset, field_def, value)
       "url" -> validate_url_field(changeset, field_def, value)
       "date" -> validate_date_field(changeset, field_def, value)
-      "select" -> validate_select_field(changeset, field_def, value)
+      type when type in ["select", "radio"] -> validate_choice_field(changeset, field_def, value)
+      "checkbox" -> validate_checkbox_field(changeset, field_def, value)
       _ -> changeset
     end
   end
@@ -508,21 +519,74 @@ defmodule PhoenixKitEntities.EntityData do
     end
   end
 
-  defp validate_select_field(changeset, field_def, value) do
+  # Shared scalar (single-value) choice validator for "select" and "radio"
+  # — both are "pick exactly one" fields with the same options/allow_other
+  # shape. The sentinel check comes first and applies unconditionally: it
+  # must never validate as a real value, allow_other or not (see
+  # `@other_sentinel`).
+  defp validate_choice_field(changeset, field_def, value) do
     options = field_def["options"] || []
 
-    if value in options or FieldTypes.allow_other?(field_def) do
+    cond do
+      value == @other_sentinel ->
+        add_error(
+          changeset,
+          :data,
+          gettext("field '%{label}' has an invalid value", label: field_def["label"])
+        )
+
+      value in options ->
+        changeset
+
+      FieldTypes.allow_other?(field_def) ->
+        changeset
+
+      true ->
+        add_error(
+          changeset,
+          :data,
+          gettext("field '%{label}' must be one of: %{options}",
+            label: field_def["label"],
+            options: Enum.join(options, ", ")
+          )
+        )
+    end
+  end
+
+  # Checkbox groups are multi-value — every submitted entry must be
+  # in `options` (or allowed via `allow_other?`, but never the
+  # `@other_sentinel` marker itself). A non-list value (e.g. a single
+  # scalar string crafted into the request) is rejected outright rather
+  # than silently passing through unvalidated.
+  defp validate_checkbox_field(changeset, field_def, value) when is_list(value) do
+    options = field_def["options"] || []
+    allow_other = FieldTypes.allow_other?(field_def)
+
+    invalid_values =
+      Enum.filter(value, fn v ->
+        v == @other_sentinel or (v not in options and not allow_other)
+      end)
+
+    if Enum.empty?(invalid_values) do
       changeset
     else
       add_error(
         changeset,
         :data,
-        gettext("field '%{label}' must be one of: %{options}",
+        gettext("field '%{label}' contains invalid options: %{invalid}",
           label: field_def["label"],
-          options: Enum.join(options, ", ")
+          invalid: Enum.join(invalid_values, ", ")
         )
       )
     end
+  end
+
+  defp validate_checkbox_field(changeset, field_def, _value) do
+    add_error(
+      changeset,
+      :data,
+      gettext("field '%{label}' must be a list of selected options", label: field_def["label"])
+    )
   end
 
   defp maybe_set_timestamps(changeset) do
