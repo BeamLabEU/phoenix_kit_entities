@@ -257,6 +257,77 @@ defmodule PhoenixKitEntities.Web.DataFormLiveTest do
     end
   end
 
+  describe "allow_other custom option (Muu)" do
+    setup ctx do
+      {:ok, other_entity} =
+        Entities.create_entity(
+          %{
+            name: "df_other_test",
+            display_name: "DF Other Test",
+            display_name_plural: "DF Other Tests",
+            fields_definition: [
+              %{
+                "type" => "select",
+                "key" => "color",
+                "label" => "Color",
+                "options" => ["Red", "Blue"],
+                "allow_other" => true
+              }
+            ],
+            status: "published",
+            created_by_uuid: ctx.actor_uuid
+          },
+          actor_uuid: ctx.actor_uuid
+        )
+
+      {:ok, other_record} =
+        EntityData.create(
+          %{
+            entity_uuid: other_entity.uuid,
+            title: "Other Fixture",
+            slug: "other-fixture",
+            status: "published",
+            data: %{"color" => "Red"},
+            created_by_uuid: ctx.actor_uuid
+          },
+          actor_uuid: ctx.actor_uuid
+        )
+
+      {:ok, other_entity: other_entity, other_record: other_record}
+    end
+
+    # Fires "save" directly (rather than through the LiveViewTest form
+    # helper) to exercise exactly what the browser sends: the sentinel
+    # value from the "Other" radio/option plus its companion free-text
+    # field — see do_save/2's merge_other_params call.
+    test "sentinel + companion text is persisted as the free-text value",
+         %{conn: conn} = ctx do
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, edit_url(ctx.other_entity, ctx.other_record))
+
+      render_hook(view, "save", %{
+        "phoenix_kit_entity_data" => %{
+          "data" => %{"color" => "__other__", "color__other" => "Crimson"}
+        }
+      })
+
+      reread = EntityData.get(ctx.other_record.uuid)
+      assert reread.data["color"] == "Crimson"
+    end
+
+    test "a known option round-trips unchanged", %{conn: conn} = ctx do
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, edit_url(ctx.other_entity, ctx.other_record))
+
+      render_hook(view, "save", %{
+        "phoenix_kit_entity_data" => %{"data" => %{"color" => "Blue"}}
+      })
+
+      reread = EntityData.get(ctx.other_record.uuid)
+      assert reread.data["color"] == "Blue"
+    end
+  end
+
   describe "generate_slug event" do
     test "doesn't crash and re-renders the form", %{conn: conn} = ctx do
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))

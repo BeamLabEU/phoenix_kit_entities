@@ -3041,32 +3041,34 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                   </div>
                 </div>
 
-                <%!-- Required and Default Value --%>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <.label class="label cursor-pointer">
-                      <span class="label-text">{gettext("Required Field")}</span>
-                      <input
-                        type="checkbox"
-                        name="field[required]"
-                        class="toggle toggle-primary"
-                        value="true"
-                        checked={@field_form["required"]}
-                      />
-                    </.label>
-                  </div>
+                <%!-- Required and Default Value (meaningless for display-only heading fields) --%>
+                <%= if @field_form["type"] != "heading" do %>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <.label class="label cursor-pointer">
+                        <span class="label-text">{gettext("Required Field")}</span>
+                        <input
+                          type="checkbox"
+                          name="field[required]"
+                          class="toggle toggle-primary"
+                          value="true"
+                          checked={@field_form["required"]}
+                        />
+                      </.label>
+                    </div>
 
-                  <div>
-                    <.label>{gettext("Default Value (Optional)")}</.label>
-                    <input
-                      type="text"
-                      name="field[default]"
-                      class="input input-bordered w-full"
-                      phx-debounce="300"
-                      value={@field_form["default"]}
-                    />
+                    <div>
+                      <.label>{gettext("Default Value (Optional)")}</.label>
+                      <input
+                        type="text"
+                        name="field[default]"
+                        class="input input-bordered w-full"
+                        phx-debounce="300"
+                        value={@field_form["default"]}
+                      />
+                    </div>
                   </div>
-                </div>
+                <% end %>
 
                 <%!-- File Upload Configuration (only for file type) --%>
                 <%= if @field_form["type"] == "file" do %>
@@ -3181,6 +3183,17 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                         {gettext("No options added yet. Click \"Add Option\" to get started.")}
                       </div>
                     <% end %>
+
+                    <.label class="label cursor-pointer justify-start gap-2 mt-2">
+                      <input
+                        type="checkbox"
+                        name="field[allow_other]"
+                        class="toggle toggle-primary toggle-sm"
+                        value="true"
+                        checked={@field_form["allow_other"]}
+                      />
+                      <span class="label-text">{gettext("Allow custom option (Muu)")}</span>
+                    </.label>
                   </div>
                 <% end %>
 

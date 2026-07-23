@@ -216,4 +216,85 @@ defmodule PhoenixKitEntities.EntityDataChangesetTest do
       refute errors_on(cs)[:data]
     end
   end
+
+  describe "select field with allow_other" do
+    setup ctx do
+      {:ok, select_entity} =
+        Entities.create_entity(
+          %{
+            name: "data_cs_select_other_test",
+            display_name: "Data CS Select Other Test",
+            display_name_plural: "Data CS Select Other Tests",
+            fields_definition: [
+              %{
+                "type" => "select",
+                "key" => "color",
+                "label" => "Color",
+                "options" => ["Red", "Blue"],
+                "allow_other" => true
+              }
+            ],
+            created_by_uuid: ctx.actor_uuid
+          },
+          actor_uuid: ctx.actor_uuid
+        )
+
+      {:ok, select_entity: select_entity}
+    end
+
+    test "a value outside options is accepted when allow_other is true", ctx do
+      cs =
+        EntityData.changeset(%EntityData{}, %{
+          entity_uuid: ctx.select_entity.uuid,
+          title: "Select Other Record",
+          created_by_uuid: ctx.actor_uuid,
+          data: %{"color" => "Crimson"}
+        })
+
+      refute errors_on(cs)[:data]
+    end
+
+    test "a known option is still accepted", ctx do
+      cs =
+        EntityData.changeset(%EntityData{}, %{
+          entity_uuid: ctx.select_entity.uuid,
+          title: "Select Other Record",
+          created_by_uuid: ctx.actor_uuid,
+          data: %{"color" => "Red"}
+        })
+
+      refute errors_on(cs)[:data]
+    end
+
+    test "without allow_other, a value outside options is still rejected", ctx do
+      {:ok, entity} =
+        Entities.create_entity(
+          %{
+            name: "data_cs_select_strict_test",
+            display_name: "Data CS Select Strict Test",
+            display_name_plural: "Data CS Select Strict Tests",
+            fields_definition: [
+              %{
+                "type" => "select",
+                "key" => "color",
+                "label" => "Color",
+                "options" => ["Red", "Blue"]
+              }
+            ],
+            created_by_uuid: ctx.actor_uuid
+          },
+          actor_uuid: ctx.actor_uuid
+        )
+
+      cs =
+        EntityData.changeset(%EntityData{}, %{
+          entity_uuid: entity.uuid,
+          title: "Select Strict Record",
+          created_by_uuid: ctx.actor_uuid,
+          data: %{"color" => "Crimson"}
+        })
+
+      assert errors_on(cs)[:data]
+    end
+  end
 end

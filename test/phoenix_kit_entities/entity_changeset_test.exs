@@ -225,5 +225,20 @@ defmodule PhoenixKitEntities.EntityChangesetTest do
       cs = changeset(%{fields_definition: fields})
       refute errors_on(cs)[:fields_definition]
     end
+
+    test "valid - a choice field carrying \"allow_other\" isn't rejected as an unknown key" do
+      fields = [
+        %{
+          "type" => "radio",
+          "key" => "color",
+          "label" => "Color",
+          "options" => ["Red", "Blue"],
+          "allow_other" => true
+        }
+      ]
+
+      cs = changeset(%{fields_definition: fields})
+      refute errors_on(cs)[:fields_definition]
+    end
   end
 end

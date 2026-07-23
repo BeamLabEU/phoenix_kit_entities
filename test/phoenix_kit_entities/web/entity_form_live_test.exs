@@ -216,6 +216,58 @@ defmodule PhoenixKitEntities.Web.EntityFormLiveTest do
       render_hook(view, "remove_option", %{"index" => "0"})
       assert render(view) =~ "Edit"
     end
+
+    test "allow_other toggle persists on a radio field and pre-fills on re-edit",
+         %{conn: conn} = ctx do
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, "/en/admin/entities/#{ctx.entity.uuid}/edit")
+
+      render_hook(view, "add_field", %{})
+
+      render_hook(view, "update_field_form", %{
+        "field" => %{"type" => "radio", "label" => "Color", "key" => "color"}
+      })
+
+      render_hook(view, "add_option", %{})
+      render_hook(view, "update_option", %{"index" => "0", "value" => "Red"})
+
+      render_hook(view, "update_field_form", %{
+        "field" => %{"allow_other" => "true"}
+      })
+
+      render_hook(view, "save_field", %{"field" => %{}})
+
+      # Field is index 1 — index 0 is the "name" field from the fixture entity.
+      html = render_hook(view, "edit_field", %{"index" => "1"})
+
+      assert html =~ ~s(name="field[allow_other]")
+
+      # Scope the "checked" assertion to the allow_other toggle itself —
+      # a bare `html =~ "checked"` would pass even if pre-fill were broken,
+      # since other checkboxes in the same modal may legitimately be checked.
+      [allow_other_input] =
+        Regex.run(~r/<input[^>]*name="field\[allow_other\]"[^>]*>/, html) |> List.wrap()
+
+      assert allow_other_input =~ "checked"
+    end
+
+    test "required/default controls are hidden while editing a heading field",
+         %{conn: conn} = ctx do
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, "/en/admin/entities/#{ctx.entity.uuid}/edit")
+
+      html = render_hook(view, "add_field", %{})
+      assert html =~ ~s(name="field[required]")
+      assert html =~ ~s(name="field[default]")
+
+      html =
+        render_hook(view, "update_field_form", %{
+          "field" => %{"type" => "heading", "label" => "Section"}
+        })
+
+      refute html =~ ~s(name="field[required]")
+      refute html =~ ~s(name="field[default]")
+    end
   end
 
   describe "public form settings events" do

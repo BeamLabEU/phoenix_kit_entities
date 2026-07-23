@@ -42,6 +42,12 @@ defmodule PhoenixKitEntities.FormBuilder do
   alias PhoenixKit.Utils.Format
   alias PhoenixKit.Utils.Multilang
 
+  # Sentinel value for the synthetic "Other" option on radio/select/checkbox
+  # fields with `"allow_other" => true`. Submitted alongside a companion
+  # `<key>__other` free-text param; `merge_other_params/2` resolves the pair
+  # back into the free-text value before validation/storage.
+  @other_sentinel "__other__"
+
   @doc """
   Builds form fields HTML for an entire entity.
 
@@ -519,7 +525,17 @@ defmodule PhoenixKitEntities.FormBuilder do
 
   # Select Dropdown
   def build_field(%{"type" => "select"} = field, changeset, opts) do
-    assigns = %{field: field, changeset: changeset, opts: opts}
+    current_value = get_field_value(changeset, field["key"])
+    allow_other = field["allow_other"] == true
+    other_value = allow_other && custom_other_value(current_value, field["options"])
+
+    assigns = %{
+      field: field,
+      changeset: changeset,
+      opts: opts,
+      allow_other: allow_other,
+      other_value: other_value
+    }
 
     ~H"""
     <div>
@@ -543,8 +559,23 @@ defmodule PhoenixKitEntities.FormBuilder do
               {option}
             </option>
           <% end %>
+          <%= if @allow_other do %>
+            <option value={other_sentinel()} selected={!!@other_value}>
+              {gettext("Other")}
+            </option>
+          <% end %>
         </select>
       </label>
+      <%= if @allow_other do %>
+        <input
+          type="text"
+          name={"#{@changeset.data.__struct__.__schema__(:source)}[data][#{@field["key"]}__other]"}
+          value={@other_value}
+          placeholder={gettext("Enter custom value")}
+          class={["input input-bordered w-full mt-2", @opts[:input_class]]}
+          disabled={@opts[:disabled]}
+        />
+      <% end %>
       <%= if @field["description"] do %>
         <.label class="label">
           <span class="label-text-alt">{@field["description"]}</span>
@@ -556,7 +587,17 @@ defmodule PhoenixKitEntities.FormBuilder do
 
   # Radio Buttons
   def build_field(%{"type" => "radio"} = field, changeset, opts) do
-    assigns = %{field: field, changeset: changeset, opts: opts}
+    current_value = get_field_value(changeset, field["key"])
+    allow_other = field["allow_other"] == true
+    other_value = allow_other && custom_other_value(current_value, field["options"])
+
+    assigns = %{
+      field: field,
+      changeset: changeset,
+      opts: opts,
+      allow_other: allow_other,
+      other_value: other_value
+    }
 
     ~H"""
     <div>
@@ -578,6 +619,28 @@ defmodule PhoenixKitEntities.FormBuilder do
             <span class="label-text">{option}</span>
           </label>
         <% end %>
+        <%= if @allow_other do %>
+          <label class="flex items-center cursor-pointer gap-2">
+            <input
+              type="radio"
+              name={"#{@changeset.data.__struct__.__schema__(:source)}[data][#{@field["key"]}]"}
+              value={other_sentinel()}
+              class={["radio radio-primary mr-2", @opts[:input_class]]}
+              checked={!!@other_value}
+              required={@field["required"]}
+              disabled={@opts[:disabled]}
+            />
+            <span class="label-text">{gettext("Other")}</span>
+            <input
+              type="text"
+              name={"#{@changeset.data.__struct__.__schema__(:source)}[data][#{@field["key"]}__other]"}
+              value={@other_value}
+              placeholder={gettext("Enter custom value")}
+              class={["input input-bordered input-sm flex-1", @opts[:input_class]]}
+              disabled={@opts[:disabled]}
+            />
+          </label>
+        <% end %>
       </div>
       <%= if @field["description"] do %>
         <.label class="label">
@@ -590,7 +653,17 @@ defmodule PhoenixKitEntities.FormBuilder do
 
   # Checkbox Group
   def build_field(%{"type" => "checkbox"} = field, changeset, opts) do
-    assigns = %{field: field, changeset: changeset, opts: opts}
+    current_values = get_field_value(changeset, field["key"]) || []
+    allow_other = field["allow_other"] == true
+    other_value = allow_other && checkbox_other_value(current_values, field["options"])
+
+    assigns = %{
+      field: field,
+      changeset: changeset,
+      opts: opts,
+      allow_other: allow_other,
+      other_value: other_value
+    }
 
     ~H"""
     <div>
@@ -609,6 +682,27 @@ defmodule PhoenixKitEntities.FormBuilder do
               disabled={@opts[:disabled]}
             />
             <span class="label-text">{option}</span>
+          </label>
+        <% end %>
+        <%= if @allow_other do %>
+          <label class="flex items-center cursor-pointer gap-2">
+            <input
+              type="checkbox"
+              name={"#{@changeset.data.__struct__.__schema__(:source)}[data][#{@field["key"]}][]"}
+              value={other_sentinel()}
+              class={["checkbox checkbox-primary mr-2", @opts[:input_class]]}
+              checked={!!@other_value}
+              disabled={@opts[:disabled]}
+            />
+            <span class="label-text">{gettext("Other")}</span>
+            <input
+              type="text"
+              name={"#{@changeset.data.__struct__.__schema__(:source)}[data][#{@field["key"]}__other]"}
+              value={@other_value}
+              placeholder={gettext("Enter custom value")}
+              class={["input input-bordered input-sm flex-1", @opts[:input_class]]}
+              disabled={@opts[:disabled]}
+            />
           </label>
         <% end %>
       </div>
@@ -786,6 +880,29 @@ defmodule PhoenixKitEntities.FormBuilder do
 
   defp format_bytes(bytes), do: Format.bytes(bytes)
 
+  # The sentinel accessor exists (rather than inlining `@other_sentinel`) so
+  # templates can call it directly — `@` inside `~H` reads assigns, not
+  # module attributes.
+  defp other_sentinel, do: @other_sentinel
+
+  # For single-value fields (radio/select): the stored value counts as a
+  # custom "Other" entry when it's present but not one of the fixed options.
+  defp custom_other_value(value, _options) when value in [nil, ""], do: nil
+
+  defp custom_other_value(value, options) do
+    if value in (options || []), do: nil, else: value
+  end
+
+  # For checkbox (multi-value): whatever survives after removing the known
+  # options is the free-text "Other" entry. Only one text input exists, so
+  # if several unknown values are somehow present, the first one wins.
+  defp checkbox_other_value(values, options) do
+    case values -- (options || []) do
+      [] -> nil
+      [extra | _] -> extra
+    end
+  end
+
   @doc """
   Validates entity data against field definitions.
 
@@ -901,6 +1018,56 @@ defmodule PhoenixKitEntities.FormBuilder do
   end
 
   @doc """
+  Resolves `allow_other` sentinel values in submitted params back into free text.
+
+  Radio/select/checkbox fields with `"allow_other" => true` render an extra
+  "Other" option whose value is the sentinel `"__other__"`, paired with a
+  companion `<key>__other` text input. This function replaces the sentinel
+  with the companion field's text (defaulting to `""` if absent) and drops
+  every `<key>__other` companion key from the result. A no-op for fields
+  without `allow_other`, or for values that aren't the sentinel.
+
+  ## Examples
+
+      iex> field = %{"type" => "radio", "key" => "color", "allow_other" => true}
+      iex> PhoenixKitEntities.FormBuilder.merge_other_params(
+      ...>   [field],
+      ...>   %{"color" => "__other__", "color__other" => "Crimson"}
+      ...> )
+      %{"color" => "Crimson"}
+  """
+  def merge_other_params(fields_definition, params) when is_map(params) do
+    other_keys =
+      for field <- fields_definition,
+          field["allow_other"] == true,
+          field["type"] in ["radio", "select", "checkbox"],
+          do: field["key"]
+
+    companion_keys = Enum.map(other_keys, &"#{&1}__other")
+
+    params
+    |> Enum.reduce(params, &resolve_other_param(&1, &2, other_keys, params))
+    |> Map.drop(companion_keys)
+  end
+
+  defp resolve_other_param({key, @other_sentinel}, acc, other_keys, params) do
+    if key in other_keys,
+      do: Map.put(acc, key, Map.get(params, "#{key}__other", "")),
+      else: acc
+  end
+
+  defp resolve_other_param({key, values}, acc, other_keys, params) when is_list(values) do
+    if key in other_keys and @other_sentinel in values do
+      text = Map.get(params, "#{key}__other", "")
+      Map.put(acc, key, Enum.map(values, &if(&1 == @other_sentinel, do: text, else: &1)))
+    else
+      acc
+    end
+  end
+
+  defp resolve_other_param(_pair, acc, _other_keys, _params), do: acc
+
+  @doc """
   Gets the current value of a field from a changeset.
 
   Helper function to extract field values from changesets or forms for form rendering.
@@ -972,31 +1139,44 @@ defmodule PhoenixKitEntities.FormBuilder do
     end
   end
 
-  defp validate_type(%{"type" => "select", "options" => options}, value) when is_list(options) do
+  defp validate_type(%{"type" => "select", "options" => options} = field, value)
+       when is_list(options) do
     cond do
       value in [nil, ""] -> {:ok, nil}
       value in options -> {:ok, value}
+      field["allow_other"] == true and is_binary(value) -> {:ok, value}
       true -> {:error, [gettext("must be one of: %{options}", options: Enum.join(options, ", "))]}
     end
   end
 
-  defp validate_type(%{"type" => "radio", "options" => options}, value) when is_list(options) do
+  defp validate_type(%{"type" => "radio", "options" => options} = field, value)
+       when is_list(options) do
     cond do
       value in [nil, ""] -> {:ok, nil}
       value in options -> {:ok, value}
+      field["allow_other"] == true and is_binary(value) -> {:ok, value}
       true -> {:error, [gettext("must be one of: %{options}", options: Enum.join(options, ", "))]}
     end
   end
 
-  defp validate_type(%{"type" => "checkbox", "options" => options}, values)
+  defp validate_type(%{"type" => "checkbox", "options" => options} = field, values)
        when is_list(options) and is_list(values) do
     invalid_values = values -- options
 
-    if Enum.empty?(invalid_values) do
-      {:ok, values}
-    else
-      {:error,
-       [gettext("contains invalid options: %{invalid}", invalid: Enum.join(invalid_values, ", "))]}
+    cond do
+      Enum.empty?(invalid_values) ->
+        {:ok, values}
+
+      field["allow_other"] == true ->
+        {:ok, values}
+
+      true ->
+        {:error,
+         [
+           gettext("contains invalid options: %{invalid}",
+             invalid: Enum.join(invalid_values, ", ")
+           )
+         ]}
     end
   end
 

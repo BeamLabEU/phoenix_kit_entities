@@ -502,7 +502,7 @@ defmodule PhoenixKitEntities.EntityData do
   defp validate_select_field(changeset, field_def, value) do
     options = field_def["options"] || []
 
-    if value in options do
+    if value in options or field_def["allow_other"] == true do
       changeset
     else
       add_error(
