@@ -641,7 +641,19 @@ defmodule PhoenixKitEntities.EntityData do
   end
 
   defp notify_data_event({:error, _} = result, event, opts) do
-    log_data_error_activity(event, opts)
+    # `activity_log: false` (see `maybe_log_data_activity/3` below) must
+    # suppress this error-path row too, not just the success path.
+    # `EntityData.changeset/2` re-validates every required field on EVERY
+    # `update/3` call, so a `LiveDataForm` autosave against an
+    # incomplete-required-field record fails this changeset on every
+    # debounced keystroke until the last required field is filled — without
+    # this guard, each of those failures would still insert a
+    # `db_pending: true` activity row, flooding the log exactly the way
+    # `activity_log: false` exists to prevent.
+    if Keyword.get(opts, :activity_log, true) do
+      log_data_error_activity(event, opts)
+    end
+
     result
   end
 
