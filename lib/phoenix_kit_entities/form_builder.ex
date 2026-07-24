@@ -32,6 +32,38 @@ defmodule PhoenixKitEntities.FormBuilder do
 
   Forms are generated as Phoenix.Component HTML with proper validation,
   error handling, and styling consistent with the PhoenixKit design system.
+
+  ## Field-Level Translations (display-only)
+
+  A field definition may carry an optional `"translations"` key, resolved
+  by `translated_label/2` and `translated_option_label/3`:
+
+      %{
+        "key" => "color",
+        "label" => "Värv",
+        "type" => "radio",
+        "options" => ["Must", "Valge"],
+        "translations" => %{
+          "ru" => %{"label" => "Цвет", "options" => %{"Must" => "Чёрный", "Valge" => "Белый"}},
+          "en" => %{"label" => "Colour", "options" => %{"Must" => "Black", "Valge" => "White"}}
+        }
+      }
+
+  This is **display-only**: the canonical, stored/submitted value is
+  always the original `"label"` / option string (`"Must"`, never
+  `"Чёрный"`) — `"translations"` never affects validation,
+  `merge_other_params/2`, or what lands in `EntityData.data`. `"heading"`
+  fields are translated the same way (their `"translations"` map only
+  ever has a `"label"` entry, since headings have no options).
+
+  Resolution falls back to the original text whenever a lookup can't be
+  satisfied: `lang_code` is `nil`, the field has no `"translations"` key
+  at all, the language isn't present, or (for options) that specific
+  option has no translated entry. Language-code lookups tolerate
+  base/dialect mismatches the same way entity-level `settings["translations"]`
+  does (see `PhoenixKitEntities.get_entity_by_name/2`'s dialect-tolerant
+  lookup) — a field translated under `"ru-RU"` still resolves for a
+  caller passing the bare `"ru"`, and vice versa.
   """
 
   import Phoenix.Component
@@ -39,6 +71,7 @@ defmodule PhoenixKitEntities.FormBuilder do
   import PhoenixKitWeb.Components.Core.FormFieldLabel, only: [label: 1]
   use Gettext, backend: PhoenixKitWeb.Gettext
 
+  alias PhoenixKit.Modules.Languages.DialectMapper
   alias PhoenixKit.Utils.Format
   alias PhoenixKit.Utils.Multilang
   alias PhoenixKitEntities.FieldTypes
@@ -233,6 +266,116 @@ defmodule PhoenixKitEntities.FormBuilder do
   defp inherited_value?("", _), do: true
   defp inherited_value?(a, b), do: to_string(a) == to_string(b)
 
+  # ── Field-level translations (display-only) ────────────────────
+
+  @doc """
+  Resolves a field's (or a `"heading"` field's) display label for
+  `lang_code`, honoring an optional `"translations"` key on the field
+  definition (see the moduledoc for the full contract).
+
+  Falls back to `field["label"]` whenever `lang_code` is `nil`, the
+  field has no `"translations"` map, the language isn't present in it,
+  or its `"label"` entry is missing/blank. Display-only — never affects
+  the canonical `field["label"]` itself.
+
+  ## Examples
+
+      iex> field = %{"label" => "Värv", "translations" => %{"ru" => %{"label" => "Цвет"}}}
+      iex> PhoenixKitEntities.FormBuilder.translated_label(field, "ru")
+      "Цвет"
+
+      iex> PhoenixKitEntities.FormBuilder.translated_label(field, "et")
+      "Värv"
+
+      iex> PhoenixKitEntities.FormBuilder.translated_label(field, nil)
+      "Värv"
+  """
+  @spec translated_label(map(), String.t() | nil) :: String.t() | nil
+  def translated_label(field, lang_code) when is_map(field) do
+    case Map.get(lookup_field_translation(field, lang_code), "label") do
+      value when is_binary(value) and value != "" -> value
+      _ -> field["label"]
+    end
+  end
+
+  @doc """
+  Resolves the display label for a single radio/select/checkbox option
+  value, honoring the field's optional `"translations" => %{lang =>
+  %{"options" => %{option_value => translated}}}` map.
+
+  `option_value` is always the canonical, stored/submitted string —
+  this only affects what text renders next to it (e.g. `<option
+  value={option_value}>{translated_option_label(...)}</option>`). Falls
+  back to `option_value` itself whenever `lang_code` is `nil`, the field
+  has no `"translations"` map, the language isn't present, or this
+  specific option has no translated entry (this is also what makes a
+  free-text `allow_other` value display as-is: it was never one of the
+  fixed options, so it never has a translation entry to find).
+
+  ## Examples
+
+      iex> field = %{"translations" => %{"ru" => %{"options" => %{"Must" => "Чёрный"}}}}
+      iex> PhoenixKitEntities.FormBuilder.translated_option_label(field, "Must", "ru")
+      "Чёрный"
+
+      iex> PhoenixKitEntities.FormBuilder.translated_option_label(field, "Valge", "ru")
+      "Valge"
+  """
+  @spec translated_option_label(map(), String.t(), String.t() | nil) :: String.t()
+  def translated_option_label(field, option_value, lang_code) when is_map(field) do
+    case get_in(lookup_field_translation(field, lang_code), ["options", option_value]) do
+      value when is_binary(value) and value != "" -> value
+      _ -> option_value
+    end
+  end
+
+  defp lookup_field_translation(_field, nil), do: %{}
+
+  defp lookup_field_translation(field, lang_code) when is_binary(lang_code) do
+    case field["translations"] do
+      %{} = translations -> lookup_translation(translations, lang_code)
+      _ -> %{}
+    end
+  end
+
+  defp lookup_field_translation(_field, _lang_code), do: %{}
+
+  # Looks up a translation entry by locale, tolerating base/dialect
+  # mismatches — mirrors `PhoenixKitEntities`'s private `lookup_translation/2`
+  # for entity-level `settings["translations"]`.
+  #
+  # Match priority:
+  # 1. Exact key match (`"ru-RU"` -> `"ru-RU"`).
+  # 2. Same base code (`"ru"` -> first `"ru-*"` translation, deterministic
+  #    via sort).
+  defp lookup_translation(translations_map, lang_code) do
+    case Map.get(translations_map, lang_code) do
+      %{} = exact ->
+        exact
+
+      _ ->
+        base = safe_extract_base(lang_code)
+
+        translations_map
+        |> Enum.filter(fn {key, _v} ->
+          is_binary(key) and base != nil and safe_extract_base(key) == base
+        end)
+        |> Enum.sort_by(&elem(&1, 0))
+        |> case do
+          [{_key, value} | _] when is_map(value) -> value
+          _ -> %{}
+        end
+    end
+  end
+
+  defp safe_extract_base(code) when is_binary(code) and code != "" do
+    DialectMapper.extract_base(code)
+  rescue
+    _ -> nil
+  end
+
+  defp safe_extract_base(_code), do: nil
+
   @doc """
   Builds a single form field based on field definition.
 
@@ -267,7 +410,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     ~H"""
     <div>
       <.label>
-        {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
+        {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
       <input
         type="text"
@@ -304,7 +447,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     ~H"""
     <div>
       <.label for={@field["key"]}>
-        {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
+        {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
       <textarea
         name={"#{@changeset.data.__struct__.__schema__(:source)}[data][#{@field["key"]}]"}
@@ -340,7 +483,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     ~H"""
     <div>
       <.label for={@field["key"]}>
-        {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
+        {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
       <input
         type="email"
@@ -376,7 +519,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     ~H"""
     <div>
       <.label for={@field["key"]}>
-        {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
+        {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
       <input
         type="url"
@@ -412,7 +555,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     ~H"""
     <div>
       <.label for={@field["key"]}>
-        {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
+        {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
       <textarea
         name={"#{@changeset.data.__struct__.__schema__(:source)}[data][#{@field["key"]}]"}
@@ -450,7 +593,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     ~H"""
     <div>
       <.label for={@field["key"]}>
-        {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
+        {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
       <input
         type="number"
@@ -483,7 +626,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     ~H"""
     <div>
       <.label>
-        {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
+        {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
       <div class="form-control">
         <label class="label cursor-pointer justify-start gap-4">
@@ -521,7 +664,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     ~H"""
     <div>
       <.label for={@field["key"]}>
-        {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
+        {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
       <input
         type="date"
@@ -557,7 +700,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     ~H"""
     <div>
       <.label for={@field["key"]}>
-        {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
+        {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
       <label class={["select w-full", @opts[:input_class]]}>
         <select
@@ -573,7 +716,7 @@ defmodule PhoenixKitEntities.FormBuilder do
               value={option}
               selected={get_field_value(@changeset, @field["key"]) == option}
             >
-              {option}
+              {translated_option_label(@field, option, @opts[:lang_code])}
             </option>
           <% end %>
           <%= if @allow_other do %>
@@ -619,7 +762,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     ~H"""
     <div>
       <.label>
-        {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
+        {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
       <div class="flex flex-col gap-2">
         <%= for option <- @field["options"] || [] do %>
@@ -633,7 +776,7 @@ defmodule PhoenixKitEntities.FormBuilder do
               required={@field["required"]}
               disabled={@opts[:disabled]}
             />
-            <span class="label-text">{option}</span>
+            <span class="label-text">{translated_option_label(@field, option, @opts[:lang_code])}</span>
           </label>
         <% end %>
         <%= if @allow_other do %>
@@ -685,7 +828,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     ~H"""
     <div>
       <.label>
-        {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
+        {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
       <div class="flex flex-col gap-2">
         <%= for option <- @field["options"] || [] do %>
@@ -698,7 +841,7 @@ defmodule PhoenixKitEntities.FormBuilder do
               checked={option in (get_field_value(@changeset, @field["key"]) || [])}
               disabled={@opts[:disabled]}
             />
-            <span class="label-text">{option}</span>
+            <span class="label-text">{translated_option_label(@field, option, @opts[:lang_code])}</span>
           </label>
         <% end %>
         <%= if @allow_other do %>
@@ -739,7 +882,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     ~H"""
     <div>
       <.label>
-        {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
+        {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
       <div class="border-2 border-dashed border-base-300 rounded-lg p-6 text-center bg-base-200/50">
         <.icon name="hero-photo" class="w-12 h-12 mx-auto text-base-content/40 mb-3" />
@@ -787,7 +930,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     ~H"""
     <div>
       <.label>
-        {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
+        {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
 
       <%!-- Display current files if any --%>
@@ -851,7 +994,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     ~H"""
     <div>
       <.label>
-        {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
+        {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
       <div class="border-2 border-dashed border-base-300 rounded-lg p-6 text-center bg-base-200/50">
         <.icon name="hero-link" class="w-12 h-12 mx-auto text-base-content/40 mb-3" />
@@ -872,13 +1015,14 @@ defmodule PhoenixKitEntities.FormBuilder do
   end
 
   # Section Heading — display-only, not bound to the changeset (no data,
-  # no input, never required).
-  def build_field(%{"type" => "heading"} = field, _changeset, _opts) do
-    assigns = %{field: field}
+  # no input, never required). Still accepts `opts` (unlike every other
+  # arg here) purely to read `opts[:lang_code]` for `translated_label/2`.
+  def build_field(%{"type" => "heading"} = field, _changeset, opts) do
+    assigns = %{label: translated_label(field, opts[:lang_code])}
 
     ~H"""
     <h3 class="text-base font-semibold border-b border-base-300 pb-1 mt-6 mb-2">
-      {@field["label"]}
+      {@label}
     </h3>
     """
   end

@@ -98,7 +98,15 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
   - `lang` (optional, defaults to `nil` — safe to omit entirely) — locale
     passed straight through to `PhoenixKitEntities.FormBuilder.build_fields/3`
     as `lang_code` (and to entity loading, when the entity isn't already
-    preloaded).
+    preloaded). In `:edit` mode this drives `FormBuilder`'s own field-level
+    "translations" resolution (labels + option text; see `FormBuilder`'s
+    moduledoc for the display-only contract). The static `:readonly` view
+    resolves the same `field["translations"]` map directly via
+    `FormBuilder.translated_label/2` / `translated_option_label/3` — a
+    stored value (e.g. `"Must"`) always renders its translation for
+    `lang` (e.g. "Чёрный"), falling back to the original label/option text
+    whenever `lang` is `nil` or no translation entry exists. Either way,
+    the value actually persisted in `record.data` is never touched.
   - `actor` (optional, defaults to `nil` — safe to omit entirely) — the
     acting user (a struct with a `:uuid` field) or `nil`. Threaded through
     to `EntityData.update/3` as `actor_uuid:` for activity logging.
@@ -517,67 +525,125 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
     ~H"""
     <div class="space-y-4">
       <%= for field <- @entity.fields_definition || [] do %>
-        {readonly_field(field, @record.data || %{})}
+        {readonly_field(field, @record.data || %{}, @lang)}
       <% end %>
     </div>
     """
   end
 
   # ── Readonly field rendering ─────────────────────────────────
+  #
+  # Every clause resolves its label through `FormBuilder.translated_label/2`
+  # — same display-only "translations" contract as the editable form (see
+  # `FormBuilder`'s moduledoc). `select`/`radio` additionally resolve their
+  # STORED value through `FormBuilder.translated_option_label/3`: the value
+  # itself (e.g. `"Must"`) stays canonical, only what's shown changes. A
+  # value outside the field's `options` (an `allow_other` free-text answer)
+  # has no translation entry to find, so `translated_option_label/3` falls
+  # back to the raw value — exactly the desired "show as-is" behavior.
 
-  defp readonly_field(%{"type" => "heading"} = field, _data) do
-    assigns = %{field: field}
+  defp readonly_field(%{"type" => "heading"} = field, _data, lang_code) do
+    assigns = %{label: FormBuilder.translated_label(field, lang_code)}
 
     ~H"""
     <h3 class="text-base font-semibold border-b border-base-300 pb-1 mt-6 mb-2">
-      {@field["label"]}
+      {@label}
     </h3>
     """
   end
 
-  defp readonly_field(%{"type" => "checkbox"} = field, data) do
-    assigns = %{field: field, display: readonly_list(Map.get(data, field["key"]))}
+  defp readonly_field(%{"type" => "checkbox"} = field, data, lang_code) do
+    display =
+      data
+      |> Map.get(field["key"])
+      |> translate_option_values(field, lang_code)
+      |> readonly_list()
+
+    assigns = %{label: FormBuilder.translated_label(field, lang_code), display: display}
 
     ~H"""
     <div>
-      <span class="font-semibold">{@field["label"]}:</span>
+      <span class="font-semibold">{@label}:</span>
       <span>{@display}</span>
     </div>
     """
   end
 
-  defp readonly_field(%{"type" => "textarea"} = field, data) do
-    assigns = %{field: field, display: readonly_text(Map.get(data, field["key"]))}
+  defp readonly_field(%{"type" => "textarea"} = field, data, lang_code) do
+    assigns = %{
+      label: FormBuilder.translated_label(field, lang_code),
+      display: readonly_text(Map.get(data, field["key"]))
+    }
 
     ~H"""
     <div>
-      <div class="font-semibold">{@field["label"]}</div>
+      <div class="font-semibold">{@label}</div>
       <div class="whitespace-pre-wrap">{@display}</div>
     </div>
     """
   end
 
-  defp readonly_field(%{"type" => "boolean"} = field, data) do
-    assigns = %{field: field, display: readonly_boolean(Map.get(data, field["key"]))}
+  defp readonly_field(%{"type" => "boolean"} = field, data, lang_code) do
+    assigns = %{
+      label: FormBuilder.translated_label(field, lang_code),
+      display: readonly_boolean(Map.get(data, field["key"]))
+    }
 
     ~H"""
     <div>
-      <span class="font-semibold">{@field["label"]}:</span>
+      <span class="font-semibold">{@label}:</span>
       <span>{@display}</span>
     </div>
     """
   end
 
-  defp readonly_field(field, data) do
-    assigns = %{field: field, display: readonly_value(Map.get(data, field["key"]))}
+  # `select`/`radio` are the other two option-bearing types (besides
+  # `checkbox` above) — resolved via `translated_option_label/3` the same
+  # way, just for a single stored value instead of a list. Must come
+  # before the catch-all clause below, which has no option to translate.
+  defp readonly_field(%{"type" => type} = field, data, lang_code)
+       when type in ["select", "radio"] do
+    raw_value = Map.get(data, field["key"])
+
+    display =
+      case raw_value do
+        value when value in [nil, ""] -> dash()
+        value -> FormBuilder.translated_option_label(field, value, lang_code)
+      end
+
+    assigns = %{label: FormBuilder.translated_label(field, lang_code), display: display}
 
     ~H"""
     <div>
-      <span class="font-semibold">{@field["label"]}:</span>
+      <span class="font-semibold">{@label}:</span>
       <span>{@display}</span>
     </div>
     """
   end
+
+  defp readonly_field(field, data, lang_code) do
+    assigns = %{
+      label: FormBuilder.translated_label(field, lang_code),
+      display: readonly_value(Map.get(data, field["key"]))
+    }
+
+    ~H"""
+    <div>
+      <span class="font-semibold">{@label}:</span>
+      <span>{@display}</span>
+    </div>
+    """
+  end
+
+  # Translates each value in an option list (`checkbox` field data) ahead
+  # of `readonly_list/1` — a non-list value (`nil`, or any other stray
+  # shape) passes through untouched so `readonly_list/1`'s own dash-vs-join
+  # logic still applies unchanged.
+  defp translate_option_values(values, field, lang_code) when is_list(values) do
+    Enum.map(values, &FormBuilder.translated_option_label(field, &1, lang_code))
+  end
+
+  defp translate_option_values(other, _field, _lang_code), do: other
 
   defp readonly_list(nil), do: dash()
   defp readonly_list([]), do: dash()

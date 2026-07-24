@@ -240,5 +240,22 @@ defmodule PhoenixKitEntities.EntityChangesetTest do
       cs = changeset(%{fields_definition: fields})
       refute errors_on(cs)[:fields_definition]
     end
+
+    test "valid - a field carrying a \"translations\" map isn't rejected as an unknown key" do
+      fields = [
+        %{
+          "type" => "radio",
+          "key" => "color",
+          "label" => "Värv",
+          "options" => ["Must", "Valge"],
+          "translations" => %{
+            "ru" => %{"label" => "Цвет", "options" => %{"Must" => "Чёрный", "Valge" => "Белый"}}
+          }
+        }
+      ]
+
+      cs = changeset(%{fields_definition: fields})
+      refute errors_on(cs)[:fields_definition]
+    end
   end
 end
