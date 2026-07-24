@@ -64,6 +64,30 @@ defmodule PhoenixKitEntities.FormBuilder do
   does (see `PhoenixKitEntities.get_entity_by_name/2`'s dialect-tolerant
   lookup) — a field translated under `"ru-RU"` still resolves for a
   caller passing the bare `"ru"`, and vice versa.
+
+  ### Which surfaces resolve this
+
+  Resolved wherever `build_fields/3` / `build_field/3` receive a non-nil
+  `opts[:lang_code]` (every rendering clause: labels; `select`/`radio`/
+  `checkbox` also translate their option text), and by
+  `PhoenixKitEntities.Components.LiveDataForm` in both modes — `:edit`
+  via `build_fields/3` (it passes its `lang` attr straight through as
+  `lang_code`), `:readonly` directly via `translated_label/2` /
+  `translated_option_label/3`.
+
+  **Not** resolved — these surfaces render the canonical field text
+  regardless of locale, by design; this is a scope boundary, not a bug:
+
+  - `PhoenixKitEntities.Web.DataForm` (the admin record editor) — the
+    non-multilang branch calls `build_fields/3` with `lang_code: nil`
+    hardcoded; the multilang branch only passes a real locale when the
+    multilang module itself is enabled, otherwise also `nil`.
+  - `PhoenixKitEntities.Components.EntityForm` (the public entity
+    submission form) — doesn't pass `lang_code` to `build_fields/3` at
+    all.
+  - Validation error messages (`EntityData.changeset/2` and
+    `validate_data/3` here) — always interpolate the canonical
+    `field_def["label"]` / `field["label"]`, never a translation.
   """
 
   import Phoenix.Component
@@ -323,9 +347,15 @@ defmodule PhoenixKitEntities.FormBuilder do
   """
   @spec translated_option_label(map(), String.t(), String.t() | nil) :: String.t()
   def translated_option_label(field, option_value, lang_code) when is_map(field) do
-    case get_in(lookup_field_translation(field, lang_code), ["options", option_value]) do
-      value when is_binary(value) and value != "" -> value
-      _ -> option_value
+    case lookup_field_translation(field, lang_code) do
+      %{"options" => %{} = options} ->
+        case Map.get(options, option_value) do
+          value when is_binary(value) and value != "" -> value
+          _ -> option_value
+        end
+
+      _ ->
+        option_value
     end
   end
 

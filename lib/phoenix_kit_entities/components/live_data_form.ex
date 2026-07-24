@@ -106,7 +106,10 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
     stored value (e.g. `"Must"`) always renders its translation for
     `lang` (e.g. "Чёрный"), falling back to the original label/option text
     whenever `lang` is `nil` or no translation entry exists. Either way,
-    the value actually persisted in `record.data` is never touched.
+    the value actually persisted in `record.data` is never touched. This
+    component is one of the surfaces that DOES resolve field-level
+    `"translations"` — see `FormBuilder`'s moduledoc, "Which surfaces
+    resolve this", for the full list of which callers do and don't.
   - `actor` (optional, defaults to `nil` — safe to omit entirely) — the
     acting user (a struct with a `:uuid` field) or `nil`. Threaded through
     to `EntityData.update/3` as `actor_uuid:` for activity logging.

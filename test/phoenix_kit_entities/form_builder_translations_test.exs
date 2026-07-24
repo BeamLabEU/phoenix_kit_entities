@@ -94,6 +94,31 @@ defmodule PhoenixKitEntities.FormBuilderTranslationsTest do
     test "tolerates a dialect-code lookup when stored under the base code" do
       assert FormBuilder.translated_option_label(@field, "Must", "ru-RU") == "Чёрный"
     end
+
+    test "falls back, without raising, when \"options\" is a list instead of a map" do
+      field = %{"translations" => %{"ru" => %{"options" => ["Must"]}}}
+      assert FormBuilder.translated_option_label(field, "Must", "ru") == "Must"
+    end
+
+    test "falls back, without raising, when \"options\" is a string instead of a map" do
+      field = %{"translations" => %{"ru" => %{"options" => "x"}}}
+      assert FormBuilder.translated_option_label(field, "Must", "ru") == "Must"
+    end
+
+    test "falls back when this option's translated entry is a blank string" do
+      field = %{"translations" => %{"ru" => %{"options" => %{"Must" => ""}}}}
+      assert FormBuilder.translated_option_label(field, "Must", "ru") == "Must"
+    end
+
+    test "falls back when \"translations\" itself isn't a map" do
+      field = %{"translations" => "not-a-map"}
+      assert FormBuilder.translated_option_label(field, "Must", "ru") == "Must"
+    end
+
+    test "falls back when the language entry isn't a map" do
+      field = %{"translations" => %{"ru" => "Цвет"}}
+      assert FormBuilder.translated_option_label(field, "Must", "ru") == "Must"
+    end
   end
 
   describe "build_field/3 — label translation in rendered HTML" do
@@ -104,7 +129,7 @@ defmodule PhoenixKitEntities.FormBuilderTranslationsTest do
       refute html =~ "Värv"
     end
 
-    test "regression: no lang_code renders the original label, byte-for-byte unaffected" do
+    test "regression: no lang_code renders the original label, never the translation" do
       html = FormBuilder.build_field(@field, changeset()) |> rendered_to_string()
 
       assert html =~ "Värv"
