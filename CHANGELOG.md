@@ -1,3 +1,22 @@
+## 0.2.8 - 2026-07-24
+
+### Added
+- `heading` field type — display-only section header for visually grouping fields in long forms. Carries no data, is skipped by every validation path (`EntityData.changeset/2`, both `FormBuilder.validate_data/3` branches), and renders as an `<h3>` in `FormBuilder.build_field/3` and `LiveDataForm`'s readonly view. (#24)
+- `allow_other` option for `select`/`radio`/`checkbox` fields — renders an extra "Other" option with a companion free-text input. `FormBuilder.merge_other_params/2` resolves the UI sentinel (`"__other__"`) into the typed value before validation on every write path (admin `DataForm`, public entity form, and the new component); stored data stays flat and backward-compatible. `FieldTypes.allow_other?/1` tolerates both `true` and `"true"` (HTML checkbox params). (#24)
+- `PhoenixKitEntities.Components.LiveDataForm` — embeddable stateful `LiveComponent` for viewing/editing one `EntityData` record's fields outside the admin: `:edit` mode with debounced autosave and an optional submit button, `:readonly` mode with static output. The host LiveView owns loading, PubSub, and status semantics; the component reports `{:live_data_form, :saved | :submitted, record}` messages. Renders DB-free when `record.entity` is preloaded. (#24)
+- `EntityData.update/3` gains two opt-in options, both defaulting to current behavior: `activity_log: false` (skip the per-save activity row for high-frequency callers like `LiveDataForm` autosave) and `require_status: [statuses]` (re-reads the record under `SELECT ... FOR UPDATE` inside the update transaction and refuses the write unless the fresh status is in the list — closes a cross-session race where a stale `:edit` view could write into a record another session had just transitioned). (#24)
+- `FormBuilder.build_fields/3` accepts an opt-in `id_prefix`, giving per-record DOM id scoping when several forms of the same entity render on one page (e.g. `LiveDataForm` used once per record in a list). Default output is unchanged. (#24)
+- Display-only field-definition translations: a field definition may carry an optional `"translations"` key (per-language `label`/option overrides). `FormBuilder.translated_label/2` and `FormBuilder.translated_option_label/3` resolve them for display only — validation and stored values always use the canonical strings. Resolved by `build_field/3` (labels + choice-option text) and by `LiveDataForm` in both modes. Not yet resolved by the admin `DataForm` or the public entity form (documented scope boundary). (#24)
+
+### Fixed
+- `EntityData.changeset/2` now validates `radio` and `checkbox` values against the field's `options` (previously only `select` was checked), rejects the `__other__` sentinel unconditionally, rejects a scalar where a checkbox list is expected, and treats `[]` as a missing value for required checkbox fields. (#24)
+- `EntityData.update/3`'s `activity_log: false` option was only wired into the success path — a failed save (e.g. `LiveDataForm` autosaving against an entity with an unfilled required field, which re-validates on every debounced keystroke) still inserted a `db_pending: true` activity row every time, reopening the exact "one row per keystroke" flood the option exists to prevent. The error path now respects the same opt. (#24 follow-up)
+- The entity changeset's field-type whitelist is now derived from `FieldTypes.list_types/0` instead of a hand-maintained list, which had already drifted from the real type registry. (#24)
+- Removed a stale duplicate `mix.lock` entry (`beamlab_ex_aws_sqs` 4.0.0, orphaned by the `phoenix_kit` bump below, which re-aliases the same package under the `ex_aws_sqs` app name at 5.0.0) that broke `mix deps.unlock --check-unused` (i.e. `mix precommit`) on `main`.
+
+### Changed
+- Dependency lockfile bumps: `phoenix_kit` 1.7.189 → 1.7.210, `phoenix_live_view` 1.2.6 → 1.2.7, `etcher` 0.7.2 → 0.9.0, `fresco` 0.8.0 → 0.10.0, `mdex` 0.13.3 → 0.13.4, `mdex_native` 0.2.5 → 0.2.6, `ex_ast` 0.12.9 → 0.13.1, `hackney` 4.5.2 → 4.6.0, `beamlab_countries` 1.0.8 → 1.1.0, `mint` 1.9.1 → 1.9.3, `req` 0.6.2 → 0.6.3, `tessera` 0.3.2 → 0.3.4, `plug_crypto` 2.1.1 → 2.2.0, `lazy_html` 0.1.11 → 0.1.12, `earmark_parser` 1.4.45 → 1.4.46, `elixir_make` 0.9.0 → 0.10.0, `quic` 1.7.0 → 1.7.1, `glob_ex` 0.1.11 → 0.1.12; added `ex_aws_sqs` (via `beamlab_ex_aws_sqs` 5.0.0).
+
 ## 0.2.7 - 2026-07-06
 
 ### Added
