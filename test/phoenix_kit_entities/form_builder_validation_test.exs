@@ -198,6 +198,42 @@ defmodule PhoenixKitEntities.FormBuilderValidationTest do
     end
   end
 
+  describe "validate_data/2 with checkbox fields" do
+    test "valid options" do
+      entity =
+        entity([
+          %{
+            "type" => "checkbox",
+            "key" => "tools",
+            "label" => "Tools",
+            "options" => ["Hammer", "Drill"]
+          }
+        ])
+
+      assert {:ok, %{"tools" => ["Hammer"]}} =
+               FormBuilder.validate_data(entity, %{"tools" => ["Hammer"]})
+    end
+
+    # `value in [nil, ""]` used to be the only "empty" the required check
+    # recognized — a required checkbox group left fully unticked submits
+    # `[]`, which slipped through as valid.
+    test "required checkbox field rejects an empty list" do
+      entity =
+        entity([
+          %{
+            "type" => "checkbox",
+            "key" => "tools",
+            "label" => "Tools",
+            "options" => ["Hammer", "Drill"],
+            "required" => true
+          }
+        ])
+
+      assert {:error, errors} = FormBuilder.validate_data(entity, %{"tools" => []})
+      assert Map.has_key?(errors, "tools")
+    end
+  end
+
   describe "validate_data/2 with multiple fields" do
     test "validates all fields together" do
       entity =

@@ -13,6 +13,7 @@ defmodule PhoenixKitEntities.FieldTypes do
   - **email**: Email address with validation
   - **url**: URL with validation
   - **rich_text**: Rich HTML editor (TinyMCE/CKEditor-like)
+  - **heading**: Display-only section heading (no data), category `:basic`
 
   ### Numeric Types
   - **number**: Numeric input (integer or decimal)
@@ -189,6 +190,15 @@ defmodule PhoenixKitEntities.FieldTypes do
         "max_file_size" => 15_728_640,
         "accept" => [".pdf", ".jpg", ".jpeg", ".png"]
       }
+    },
+    "heading" => %{
+      name: "heading",
+      label: "Section Heading",
+      description: "Display-only section heading (no data)",
+      category: :basic,
+      icon: "hero-bars-3-bottom-left",
+      requires_options: false,
+      default_props: %{}
     }
   }
 
@@ -339,6 +349,9 @@ defmodule PhoenixKitEntities.FieldTypes do
   def description_for("file"),
     do: gettext("File upload field with configurable constraints")
 
+  def description_for("heading"),
+    do: gettext("Display-only section heading (no data)")
+
   def description_for(type_name) when is_binary(type_name) do
     case Map.get(@field_types, type_name) do
       nil -> ""
@@ -362,6 +375,33 @@ defmodule PhoenixKitEntities.FieldTypes do
       nil -> false
       type_info -> Map.get(type_info, :requires_options, false)
     end
+  end
+
+  @doc """
+  Checks whether a field definition has the `allow_other` ("Muu" custom
+  option) flag set — tolerant of both the boolean `true` and the string
+  `"true"`.
+
+  Field definition flags in this codebase are submitted from HTML forms
+  (where checkbox values arrive as strings) and persisted as-is into the
+  `fields_definition` JSONB column, so callers must never compare against
+  the literal boolean `true` — that only matches definitions built by hand
+  in Elixir, not ones created through the admin field editor.
+
+  ## Examples
+
+      iex> PhoenixKitEntities.FieldTypes.allow_other?(%{"allow_other" => true})
+      true
+
+      iex> PhoenixKitEntities.FieldTypes.allow_other?(%{"allow_other" => "true"})
+      true
+
+      iex> PhoenixKitEntities.FieldTypes.allow_other?(%{})
+      false
+  """
+  @spec allow_other?(map()) :: boolean()
+  def allow_other?(field) when is_map(field) do
+    field["allow_other"] in [true, "true"]
   end
 
   @doc """

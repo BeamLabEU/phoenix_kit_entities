@@ -9,6 +9,7 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
   alias PhoenixKit.Utils.Date, as: UtilsDate
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.EntityData
+  alias PhoenixKitEntities.FormBuilder
 
   require Logger
 
@@ -314,6 +315,12 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
   defp handle_submission(conn, entity, params, security_flags) do
     # Extract form data from params
     form_data = get_in(params, ["phoenix_kit_entity_data", "data"]) || %{}
+
+    # Resolve any `allow_other` "Muu" sentinel + companion free-text params
+    # into the actual custom value — must happen before filtering by
+    # allowed_fields below, since the companion `<key>__other` param is
+    # never itself an allowed field and would otherwise be dropped.
+    form_data = FormBuilder.merge_other_params(entity.fields_definition || [], form_data)
 
     # Filter to only include allowed public form fields
     settings = entity.settings || %{}

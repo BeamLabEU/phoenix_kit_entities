@@ -392,6 +392,73 @@ defmodule PhoenixKitEntities.Controllers.EntityFormControllerTest do
     end
   end
 
+  describe "allow_other custom option (Muu)" do
+    setup ctx do
+      {:ok, other_entity} =
+        Entities.create_entity(
+          %{
+            name: "form_ctrl_widget_other",
+            display_name: "Form Ctrl Widget Other",
+            display_name_plural: "Form Ctrl Widgets Other",
+            status: "published",
+            fields_definition: [
+              %{
+                "type" => "select",
+                "key" => "color",
+                "label" => "Color",
+                "options" => ["Red", "Blue"],
+                "allow_other" => true
+              }
+            ],
+            settings: %{
+              "public_form_enabled" => true,
+              "public_form_fields" => ["color"]
+            },
+            created_by_uuid: ctx.actor_uuid
+          },
+          actor_uuid: ctx.actor_uuid
+        )
+
+      {:ok, other_entity: other_entity}
+    end
+
+    # The companion `color__other` param is never itself in
+    # public_form_fields (only real field keys are), so merge_other_params
+    # must run BEFORE the allowlist filter — otherwise the free text is
+    # dropped and the raw "__other__" sentinel gets saved as `color`.
+    test "sentinel + companion free text resolves to the custom value before saving",
+         %{other_entity: entity} do
+      conn = build_conn(:post, "/", %{}, referer: "https://example.test/form")
+
+      params = %{
+        "entity_slug" => entity.name,
+        "phoenix_kit_entity_data" => %{
+          "data" => %{"color" => "__other__", "color__other" => "Crimson"}
+        }
+      }
+
+      result = simple_invoke(conn, params)
+      assert result.status in [302, 303]
+
+      [record] = EntityData.list_by_entity(entity.uuid)
+      assert record.data["color"] == "Crimson"
+    end
+
+    test "a known option is saved unchanged", %{other_entity: entity} do
+      conn = build_conn(:post, "/", %{}, referer: "https://example.test/form")
+
+      params = %{
+        "entity_slug" => entity.name,
+        "phoenix_kit_entity_data" => %{"data" => %{"color" => "Blue"}}
+      }
+
+      _result = simple_invoke(conn, params)
+
+      [record] = EntityData.list_by_entity(entity.uuid)
+      assert record.data["color"] == "Blue"
+    end
+  end
+
   describe "save_suspicious flag" do
     test "honeypot with save_suspicious → record created with status=draft + warnings",
          %{entity: entity} do

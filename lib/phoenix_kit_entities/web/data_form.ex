@@ -392,7 +392,16 @@ defmodule PhoenixKitEntities.Web.DataForm do
   defp do_validate(data_params, socket) do
     entity_uuid = socket.assigns.entity.uuid
     record_uuid = socket.assigns.data_record.uuid
-    form_data = Map.get(data_params, "data", %{})
+
+    # Resolve any `allow_other` "Muu" sentinel + companion free-text params
+    # into the actual custom value before FormBuilder validates the data —
+    # otherwise the sentinel would fail options validation and the typed
+    # text would never reach storage.
+    form_data =
+      FormBuilder.merge_other_params(
+        socket.assigns.entity.fields_definition || [],
+        Map.get(data_params, "data", %{})
+      )
 
     data_params =
       if socket.assigns.data_record.uuid,
@@ -483,8 +492,15 @@ defmodule PhoenixKitEntities.Web.DataForm do
   end
 
   defp do_save(data_params, socket) do
-    # Extract the data field from params
-    form_data = Map.get(data_params, "data", %{})
+    # Extract the data field from params, resolving any `allow_other` "Muu"
+    # sentinel + companion free-text params into the actual custom value
+    # (see do_validate/2 for why this must happen before FormBuilder
+    # validates the data).
+    form_data =
+      FormBuilder.merge_other_params(
+        socket.assigns.entity.fields_definition || [],
+        Map.get(data_params, "data", %{})
+      )
 
     current_lang = socket.assigns[:current_lang]
 

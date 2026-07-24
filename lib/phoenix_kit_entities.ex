@@ -101,6 +101,7 @@ defmodule PhoenixKitEntities do
   alias PhoenixKit.Utils.UUID, as: UUIDUtils
   alias PhoenixKitEntities.EntityData
   alias PhoenixKitEntities.Events
+  alias PhoenixKitEntities.FieldTypes
   alias PhoenixKitEntities.Mirror.Exporter
   alias PhoenixKitEntities.Mirror.Storage
   @type t :: %__MODULE__{}
@@ -258,9 +259,15 @@ defmodule PhoenixKitEntities do
     add_error(changeset, :fields_definition, "each field must be a map")
   end
 
+  # `FieldTypes.list_types/0` is the source of truth for every type with a
+  # real `FieldType` entry; `image`/`relation` are placeholder types that
+  # render a "coming soon" box in `FormBuilder.build_field/3` but have no
+  # `FieldType` map of their own yet, so they're appended explicitly rather
+  # than duplicating the whole list by hand (which had drifted before —
+  # this allowlist and `FieldTypes.list_types/0` are meant to be the same
+  # set of types).
   defp validate_field_type(changeset, field) do
-    valid_types =
-      ~w(text textarea number boolean date email url select radio checkbox rich_text image file relation)
+    valid_types = FieldTypes.list_types() ++ ~w(image relation)
 
     if field["type"] in valid_types do
       changeset

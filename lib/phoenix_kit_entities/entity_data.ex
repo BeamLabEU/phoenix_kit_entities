@@ -86,6 +86,7 @@ defmodule PhoenixKitEntities.EntityData do
   alias PhoenixKit.Utils.UUID, as: UUIDUtils
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.Events
+  alias PhoenixKitEntities.FieldTypes
   alias PhoenixKitEntities.Mirror.Exporter
   alias PhoenixKitEntities.UrlResolver
   @type t :: %__MODULE__{}
@@ -141,6 +142,16 @@ defmodule PhoenixKitEntities.EntityData do
 
   @valid_statuses ~w(draft published archived trashed)
   @soft_delete_status "trashed"
+
+  # Mirrors `PhoenixKitEntities.FormBuilder`'s private sentinel for the
+  # synthetic "Other" option rendered on select/radio/checkbox fields with
+  # `allow_other?`. It's a UI marker only — `FormBuilder.merge_other_params/2`
+  # is supposed to resolve it into the companion free-text value before it
+  # ever reaches a changeset. If it somehow shows up here anyway (a caller
+  # that skipped `merge_other_params/2`, or a hand-crafted request), treat
+  # it as any other out-of-options value rather than letting `allow_other?`
+  # wave it through.
+  @other_sentinel "__other__"
 
   @doc """
   Creates a changeset for entity data creation and updates.
@@ -403,13 +414,24 @@ defmodule PhoenixKitEntities.EntityData do
     end)
   end
 
+  # Display-only — no data to validate or require.
+  defp validate_single_data_field(changeset, %{"type" => "heading"}, _data), do: changeset
+
   defp validate_single_data_field(changeset, field_def, data) do
     field_key = field_def["key"]
     field_value = data[field_key]
     is_required = field_def["required"] || false
 
     cond do
-      is_required && (is_nil(field_value) || field_value == "") ->
+      # `[]` is what an unticked (or never-touched) required checkbox
+      # group submits — it must count as "absent" here the same way
+      # `FormBuilder.validate_required/2` (form_builder.ex) already treats
+      # `value in [nil, "", []]` as missing. Before this, an empty
+      # required checkbox sailed through this changeset check (only
+      # `nil`/`""` were caught) while `FormBuilder.validate_data/2`
+      # rejected it — the two disagreed, and `LiveDataForm` relies on
+      # this changeset being the final, strict word.
+      is_required && field_value in [nil, "", []] ->
         add_error(
           changeset,
           :data,
@@ -431,7 +453,8 @@ defmodule PhoenixKitEntities.EntityData do
       "email" -> validate_email_field(changeset, field_def, value)
       "url" -> validate_url_field(changeset, field_def, value)
       "date" -> validate_date_field(changeset, field_def, value)
-      "select" -> validate_select_field(changeset, field_def, value)
+      type when type in ["select", "radio"] -> validate_choice_field(changeset, field_def, value)
+      "checkbox" -> validate_checkbox_field(changeset, field_def, value)
       _ -> changeset
     end
   end
@@ -496,21 +519,74 @@ defmodule PhoenixKitEntities.EntityData do
     end
   end
 
-  defp validate_select_field(changeset, field_def, value) do
+  # Shared scalar (single-value) choice validator for "select" and "radio"
+  # — both are "pick exactly one" fields with the same options/allow_other
+  # shape. The sentinel check comes first and applies unconditionally: it
+  # must never validate as a real value, allow_other or not (see
+  # `@other_sentinel`).
+  defp validate_choice_field(changeset, field_def, value) do
     options = field_def["options"] || []
 
-    if value in options do
+    cond do
+      value == @other_sentinel ->
+        add_error(
+          changeset,
+          :data,
+          gettext("field '%{label}' has an invalid value", label: field_def["label"])
+        )
+
+      value in options ->
+        changeset
+
+      FieldTypes.allow_other?(field_def) ->
+        changeset
+
+      true ->
+        add_error(
+          changeset,
+          :data,
+          gettext("field '%{label}' must be one of: %{options}",
+            label: field_def["label"],
+            options: Enum.join(options, ", ")
+          )
+        )
+    end
+  end
+
+  # Checkbox groups are multi-value — every submitted entry must be
+  # in `options` (or allowed via `allow_other?`, but never the
+  # `@other_sentinel` marker itself). A non-list value (e.g. a single
+  # scalar string crafted into the request) is rejected outright rather
+  # than silently passing through unvalidated.
+  defp validate_checkbox_field(changeset, field_def, value) when is_list(value) do
+    options = field_def["options"] || []
+    allow_other = FieldTypes.allow_other?(field_def)
+
+    invalid_values =
+      Enum.filter(value, fn v ->
+        v == @other_sentinel or (v not in options and not allow_other)
+      end)
+
+    if Enum.empty?(invalid_values) do
       changeset
     else
       add_error(
         changeset,
         :data,
-        gettext("field '%{label}' must be one of: %{options}",
+        gettext("field '%{label}' contains invalid options: %{invalid}",
           label: field_def["label"],
-          options: Enum.join(options, ", ")
+          invalid: Enum.join(invalid_values, ", ")
         )
       )
     end
+  end
+
+  defp validate_checkbox_field(changeset, field_def, _value) do
+    add_error(
+      changeset,
+      :data,
+      gettext("field '%{label}' must be a list of selected options", label: field_def["label"])
+    )
   end
 
   defp maybe_set_timestamps(changeset) do
@@ -537,7 +613,7 @@ defmodule PhoenixKitEntities.EntityData do
   defp notify_data_event({:ok, %__MODULE__{} = entity_data}, :updated, opts) do
     Events.broadcast_data_updated(entity_data.entity_uuid, entity_data.uuid)
     maybe_mirror_data(entity_data)
-    log_data_activity(entity_data, "entity_data.updated", opts)
+    maybe_log_data_activity(entity_data, "entity_data.updated", opts)
     {:ok, entity_data}
   end
 
@@ -570,6 +646,23 @@ defmodule PhoenixKitEntities.EntityData do
   end
 
   defp notify_data_event(result, _event, _opts), do: result
+
+  # `opts[:activity_log]` defaults to `true`. Passing `false` skips the
+  # activity-log entry for this update while leaving the PubSub
+  # broadcast and mirror export (both above, in `notify_data_event/3`)
+  # untouched — those still need to fire so live views/mirrors stay in
+  # sync. Used by high-frequency callers (`LiveDataForm` autosave) so a
+  # client that's still typing doesn't produce one activity row per
+  # debounced keystroke. Only wired into the `:updated` path — the other
+  # lifecycle events (create/delete/trash/restore) are one-shot actions
+  # that should always log.
+  defp maybe_log_data_activity(entity_data, action, opts) do
+    if Keyword.get(opts, :activity_log, true) do
+      log_data_activity(entity_data, action, opts)
+    else
+      :ok
+    end
+  end
 
   # Records a data-record-lifecycle activity entry. Actor UUID comes
   # from caller's `:actor_uuid` opt (the user performing the mutation)
@@ -1298,6 +1391,35 @@ defmodule PhoenixKitEntities.EntityData do
   @doc """
   Updates an entity data record.
 
+  ## Options
+
+    * `:actor_uuid` — the user performing the update, recorded on the
+      activity log entry.
+    * `:activity_log` — defaults to `true`; pass `false` to skip logging
+      this update's activity entry (the PubSub broadcast and mirror
+      export still fire regardless). Intended for high-frequency callers
+      like `LiveDataForm`'s autosave, where logging every debounced
+      keystroke would flood the activity log.
+    * `:require_status` — defaults to `nil` (no check, existing
+      behavior unchanged). Pass a list of status strings (e.g.
+      `["draft"]`) to guard against a cross-session race: the record is
+      re-read by `uuid` under `SELECT ... FOR UPDATE` inside a
+      transaction, and the update only proceeds if the record's
+      *current, freshly-read* status is in the list. If it isn't,
+      returns `{:error, :status_mismatch}` without touching the row,
+      the activity log, or PubSub — as if the call never happened. This
+      closes the window where a stale in-memory copy (e.g. a second
+      browser tab still holding an `:edit` view of a record that a
+      first tab has since submitted/published) would otherwise
+      overwrite `data` on a record whose status has since moved on.
+      When the status does match, the changeset is built against the
+      freshly-read row (not the possibly-stale `entity_data` argument),
+      so any other field also reflects the latest DB state going in.
+      Must be a list — a bare status string (e.g. `require_status:
+      "draft"` instead of `require_status: ["draft"]`) raises
+      `ArgumentError` immediately rather than reaching a confusing
+      `CaseClauseError`.
+
   ## Examples
 
       iex> PhoenixKitEntities.EntityData.update(record, %{title: "Updated"})
@@ -1305,13 +1427,74 @@ defmodule PhoenixKitEntities.EntityData do
 
       iex> PhoenixKitEntities.EntityData.update(record, %{title: ""})
       {:error, %Ecto.Changeset{}}
+
+      iex> PhoenixKitEntities.EntityData.update(record, %{title: "Updated"}, require_status: ["draft"])
+      {:error, :status_mismatch}
   """
-  @spec update(t(), map(), keyword()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
+  @spec update(t(), map(), keyword()) ::
+          {:ok, t()} | {:error, Ecto.Changeset.t() | :status_mismatch}
   def update(%__MODULE__{} = entity_data, attrs, opts \\ []) do
-    entity_data
-    |> changeset(attrs)
-    |> repo().update()
-    |> notify_data_event(:updated, opts)
+    case Keyword.get(opts, :require_status) do
+      nil ->
+        entity_data
+        |> changeset(attrs)
+        |> repo().update()
+        |> notify_data_event(:updated, opts)
+
+      statuses when is_list(statuses) ->
+        update_with_status_guard(entity_data, attrs, statuses, opts)
+
+      status when is_binary(status) ->
+        raise ArgumentError,
+              "require_status expects a list of statuses, got a binary " <>
+                "(#{inspect(status)}) — wrap it in a list, e.g. require_status: [#{inspect(status)}]"
+    end
+  end
+
+  # Re-reads the row by uuid under `FOR UPDATE` inside a transaction so
+  # the status check and the write are atomic w.r.t. any concurrent
+  # writer — without the lock, two processes could both read a matching
+  # status and both proceed, racing the same way this guard exists to
+  # prevent. Builds the changeset against the freshly-read row (`fresh`),
+  # never the possibly-stale `entity_data` argument, so every field goes
+  # into `repo().update/1` reflecting the latest DB state, not just
+  # `:data`. A status mismatch (or the row having disappeared entirely —
+  # same practical outcome, nothing left to guard) rolls back with no
+  # side effects: no write, no activity log, no PubSub broadcast.
+  defp update_with_status_guard(entity_data, attrs, statuses, opts) do
+    txn =
+      repo().transaction(fn ->
+        from(d in __MODULE__, where: d.uuid == ^entity_data.uuid, lock: "FOR UPDATE")
+        |> repo().one()
+        |> apply_status_guarded_update(statuses, attrs)
+      end)
+
+    case txn do
+      {:ok, updated} ->
+        notify_data_event({:ok, updated}, :updated, opts)
+
+      {:error, :status_mismatch} ->
+        {:error, :status_mismatch}
+
+      {:error, {:changeset_error, changeset}} ->
+        notify_data_event({:error, changeset}, :updated, opts)
+    end
+  end
+
+  # `nil` covers the row having disappeared entirely between the caller
+  # loading it and this re-read — same practical outcome as a status
+  # mismatch (nothing left to guard), so it rolls back the same way.
+  defp apply_status_guarded_update(nil, _statuses, _attrs), do: repo().rollback(:status_mismatch)
+
+  defp apply_status_guarded_update(%__MODULE__{} = fresh, statuses, attrs) do
+    if fresh.status in statuses do
+      case fresh |> changeset(attrs) |> repo().update() do
+        {:ok, updated} -> updated
+        {:error, changeset} -> repo().rollback({:changeset_error, changeset})
+      end
+    else
+      repo().rollback(:status_mismatch)
+    end
   end
 
   @doc """
