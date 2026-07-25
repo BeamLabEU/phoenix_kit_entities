@@ -179,6 +179,14 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
   alias PhoenixKitEntities.EntityData
   alias PhoenixKitEntities.FormBuilder
 
+  # Field types whose stored value must be a single JSON scalar (or
+  # absent) — see `sanitize_values/2` below. `number` and `boolean` are
+  # scalar too, but narrower (binary|number, and binary|boolean
+  # respectively — see their own `sanitize_field_value/2` clauses), so
+  # they're kept out of this group rather than widening it to "whatever
+  # the loosest member tolerates".
+  @scalar_value_types ~w(text textarea email url rich_text date select radio)
+
   @impl true
   def update(assigns, socket) do
     entity = resolve_entity(assigns.record, assigns[:lang], socket)
@@ -242,13 +250,29 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
   # "Kinnitatud" (submitted) survey whose status never changes, so the
   # tampering is invisible to whoever reviews it next. The fallback
   # clause at the bottom makes both events inert in any non-`:edit` mode.
+  #
+  # SECURITY (m2): the pattern `%{"phoenix_kit_entity_data" => data_params}`
+  # only constrains the OUTER payload to be a map with that key — it says
+  # nothing about the TYPE of `data_params` itself. A crafted push (e.g.
+  # `%{"phoenix_kit_entity_data" => "not-a-map"}`) used to match this
+  # clause and then crash inside `Map.get(data_params, "data", %{})`
+  # (`Map.get/3` raises `BadMapError` for a non-map first argument) — an
+  # unhandled exception in `handle_event/3` crashes the whole LiveView
+  # process, not just this component, taking down every other component
+  # on the same page for that user. The `when is_map(data_params)` guard
+  # below makes a non-map `data_params` fall through to the very next
+  # clause instead (same one that already handles a payload with no
+  # `"phoenix_kit_entity_data"` key at all) — malformed and absent both
+  # resolve to the same safe "treat as an empty autosave" path, per this
+  # module's own contract for that clause.
   @impl true
   def handle_event(
         "autosave",
         %{"phoenix_kit_entity_data" => data_params},
         %{assigns: %{mode: :edit}} = socket
-      ) do
-    {:noreply, do_autosave(socket, Map.get(data_params, "data", %{}))}
+      )
+      when is_map(data_params) do
+    {:noreply, do_autosave(socket, extract_data_params(data_params))}
   end
 
   # Mirrors the "submit" fallback clause below rather than no-op'ing: a
@@ -258,7 +282,9 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
   # payload to carry it. Treating that as "nothing changed" would silently
   # ignore exactly the case `normalize_absent_checkboxes/2` exists to
   # handle (unticking the last box). An empty map still flows through the
-  # same merge/coercion/persist path as any other autosave.
+  # same merge/coercion/persist path as any other autosave. This clause
+  # also catches the malformed-`data_params` case above (guard failure
+  # falls through to here, not to a crash).
   def handle_event("autosave", _params, %{assigns: %{mode: :edit}} = socket),
     do: {:noreply, do_autosave(socket, %{})}
 
@@ -272,12 +298,17 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
   # the freshly-updated record — on a successful save; a failed save
   # logs and does not notify the parent, since it must not treat
   # unpersisted data as agreed-upon.
+  #
+  # Same `when is_map(data_params)` guard as "autosave" above, and for the
+  # same reason (m2) — a non-map `data_params` falls through to the
+  # fallback clause below instead of crashing inside `extract_data_params/1`.
   def handle_event(
         "submit",
         %{"phoenix_kit_entity_data" => data_params},
         %{assigns: %{mode: :edit}} = socket
-      ) do
-    {:noreply, do_submit(socket, Map.get(data_params, "data", %{}))}
+      )
+      when is_map(data_params) do
+    {:noreply, do_submit(socket, extract_data_params(data_params))}
   end
 
   def handle_event("submit", _params, %{assigns: %{mode: :edit}} = socket),
@@ -295,6 +326,32 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
     )
 
     {:noreply, socket}
+  end
+
+  # SECURITY (m2, continued): `data_params["data"]` being present but not
+  # itself a map (e.g. `%{"phoenix_kit_entity_data" => %{"data" => ["a",
+  # "b"]}}` — a list, not the expected key/value payload) used to reach
+  # `normalize_absent_checkboxes/2` unchanged and crash there:
+  # `Map.put_new(list, key, [])` raises `BadMapError` the same way
+  # `Map.get/3` did for the outer payload above. `Map.get(data_params,
+  # "data", %{})` alone doesn't catch this — the default only applies when
+  # the *key* is missing, not when its value has the wrong shape. This
+  # normalizes any non-map "data" value (a list, a string, a number, even
+  # an explicit `null`/`nil`) down to `%{}`, the same empty-payload shape
+  # every other malformed-input path in this module already degrades to.
+  #
+  # `def`, not `defp`, for the same testability reason as
+  # `sanitize_values/2` above: reaching this through `handle_event/3`
+  # needs `mode: :edit`, and that path unconditionally ends at
+  # `EntityData.update/3` (a live database), so this is the only DB-free
+  # way to test the "data" shape normalization directly. `@doc false`:
+  # not part of this component's documented usage contract.
+  @doc false
+  def extract_data_params(data_params) do
+    case Map.get(data_params, "data") do
+      %{} = data -> data
+      _ -> %{}
+    end
   end
 
   # Merges the submitted field values over the record's existing (flat)
@@ -339,6 +396,7 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
       |> normalize_absent_checkboxes(raw_data_params)
       |> then(&FormBuilder.merge_other_params(fields_definition, &1))
       |> whitelist_known_fields(fields_definition)
+      |> sanitize_values(fields_definition)
       |> then(&Map.merge(record.data || %{}, &1))
 
     data_to_persist = coerce_or_pass_through(entity, merged_data, log_context)
@@ -396,6 +454,127 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
     known_keys = MapSet.new(fields_definition, & &1["key"])
     Map.filter(params, fn {key, _value} -> MapSet.member?(known_keys, key) end)
   end
+
+  # SECURITY: `whitelist_known_fields/2` above only filters by KEY — it
+  # says nothing about the SHAPE of the value under a known key.
+  # `FormBuilder.validate_type/2` has a catch-all clause
+  # (`defp validate_type(_field, value), do: {:ok, value}`) that accepts
+  # ANY term for the types it doesn't special-case, `text`/`textarea`
+  # included, and `coerce_or_pass_through/3` only ever uses that result
+  # for best-effort coercion, never as a gate. So nothing between a
+  # crafted "autosave"/"submit" payload and `record.data` stops a map (or
+  # a list of maps, or any other non-scalar term) from landing as a text
+  # field's value.
+  #
+  # Once that happens, every surface that renders the value breaks: the
+  # readonly view calls `to_string/1` on it (`readonly_value/1`,
+  # `readonly_text/1` below — both raise `Protocol.UndefinedError`, a bare
+  # map has no `String.Chars` implementation), and the edit form
+  # interpolates it directly inside `<textarea>{@value}</textarea>`
+  # (`FormBuilder.build_field/3`), which raises the same way via
+  # `Phoenix.HTML.Safe`. Either crashes rendering for every subsequent
+  # viewer of the record — a client-authored, un-fixable-without-a-DB-edit
+  # stored DoS. This function is the value-SHAPE gate that closes that
+  # hole at the point data enters this component, ahead of
+  # `EntityData.changeset/2`'s own final-word validation (see
+  # `PhoenixKitEntities.EntityData`'s `validate_field_type/3` — the
+  # `text_like_shape?/1` guard inside it — for the changeset-layer half of
+  # this fix; this component's sanitizer is defense-in-depth, not a
+  # replacement for that final gate).
+  #
+  # Runs on the already key-whitelisted params (`whitelist_known_fields/2`
+  # above), so every key here is guaranteed to have a matching field
+  # definition — `sanitize_field_value/2` doesn't need a "no such field"
+  # fallback. A value that doesn't fit its field's shape is DROPPED
+  # (never coerced/truncated) — the previous, already-valid value in
+  # `record.data` survives the `Map.merge/2` in the caller untouched,
+  # same as any other key this function doesn't return.
+  #
+  # `def`, not `defp`: exposed specifically so it has direct, DB-free unit
+  # test coverage (`live_data_form_test.exs`). Every other path through
+  # `persist_data/3` needs a live database — `EntityData.changeset/2`
+  # itself hits the DB for entity/parent lookups even before
+  # `repo().update/1` runs — so this is the only way to test the
+  # sanitizer's per-type rules without that dependency. `@doc false`: not
+  # part of this component's documented usage contract (see the
+  # moduledoc's "Usage" section); callers other than `persist_data/3` and
+  # tests should not rely on it.
+  @doc false
+  def sanitize_values(params, fields_definition) do
+    field_types = Map.new(fields_definition, fn field -> {field["key"], field["type"]} end)
+
+    Enum.reduce(params, %{}, fn {key, value}, acc ->
+      case sanitize_field_value(Map.get(field_types, key), value) do
+        {:ok, sanitized} ->
+          Map.put(acc, key, sanitized)
+
+        :drop ->
+          Logger.debug(
+            "LiveDataForm dropped field #{inspect(key)}: value #{inspect(value)} has an " <>
+              "invalid shape for field type #{inspect(Map.get(field_types, key))}"
+          )
+
+          acc
+      end
+    end)
+  end
+
+  # `heading` fields carry no data at all (see `FormBuilder.build_field/3`'s
+  # heading clause — no input, not bound to the changeset) — any value
+  # submitted under a heading's key is dropped unconditionally rather than
+  # accumulating a meaningless entry in `record.data`.
+  defp sanitize_field_value("heading", _value), do: :drop
+
+  # `number`/`boolean` fields: real browser form submissions only ever
+  # carry these as strings, but a crafted payload could carry the
+  # already-coerced Elixir type directly (a real number, a real boolean)
+  # — both are safe scalar shapes, so both are accepted. This function
+  # only guards against shapes that would crash a render, never against
+  # values that are merely the wrong scalar type or fail to parse —
+  # `FormBuilder.validate_data/2` (best-effort) and
+  # `EntityData.changeset/2` (final word) still separately enforce that
+  # the *content* actually parses as a number / is a recognized boolean
+  # token.
+  defp sanitize_field_value("number", value) when is_binary(value) or is_number(value),
+    do: {:ok, value}
+
+  defp sanitize_field_value("number", _value), do: :drop
+
+  defp sanitize_field_value("boolean", value) when is_binary(value) or is_boolean(value),
+    do: {:ok, value}
+
+  defp sanitize_field_value("boolean", _value), do: :drop
+
+  defp sanitize_field_value(type, value)
+       when type in @scalar_value_types and
+              (is_binary(value) or is_number(value) or is_boolean(value) or is_nil(value)) do
+    {:ok, value}
+  end
+
+  defp sanitize_field_value(type, _value) when type in @scalar_value_types, do: :drop
+
+  # `checkbox` is the one legitimately list-shaped type reaching here — a
+  # submitted value is either the real (possibly empty) list of ticked
+  # option strings, or one with the `allow_other` sentinel already
+  # resolved to free text by `FormBuilder.merge_other_params/2`; either
+  # way every element must be a binary. A crafted list-of-maps collapses
+  # to whatever binary entries (if any) survive, rather than reaching
+  # storage; a non-list value is dropped outright — checkbox always
+  # submits *some* list, even `[]`, once `normalize_absent_checkboxes/2`
+  # has run.
+  defp sanitize_field_value("checkbox", value) when is_list(value) do
+    {:ok, Enum.filter(value, &is_binary/1)}
+  end
+
+  defp sanitize_field_value("checkbox", _value), do: :drop
+
+  # Every other/unrecognized field type — including `file`/`image`/
+  # `relation`, none of which this form renders a real submittable input
+  # for (see `FormBuilder.build_field/3`'s placeholder clauses) — passes
+  # through unchanged, same as `FormBuilder.validate_type/2`'s own
+  # catch-all. Nothing in this component's render paths naively
+  # stringifies their values the way the text-like types above do.
+  defp sanitize_field_value(_type, value), do: {:ok, value}
 
   # Autosave fires on every change (debounced 500ms) — logging an
   # `entity_data.updated` activity row for each one would flood the

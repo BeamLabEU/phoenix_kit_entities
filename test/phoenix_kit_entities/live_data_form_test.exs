@@ -438,4 +438,189 @@ defmodule PhoenixKitEntities.LiveDataFormTest do
       assert html =~ "Jaan"
     end
   end
+
+  describe "sanitize_values/2 (component-layer value-shape gate)" do
+    # M2: `whitelist_known_fields/2` only filters submitted params by KEY —
+    # it has no opinion on the SHAPE of the value under a known key, and
+    # `FormBuilder.validate_type/2`'s catch-all accepts any term for types
+    # it doesn't special-case. Without `sanitize_values/2`, a crafted
+    # "autosave"/"submit" payload could carry a map (or any other
+    # non-scalar term) as e.g. a `text` field's value straight into
+    # `record.data`, where both render paths (`readonly_text/1`'s
+    # `to_string/1`, the edit form's bare `{@value}` inside `<textarea>`)
+    # raise `Protocol.UndefinedError` for every subsequent viewer — a
+    # stored, client-authored DoS. `sanitize_values/2` is exposed as `def`
+    # (not `defp`) specifically so this is testable without a database —
+    # every path through `persist_data/3` needs one (`EntityData.changeset/2`
+    # itself hits the DB for entity/parent lookups), so this is the only
+    # DB-free way to exercise the sanitizer's per-type rules directly. See
+    # `live_data_form_integration_test.exs` for the DB-backed end-to-end
+    # version (crafted autosave -> nothing bad persisted, both renders
+    # stay alive) and `entity_data_changeset_test.exs` for the
+    # changeset-layer half of this fix.
+
+    test "a map value for a text field is dropped" do
+      fields = [%{"type" => "text", "key" => "name", "label" => "Name"}]
+
+      assert LiveDataForm.sanitize_values(%{"name" => %{"evil" => "map"}}, fields) == %{}
+    end
+
+    test "a map value for a textarea field is dropped" do
+      fields = [%{"type" => "textarea", "key" => "notes", "label" => "Notes"}]
+
+      assert LiveDataForm.sanitize_values(%{"notes" => %{"evil" => "map"}}, fields) == %{}
+    end
+
+    test "a list-of-maps value for a text field is dropped" do
+      fields = [%{"type" => "text", "key" => "name", "label" => "Name"}]
+
+      assert LiveDataForm.sanitize_values(%{"name" => [%{"evil" => "map"}]}, fields) == %{}
+    end
+
+    test "a normal string value for a text field passes through" do
+      fields = [%{"type" => "text", "key" => "name", "label" => "Name"}]
+
+      assert LiveDataForm.sanitize_values(%{"name" => "Jaan"}, fields) == %{"name" => "Jaan"}
+    end
+
+    test "a nil value for a text field passes through" do
+      fields = [%{"type" => "text", "key" => "name", "label" => "Name"}]
+
+      assert LiveDataForm.sanitize_values(%{"name" => nil}, fields) == %{"name" => nil}
+    end
+
+    test "a numeric string value for a number field passes through" do
+      fields = [%{"type" => "number", "key" => "qty", "label" => "Quantity"}]
+
+      assert LiveDataForm.sanitize_values(%{"qty" => "5"}, fields) == %{"qty" => "5"}
+    end
+
+    test "a real number value for a number field passes through" do
+      fields = [%{"type" => "number", "key" => "qty", "label" => "Quantity"}]
+
+      assert LiveDataForm.sanitize_values(%{"qty" => 5}, fields) == %{"qty" => 5}
+    end
+
+    test "a map value for a number field is dropped" do
+      fields = [%{"type" => "number", "key" => "qty", "label" => "Quantity"}]
+
+      assert LiveDataForm.sanitize_values(%{"qty" => %{"evil" => "map"}}, fields) == %{}
+    end
+
+    test "boolean-ish string and real boolean values for a boolean field pass through" do
+      fields = [%{"type" => "boolean", "key" => "active", "label" => "Active"}]
+
+      assert LiveDataForm.sanitize_values(%{"active" => "true"}, fields) == %{"active" => "true"}
+      assert LiveDataForm.sanitize_values(%{"active" => false}, fields) == %{"active" => false}
+    end
+
+    test "a map value for a boolean field is dropped" do
+      fields = [%{"type" => "boolean", "key" => "active", "label" => "Active"}]
+
+      assert LiveDataForm.sanitize_values(%{"active" => %{"evil" => "map"}}, fields) == %{}
+    end
+
+    test "a list of strings for a checkbox field passes through unchanged" do
+      fields = [
+        %{"type" => "checkbox", "key" => "tools", "label" => "Tools", "options" => ["Hammer"]}
+      ]
+
+      assert LiveDataForm.sanitize_values(%{"tools" => ["Hammer", "Drill"]}, fields) ==
+               %{"tools" => ["Hammer", "Drill"]}
+    end
+
+    test "an empty list for a checkbox field passes through unchanged (clearing the field)" do
+      fields = [
+        %{"type" => "checkbox", "key" => "tools", "label" => "Tools", "options" => ["Hammer"]}
+      ]
+
+      assert LiveDataForm.sanitize_values(%{"tools" => []}, fields) == %{"tools" => []}
+    end
+
+    test "a list-of-maps value for a checkbox field drops only the non-binary elements" do
+      fields = [
+        %{"type" => "checkbox", "key" => "tools", "label" => "Tools", "options" => ["Hammer"]}
+      ]
+
+      result = LiveDataForm.sanitize_values(%{"tools" => [%{"evil" => "map"}, "Hammer"]}, fields)
+
+      assert result == %{"tools" => ["Hammer"]}
+    end
+
+    test "a scalar (non-list) value for a checkbox field is dropped entirely" do
+      fields = [
+        %{"type" => "checkbox", "key" => "tools", "label" => "Tools", "options" => ["Hammer"]}
+      ]
+
+      assert LiveDataForm.sanitize_values(%{"tools" => "Hammer"}, fields) == %{}
+    end
+
+    test "any value submitted under a heading field's key is dropped" do
+      fields = [%{"type" => "heading", "key" => "sec", "label" => "Section"}]
+
+      assert LiveDataForm.sanitize_values(%{"sec" => "anything"}, fields) == %{}
+      assert LiveDataForm.sanitize_values(%{"sec" => %{"evil" => "map"}}, fields) == %{}
+    end
+
+    test "select/radio accept a scalar value and drop a map value" do
+      fields = [
+        %{"type" => "radio", "key" => "color", "label" => "Color", "options" => ["Red", "Blue"]}
+      ]
+
+      assert LiveDataForm.sanitize_values(%{"color" => "Red"}, fields) == %{"color" => "Red"}
+      assert LiveDataForm.sanitize_values(%{"color" => %{"evil" => "map"}}, fields) == %{}
+    end
+
+    test "a mixed payload only drops the offending key, keeping the rest" do
+      fields = [
+        %{"type" => "text", "key" => "name", "label" => "Name"},
+        %{"type" => "number", "key" => "qty", "label" => "Quantity"}
+      ]
+
+      result =
+        LiveDataForm.sanitize_values(%{"name" => %{"evil" => "map"}, "qty" => "5"}, fields)
+
+      assert result == %{"qty" => "5"}
+    end
+  end
+
+  describe "extract_data_params/1 (m2 — non-map payload guard)" do
+    # `handle_event/3`'s "autosave"/"submit" clauses match
+    # `%{"phoenix_kit_entity_data" => data_params}` — that only constrains
+    # the OUTER payload to be a map with that key, not the type of
+    # `data_params` itself, nor of whatever's under its "data" key. Before
+    # this fix, `Map.get(data_params, "data", %{})` raised `BadMapError`
+    # for a non-map `data_params` (crashing the whole LiveView process,
+    # not just this component), and even a well-formed `data_params` with
+    # a non-map "data" value (e.g. a list) sailed through to
+    # `normalize_absent_checkboxes/2`, which crashed the same way via
+    # `Map.put_new/3`. `extract_data_params/1` is exposed as `def` (not
+    # `defp`) for the same reason `sanitize_values/2` is — reaching it via
+    # `handle_event/3` needs `mode: :edit`, which unconditionally ends at
+    # `EntityData.update/3` (a live database), so this is the only DB-free
+    # way to test the "data" shape normalization directly. See
+    # `live_data_form_integration_test.exs` for the DB-backed end-to-end
+    # version (both crafted payloads through `handle_event/3` itself —
+    # no crash, no write).
+    test "a normal map payload's data is returned unchanged" do
+      assert LiveDataForm.extract_data_params(%{"data" => %{"name" => "Jaan"}}) ==
+               %{"name" => "Jaan"}
+    end
+
+    test "a missing \"data\" key normalizes to an empty map" do
+      assert LiveDataForm.extract_data_params(%{}) == %{}
+    end
+
+    test "a list \"data\" value normalizes to an empty map instead of crashing" do
+      assert LiveDataForm.extract_data_params(%{"data" => ["a", "b"]}) == %{}
+    end
+
+    test "a string \"data\" value normalizes to an empty map instead of crashing" do
+      assert LiveDataForm.extract_data_params(%{"data" => "not-a-map"}) == %{}
+    end
+
+    test "an explicit nil \"data\" value normalizes to an empty map" do
+      assert LiveDataForm.extract_data_params(%{"data" => nil}) == %{}
+    end
+  end
 end

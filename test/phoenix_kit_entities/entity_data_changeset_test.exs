@@ -524,6 +524,126 @@ defmodule PhoenixKitEntities.EntityDataChangesetTest do
     end
   end
 
+  describe "value-shape guard for text-like fields (M2)" do
+    # `validate_field_type/3` used to have NO branch for `text`/
+    # `textarea`/`rich_text` — they fell to the catch-all (`_ -> changeset`),
+    # so this changeset (the final, unconditional word on what lands in
+    # `EntityData.data` — see `LiveDataForm`'s own doc for why every other
+    # check is best-effort) had no opinion on their value's shape. A map
+    # value would sail straight through and into storage, where both
+    # `LiveDataForm` render paths crash rendering it
+    # (`Protocol.UndefinedError` — `to_string/1` in readonly, a bare
+    # `{@value}` inside `<textarea>` in edit). This is the changeset-layer
+    # half of that fix; `LiveDataForm.sanitize_values/2` (component layer)
+    # closes the same hole earlier, before a crafted autosave/submit even
+    # reaches this changeset.
+    setup ctx do
+      {:ok, shape_entity} =
+        Entities.create_entity(
+          %{
+            name: "data_cs_shape_test",
+            display_name: "Data CS Shape Test",
+            display_name_plural: "Data CS Shape Tests",
+            fields_definition: [
+              %{"type" => "text", "key" => "name", "label" => "Name"},
+              %{"type" => "textarea", "key" => "notes", "label" => "Notes"},
+              %{"type" => "rich_text", "key" => "body", "label" => "Body"},
+              %{"type" => "email", "key" => "email", "label" => "Email"},
+              %{"type" => "url", "key" => "site", "label" => "Site"}
+            ],
+            created_by_uuid: ctx.actor_uuid
+          },
+          actor_uuid: ctx.actor_uuid
+        )
+
+      {:ok, shape_entity: shape_entity}
+    end
+
+    test "a map value for a text field is rejected", ctx do
+      cs =
+        EntityData.changeset(%EntityData{}, %{
+          entity_uuid: ctx.shape_entity.uuid,
+          title: "Shape Record",
+          created_by_uuid: ctx.actor_uuid,
+          data: %{"name" => %{"evil" => "map"}}
+        })
+
+      assert errors_on(cs)[:data]
+    end
+
+    test "a map value for a textarea field is rejected", ctx do
+      cs =
+        EntityData.changeset(%EntityData{}, %{
+          entity_uuid: ctx.shape_entity.uuid,
+          title: "Shape Record",
+          created_by_uuid: ctx.actor_uuid,
+          data: %{"notes" => %{"evil" => "map"}}
+        })
+
+      assert errors_on(cs)[:data]
+    end
+
+    test "a list value for a textarea field is rejected", ctx do
+      cs =
+        EntityData.changeset(%EntityData{}, %{
+          entity_uuid: ctx.shape_entity.uuid,
+          title: "Shape Record",
+          created_by_uuid: ctx.actor_uuid,
+          data: %{"notes" => ["a", "b"]}
+        })
+
+      assert errors_on(cs)[:data]
+    end
+
+    test "a map value for a rich_text field is rejected", ctx do
+      cs =
+        EntityData.changeset(%EntityData{}, %{
+          entity_uuid: ctx.shape_entity.uuid,
+          title: "Shape Record",
+          created_by_uuid: ctx.actor_uuid,
+          data: %{"body" => %{"evil" => "map"}}
+        })
+
+      assert errors_on(cs)[:data]
+    end
+
+    test "a map value for an email field is still rejected", ctx do
+      cs =
+        EntityData.changeset(%EntityData{}, %{
+          entity_uuid: ctx.shape_entity.uuid,
+          title: "Shape Record",
+          created_by_uuid: ctx.actor_uuid,
+          data: %{"email" => %{"evil" => "map"}}
+        })
+
+      assert errors_on(cs)[:data]
+    end
+
+    test "a map value for a url field is still rejected", ctx do
+      cs =
+        EntityData.changeset(%EntityData{}, %{
+          entity_uuid: ctx.shape_entity.uuid,
+          title: "Shape Record",
+          created_by_uuid: ctx.actor_uuid,
+          data: %{"site" => %{"evil" => "map"}}
+        })
+
+      assert errors_on(cs)[:data]
+    end
+
+    test "an ordinary string value for text/textarea/rich_text is still accepted", ctx do
+      cs =
+        EntityData.changeset(%EntityData{}, %{
+          entity_uuid: ctx.shape_entity.uuid,
+          title: "Shape Record",
+          created_by_uuid: ctx.actor_uuid,
+          data: %{"name" => "Jaan", "notes" => "some notes", "body" => "<p>Hello</p>"}
+        })
+
+      refute errors_on(cs)[:data]
+    end
+  end
+
   describe "required checkbox field — [] counts as empty" do
     setup ctx do
       {:ok, entity} =
