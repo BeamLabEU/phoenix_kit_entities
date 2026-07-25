@@ -198,6 +198,118 @@ defmodule PhoenixKitEntities.FormBuilderValidationTest do
     end
   end
 
+  describe "allow_other shape guard (M2 follow-up)" do
+    # `allow_other`'s whole premise is a free-text custom answer — i.e. a
+    # string. `validate_type/2`'s `allow_other?` branches for select/
+    # radio/checkbox used to accept ANY value once it wasn't a recognized
+    # option (checkbox's unconditionally; select/radio already required
+    # `is_binary`). A crafted map value sailing through this best-effort
+    # layer relied entirely on `EntityData.changeset/2` (the hard-blocking
+    # final gate) to catch it — this closes the same gap here too, kept
+    # in sync for consistency between the two validators.
+    test "select: a legitimate custom (binary) value is still accepted" do
+      entity =
+        entity([
+          %{
+            "type" => "select",
+            "key" => "color",
+            "label" => "Color",
+            "options" => ["Red", "Blue"],
+            "allow_other" => true
+          }
+        ])
+
+      assert {:ok, %{"color" => "Crimson"}} =
+               FormBuilder.validate_data(entity, %{"color" => "Crimson"})
+    end
+
+    test "select: a map value is rejected even with allow_other" do
+      entity =
+        entity([
+          %{
+            "type" => "select",
+            "key" => "color",
+            "label" => "Color",
+            "options" => ["Red", "Blue"],
+            "allow_other" => true
+          }
+        ])
+
+      assert {:error, errors} =
+               FormBuilder.validate_data(entity, %{"color" => %{"evil" => "map"}})
+
+      assert Map.has_key?(errors, "color")
+    end
+
+    test "radio: a legitimate custom (binary) value is still accepted" do
+      entity =
+        entity([
+          %{
+            "type" => "radio",
+            "key" => "priority",
+            "label" => "Priority",
+            "options" => ["Low", "High"],
+            "allow_other" => true
+          }
+        ])
+
+      assert {:ok, %{"priority" => "Medium"}} =
+               FormBuilder.validate_data(entity, %{"priority" => "Medium"})
+    end
+
+    test "radio: a map value is rejected even with allow_other" do
+      entity =
+        entity([
+          %{
+            "type" => "radio",
+            "key" => "priority",
+            "label" => "Priority",
+            "options" => ["Low", "High"],
+            "allow_other" => true
+          }
+        ])
+
+      assert {:error, errors} =
+               FormBuilder.validate_data(entity, %{"priority" => %{"evil" => "map"}})
+
+      assert Map.has_key?(errors, "priority")
+    end
+
+    test "checkbox: a legitimate custom (binary) entry is still accepted" do
+      entity =
+        entity([
+          %{
+            "type" => "checkbox",
+            "key" => "tools",
+            "label" => "Tools",
+            "options" => ["Hammer", "Drill"],
+            "allow_other" => true
+          }
+        ])
+
+      assert {:ok, %{"tools" => ["Hammer", "Wrench"]}} =
+               FormBuilder.validate_data(entity, %{"tools" => ["Hammer", "Wrench"]})
+    end
+
+    test "checkbox: a list containing a map entry is rejected even with allow_other" do
+      entity =
+        entity([
+          %{
+            "type" => "checkbox",
+            "key" => "tools",
+            "label" => "Tools",
+            "options" => ["Hammer", "Drill"],
+            "allow_other" => true
+          }
+        ])
+
+      assert {:error, errors} =
+               FormBuilder.validate_data(entity, %{"tools" => [%{"evil" => "map"}, "Hammer"]})
+
+      assert Map.has_key?(errors, "tools")
+    end
+  end
+
   describe "validate_data/2 with checkbox fields" do
     test "valid options" do
       entity =

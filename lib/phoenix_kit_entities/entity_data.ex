@@ -596,6 +596,22 @@ defmodule PhoenixKitEntities.EntityData do
   # shape. The sentinel check comes first and applies unconditionally: it
   # must never validate as a real value, allow_other or not (see
   # `@other_sentinel`).
+  #
+  # SECURITY (M2 follow-up): the `allow_other?` branch used to accept
+  # ANY value unconditionally — including a crafted map — once a value
+  # wasn't a recognized option. `allow_other`'s whole premise is a
+  # free-text custom answer, i.e. a string; nothing else is a legitimate
+  # "Other" value. This reaches the same render surfaces text/textarea
+  # values do (`readonly_field/3`'s `select`/`radio` clause resolves the
+  # stored value through `FormBuilder.translated_option_label/3`, which
+  # falls back to the raw value and interpolates it via `{@display}` —
+  # `Protocol.UndefinedError` for a map, same as the text-field crash
+  # this module's `validate_field_type/3` shape guard already closes) —
+  # and, unlike `text`/`textarea`, this path is also reachable from the
+  # public, unauthenticated `EntityForm` (not just `LiveDataForm`, whose
+  # own `sanitize_values/2` already covers this specific gap for its
+  # path), so this changeset-level fix is the only thing closing it
+  # there.
   defp validate_choice_field(changeset, field_def, value) do
     options = field_def["options"] || []
 
@@ -610,7 +626,7 @@ defmodule PhoenixKitEntities.EntityData do
       value in options ->
         changeset
 
-      FieldTypes.allow_other?(field_def) ->
+      FieldTypes.allow_other?(field_def) and is_binary(value) ->
         changeset
 
       true ->
@@ -630,13 +646,20 @@ defmodule PhoenixKitEntities.EntityData do
   # `@other_sentinel` marker itself). A non-list value (e.g. a single
   # scalar string crafted into the request) is rejected outright rather
   # than silently passing through unvalidated.
+  #
+  # SECURITY (M2 follow-up): same `allow_other` shape gap as
+  # `validate_choice_field/3` above, one level down — an out-of-options
+  # LIST ELEMENT used to be waved through unconditionally when
+  # `allow_other` was set, map elements included. Now an out-of-options
+  # element is only accepted when it's ALSO a binary — `allow_other`
+  # means "one free-text custom entry", not "any term".
   defp validate_checkbox_field(changeset, field_def, value) when is_list(value) do
     options = field_def["options"] || []
     allow_other = FieldTypes.allow_other?(field_def)
 
     invalid_values =
       Enum.filter(value, fn v ->
-        v == @other_sentinel or (v not in options and not allow_other)
+        v == @other_sentinel or (v not in options and (not allow_other or not is_binary(v)))
       end)
 
     if Enum.empty?(invalid_values) do

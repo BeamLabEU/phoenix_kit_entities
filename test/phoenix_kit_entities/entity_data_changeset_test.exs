@@ -312,6 +312,21 @@ defmodule PhoenixKitEntities.EntityDataChangesetTest do
 
       assert errors_on(cs)[:data]
     end
+
+    test "a map value is rejected even with allow_other (M2 follow-up)", ctx do
+      # `allow_other`'s whole premise is a free-text custom answer, i.e. a
+      # string — this branch used to accept ANY value once it wasn't a
+      # recognized option, map values included.
+      cs =
+        EntityData.changeset(%EntityData{}, %{
+          entity_uuid: ctx.select_entity.uuid,
+          title: "Select Other Record",
+          created_by_uuid: ctx.actor_uuid,
+          data: %{"color" => %{"evil" => "map"}}
+        })
+
+      assert errors_on(cs)[:data]
+    end
   end
 
   describe "radio field validation" do
@@ -370,6 +385,18 @@ defmodule PhoenixKitEntities.EntityDataChangesetTest do
           title: "Radio Record",
           created_by_uuid: ctx.actor_uuid,
           data: %{"priority" => "__other__"}
+        })
+
+      assert errors_on(cs)[:data]
+    end
+
+    test "a map value is rejected even with allow_other (M2 follow-up)", ctx do
+      cs =
+        EntityData.changeset(%EntityData{}, %{
+          entity_uuid: ctx.radio_entity.uuid,
+          title: "Radio Record",
+          created_by_uuid: ctx.actor_uuid,
+          data: %{"priority" => %{"evil" => "map"}}
         })
 
       assert errors_on(cs)[:data]
@@ -475,6 +502,18 @@ defmodule PhoenixKitEntities.EntityDataChangesetTest do
           title: "Checkbox Record",
           created_by_uuid: ctx.actor_uuid,
           data: %{"tools" => ["Hammer", "__other__"]}
+        })
+
+      assert errors_on(cs)[:data]
+    end
+
+    test "a list containing a map entry is rejected even with allow_other (M2 follow-up)", ctx do
+      cs =
+        EntityData.changeset(%EntityData{}, %{
+          entity_uuid: ctx.checkbox_entity.uuid,
+          title: "Checkbox Record",
+          created_by_uuid: ctx.actor_uuid,
+          data: %{"tools" => [%{"evil" => "map"}, "Hammer"]}
         })
 
       assert errors_on(cs)[:data]
