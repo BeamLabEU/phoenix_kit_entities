@@ -30,19 +30,28 @@ db_config = Application.get_env(:phoenix_kit_entities, TestRepo, [])
 db_name = db_config[:database] || "phoenix_kit_entities_test"
 
 db_check =
-  case System.cmd("psql", ["-lqt"], stderr_to_stdout: true) do
-    {output, 0} ->
-      exists =
-        output
-        |> String.split("\n")
-        |> Enum.any?(fn line ->
-          line |> String.split("|") |> List.first("") |> String.trim() == db_name
-        end)
+  try do
+    case System.cmd("psql", ["-lqt"], stderr_to_stdout: true) do
+      {output, 0} ->
+        exists =
+          output
+          |> String.split("\n")
+          |> Enum.any?(fn line ->
+            line |> String.split("|") |> List.first("") |> String.trim() == db_name
+          end)
 
-      if exists, do: :exists, else: :not_found
+        if exists, do: :exists, else: :not_found
 
-    _ ->
-      :try_connect
+      _ ->
+        :try_connect
+    end
+  rescue
+    # `System.cmd/3` raises rather than returning a tuple when the binary is
+    # absent from PATH, so the `_ -> :try_connect` clause above never fires on
+    # a machine with no psql client — the whole suite died with an ErlangError
+    # before a single test ran. Fall through to the connect attempt, which is
+    # what that clause already meant for "couldn't determine via psql".
+    ErlangError -> :try_connect
   end
 
 repo_available =

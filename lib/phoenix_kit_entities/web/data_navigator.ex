@@ -251,7 +251,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
   end
 
   def handle_event("archive_data", %{"uuid" => uuid}, socket) do
-    if Scope.admin?(socket.assigns.phoenix_kit_current_scope) do
+    if Scope.can_access_admin_area?(socket.assigns.phoenix_kit_current_scope) do
       data_record = EntityData.get!(uuid)
 
       case EntityData.update_data(data_record, %{status: "archived"}, actor_opts(socket)) do
@@ -273,7 +273,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
   end
 
   def handle_event("restore_data", %{"uuid" => uuid}, socket) do
-    if Scope.admin?(socket.assigns.phoenix_kit_current_scope) do
+    if Scope.can_access_admin_area?(socket.assigns.phoenix_kit_current_scope) do
       data_record = EntityData.get!(uuid)
 
       case EntityData.update_data(data_record, %{status: "published"}, actor_opts(socket)) do
@@ -295,7 +295,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
   end
 
   def handle_event("trash_data", %{"uuid" => uuid}, socket) do
-    if Scope.admin?(socket.assigns.phoenix_kit_current_scope) do
+    if Scope.can_access_admin_area?(socket.assigns.phoenix_kit_current_scope) do
       data_record = EntityData.get!(uuid)
 
       case EntityData.trash(data_record, actor_opts(socket)) do
@@ -318,7 +318,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
   end
 
   def handle_event("restore_from_trash", %{"uuid" => uuid}, socket) do
-    if Scope.admin?(socket.assigns.phoenix_kit_current_scope) do
+    if Scope.can_access_admin_area?(socket.assigns.phoenix_kit_current_scope) do
       data_record = EntityData.get!(uuid)
 
       case EntityData.restore_from_trash(data_record, actor_opts(socket)) do
@@ -341,7 +341,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
   end
 
   def handle_event("permanent_delete", %{"uuid" => uuid}, socket) do
-    if Scope.admin?(socket.assigns.phoenix_kit_current_scope) do
+    if Scope.can_access_admin_area?(socket.assigns.phoenix_kit_current_scope) do
       data_record = EntityData.get!(uuid)
 
       case EntityData.delete(data_record, actor_opts(socket)) do
@@ -371,7 +371,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
   end
 
   def handle_event("toggle_status", %{"uuid" => uuid}, socket) do
-    if Scope.admin?(socket.assigns.phoenix_kit_current_scope) do
+    if Scope.can_access_admin_area?(socket.assigns.phoenix_kit_current_scope) do
       data_record = EntityData.get!(uuid)
 
       # Trashed records are excluded from the cycle — restore them
@@ -418,7 +418,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
     moved_id = params["moved_id"]
 
     cond do
-      not Scope.admin?(socket.assigns.phoenix_kit_current_scope) ->
+      not Scope.can_access_admin_area?(socket.assigns.phoenix_kit_current_scope) ->
         {:noreply,
          socket
          |> put_flash(:error, gettext("Not authorized"))
@@ -448,7 +448,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
   # functions require Set semantics — they already normalize to a list
   # internally — so we pass `uuids` straight through.
   def handle_event("bulk_archive", %{"uuids" => uuids}, socket) do
-    if Scope.admin?(socket.assigns.phoenix_kit_current_scope) do
+    if Scope.can_access_admin_area?(socket.assigns.phoenix_kit_current_scope) do
       if uuids == [] do
         {:noreply, put_flash(socket, :error, gettext("No records selected"))}
       else
@@ -466,7 +466,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
   end
 
   def handle_event("bulk_restore", %{"uuids" => uuids}, socket) do
-    if Scope.admin?(socket.assigns.phoenix_kit_current_scope) do
+    if Scope.can_access_admin_area?(socket.assigns.phoenix_kit_current_scope) do
       if uuids == [] do
         {:noreply, put_flash(socket, :error, gettext("No records selected"))}
       else
@@ -493,7 +493,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
   end
 
   def handle_event("bulk_trash", %{"uuids" => uuids}, socket) do
-    if Scope.admin?(socket.assigns.phoenix_kit_current_scope) do
+    if Scope.can_access_admin_area?(socket.assigns.phoenix_kit_current_scope) do
       if uuids == [] do
         {:noreply, put_flash(socket, :error, gettext("No records selected"))}
       else
@@ -511,7 +511,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
   end
 
   def handle_event("bulk_restore_from_trash", %{"uuids" => uuids}, socket) do
-    if Scope.admin?(socket.assigns.phoenix_kit_current_scope) do
+    if Scope.can_access_admin_area?(socket.assigns.phoenix_kit_current_scope) do
       if uuids == [] do
         {:noreply, put_flash(socket, :error, gettext("No records selected"))}
       else
@@ -530,7 +530,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
 
   def handle_event("bulk_permanent_delete", %{"uuids" => uuids}, socket) do
     cond do
-      not Scope.admin?(socket.assigns.phoenix_kit_current_scope) ->
+      not Scope.can_access_admin_area?(socket.assigns.phoenix_kit_current_scope) ->
         {:noreply, put_flash(socket, :error, gettext("Not authorized"))}
 
       uuids == [] ->
@@ -561,7 +561,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
   end
 
   defp bulk_change_status(socket, uuids, status) do
-    if Scope.admin?(socket.assigns.phoenix_kit_current_scope) do
+    if Scope.can_access_admin_area?(socket.assigns.phoenix_kit_current_scope) do
       if uuids == [] do
         {:noreply, put_flash(socket, :error, gettext("No records selected"))}
       else

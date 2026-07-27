@@ -1,3 +1,13 @@
+## 0.2.9 - 2026-07-27
+
+### Changed
+- **Stop calling the deprecated `PhoenixKit.Users.Auth.Scope.admin?/1`.** All 16 call sites (13 in `Web.DataNavigator`, 3 in `Web.Entities`) now call `Scope.can_access_admin_area?/1`, the name core renamed it to in phoenix_kit 1.7.214. The old name is a pure `@deprecated` delegate to the new one, so **no behavior changes** — this only silences the deprecation warning host apps were eating on every compile of this library, with no way to fix it themselves. `test/support/live_case.ex` doc comments updated to match; note the predicate is true for any permission holder, not only the Admin role, which is why core renamed it.
+- **Dependency floor raised to `phoenix_kit ~> 1.7.214`** (from `~> 1.7.189`) — `can_access_admin_area?/1` does not exist below it, so an older core would be an `UndefinedFunctionError` at call time rather than a warning. This mattered concretely here: the lockfile was resolving 1.7.210, below the new floor.
+- Dependency lockfile bumps: `phoenix_kit` 1.7.210 → 1.7.216, `phoenix_live_view` 1.2.7 → 1.2.8, `bandit` 1.12.0 → 1.12.4, `igniter` 0.8.2 → 0.8.3, `leaf` 0.3.0 → 0.3.2.
+
+### Fixed
+- `test/test_helper.exs` no longer aborts the entire suite on a machine with no `psql` client on PATH. `System.cmd/3` *raises* `ErlangError` when the binary is absent rather than returning a non-zero tuple, so the existing `_ -> :try_connect` fallback — written for exactly this "couldn't determine the DB via psql" case — could never fire, and `mix test` died with `:enoent` before running a single test. Now rescued and routed to that same fallback.
+
 ## 0.2.8 - 2026-07-24
 
 ### Added
