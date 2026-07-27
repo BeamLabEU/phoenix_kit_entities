@@ -62,16 +62,16 @@ defmodule PhoenixKitEntities.LiveCase do
   @doc """
   Returns a real `PhoenixKit.Users.Auth.Scope` struct for testing.
 
-  Most admin LiveViews check `Scope.admin?(scope)` (pattern-matched on
-  `%PhoenixKit.Users.Auth.Scope{}`). The struct's `:cached_roles` /
-  `:authenticated?` drive `admin?/1`; `:cached_permissions` is a MapSet
-  consulted by `has_module_access?/2`.
+  Most admin LiveViews check `Scope.can_access_admin_area?(scope)`
+  (pattern-matched on `%PhoenixKit.Users.Auth.Scope{}`). The struct's
+  `:cached_roles` / `:authenticated?` drive `can_access_admin_area?/1`;
+  `:cached_permissions` is a MapSet consulted by `has_module_access?/2`.
 
   ## Options
 
     * `:user_uuid` — defaults to a fresh UUIDv4 (good enough for tests)
     * `:email` — defaults to a unique-suffix string
-    * `:roles` — list of role atoms; `[:owner]` makes `admin?/1` true
+    * `:roles` — list of role atoms; `[:owner]` makes `can_access_admin_area?/1` true
     * `:permissions` — list of module-key strings; `["entities"]`
       grants admin access to entities pages
     * `:authenticated?` — defaults to `true`
@@ -96,7 +96,8 @@ defmodule PhoenixKitEntities.LiveCase do
 
     # `cached_roles` is a LIST (the production code stores role *names*
     # like `"Owner"`/`"Admin"` from `Role.system_roles/0`, NOT atoms or a
-    # MapSet) — `Scope.admin?/1` pattern-matches `is_list(cached_roles)`.
+    # MapSet) — `Scope.can_access_admin_area?/1` pattern-matches
+    # `is_list(cached_roles)`.
     # `cached_permissions` is a MapSet checked via membership.
     %PhoenixKit.Users.Auth.Scope{
       user: user,
