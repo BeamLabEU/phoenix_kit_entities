@@ -1,3 +1,16 @@
+## 0.2.10 - 2026-07-29
+
+### Fixed
+- **The admin data form showed one language in every language tab, and deleted the rest on save.** `Web.DataForm.handle_params/3` loaded the record with `EntityData.get!(uuid, lang: locale)`, where `locale` is the admin's own UI locale. That option runs `resolve_language/2`, which replaces the multilang `data` JSONB with the single merged map for that locale — `_primary_language` and every other language are gone from the struct. Two consequences, both reported as "translations aren't in the admin, but they're in the DB":
+  - Every language tab rendered the same text. `MultilangForm.get_lang_data/3` asks `Multilang.get_raw_language_data/2` for the tab's language; on a flattened map that returns the whole map regardless of which language was asked for, so all tabs showed whatever the admin's UI locale resolved to.
+  - The next save wrote the collapsed map back. `merge_multilang_data/4` builds the new `data` from this changeset, so `put_language_data/3` saw non-multilang data, rebuilt the structure around a single language, and the row lost the others permanently. A four-language record edited once came back with one.
+
+  The record is now loaded raw at all three sites (both `handle_params/3` edit clauses and the `:data_updated` refresh in `handle_info/2`). The *entity* is still loaded with `:lang` — that only localises `display_name`/`description` for the admin chrome and leaves `fields_definition` alone.
+- `Web.DataForm` no longer merges submitted values under a `nil` language key when the Languages module is disabled but the row still carries multilang `data` (languages configured once, later switched off). `current_lang` is nil in that state; the new `merge_lang/2` falls back to the row's embedded `_primary_language`. Flat rows are unaffected — they have no embedded primary, so the merge keeps passing params straight through.
+
+### Changed
+- `EntityData.resolve_language/2` is documented as lossy and display-only, with an explicit warning never to build an update changeset from its result. `list_tree/2`'s `:lang` option points at it.
+
 ## 0.2.9 - 2026-07-27
 
 ### Changed

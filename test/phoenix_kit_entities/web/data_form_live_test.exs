@@ -65,6 +65,88 @@ defmodule PhoenixKitEntities.Web.DataFormLiveTest do
     end
   end
 
+  describe "the edit form loads the record raw (no :lang)" do
+    # `EntityData.get!/2` with `:lang` runs `resolve_language/2`, which
+    # replaces the multilang `data` JSONB with the single merged map for
+    # that locale — `_primary_language` and every other language are gone
+    # from the struct. `handle_params/3` used to load the record that way,
+    # using the admin's UI locale, which meant:
+    #
+    #   * every language tab rendered the SAME text (whatever the admin's
+    #     own UI locale resolved to), so translations looked missing even
+    #     though the row held them, and
+    #   * the save path builds its `data` from this changeset, so the next
+    #     save wrote the collapsed map back and permanently deleted every
+    #     other translation in the row.
+    #
+    # These pin the record load. The LiveCase hook assigns a non-nil
+    # `:current_locale`, so a reintroduced `lang:` opt fails them.
+
+    test "changeset keeps every language, not just the admin's locale",
+         %{conn: conn} = ctx do
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, edit_url(ctx.entity, ctx.record))
+
+      data = changeset_data(view)
+
+      assert data["_primary_language"] == "en-US"
+      assert data["en-US"]["_title"] == "Hello"
+      assert data["es-ES"]["_title"] == "Hola"
+    end
+
+    test "a secondary admin UI locale does not overwrite the primary language",
+         %{conn: conn} = ctx do
+      conn =
+        conn
+        |> put_test_scope(fake_scope(user_uuid: ctx.actor_uuid))
+        |> Plug.Test.init_test_session(%{
+          "phoenix_kit_test_locale" => "es-ES",
+          "phoenix_kit_test_locale_base" => "es"
+        })
+
+      {:ok, view, _html} = live(conn, edit_url(ctx.entity, ctx.record))
+
+      data = changeset_data(view)
+
+      # Resolving to es-ES would have put "Hola" under the primary key.
+      assert data["en-US"]["_title"] == "Hello"
+      assert data["es-ES"]["_title"] == "Hola"
+    end
+
+    test "saving from the form leaves the other languages in the row",
+         %{conn: conn} = ctx do
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, edit_url(ctx.entity, ctx.record))
+
+      view
+      |> form("form", phoenix_kit_entity_data: %{title: "Hello again"})
+      |> render_submit()
+
+      reloaded = EntityData.get(ctx.record.uuid)
+
+      assert reloaded.title == "Hello again"
+      assert reloaded.data["_primary_language"] == "en-US"
+      assert reloaded.data["es-ES"]["_title"] == "Hola"
+    end
+
+    test "a remote :data_updated refresh also keeps every language",
+         %{conn: conn} = ctx do
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, edit_url(ctx.entity, ctx.record))
+
+      # The handler bails out early for the lock owner, which this LV is
+      # while it holds the edit lock. Drop the flag so the reload runs.
+      :sys.replace_state(view.pid, fn state ->
+        put_in(state.socket.assigns[:lock_owner?], false)
+      end)
+
+      send(view.pid, {:data_updated, ctx.entity.uuid, ctx.record.uuid})
+      render(view)
+
+      assert changeset_data(view)["es-ES"]["_title"] == "Hola"
+    end
+  end
+
   describe "switch_language event" do
     test "ignores unknown language without crashing", %{conn: conn} = ctx do
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
@@ -486,4 +568,11 @@ defmodule PhoenixKitEntities.Web.DataFormLiveTest do
 
   defp edit_url(entity, record),
     do: "/en/admin/entities/#{entity.name}/data/#{record.uuid}/edit"
+
+  # The form's `data` JSONB as the LV currently holds it. Read off the
+  # socket rather than the rendered HTML: without the Languages module
+  # enabled the LV renders the single-language layout, so the secondary
+  # translations never reach the markup even when they're all present.
+  defp changeset_data(view),
+    do: :sys.get_state(view.pid).socket.assigns.changeset |> Ecto.Changeset.get_field(:data)
 end

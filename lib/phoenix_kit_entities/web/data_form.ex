@@ -42,9 +42,20 @@ defmodule PhoenixKitEntities.Web.DataForm do
   def handle_params(%{"entity_slug" => entity_slug, "uuid" => uuid} = params, _uri, socket) do
     locale = params["locale"] || socket.assigns[:current_locale]
 
-    # Edit mode with slug
+    # Edit mode with slug.
+    #
+    # The entity is loaded with `:lang` — that only swaps display_name and
+    # description for the admin chrome, leaving fields_definition intact.
+    #
+    # The RECORD is deliberately loaded WITHOUT `:lang`. `EntityData.get!/2`
+    # with `:lang` runs `resolve_language/2`, which replaces the multilang
+    # `data` JSONB with the single merged map for that locale — every other
+    # language is dropped from the struct. This editor needs all of them: the
+    # language tabs read `data[lang]["_title"]`, and the save path feeds
+    # `merge_multilang_data/4` from this changeset, so a flattened `data` here
+    # gets written back and erases every translation in the row.
     entity = Entities.get_entity_by_name(entity_slug, lang: locale)
-    data_record = EntityData.get!(uuid, lang: locale)
+    data_record = EntityData.get!(uuid)
     changeset = EntityData.change(data_record)
 
     {:noreply,
@@ -54,9 +65,10 @@ defmodule PhoenixKitEntities.Web.DataForm do
   def handle_params(%{"entity_id" => entity_uuid, "id" => id} = params, _uri, socket) do
     locale = params["locale"] || socket.assigns[:current_locale]
 
-    # Edit mode with ID (backwards compat)
+    # Edit mode with ID (backwards compat). Record loaded raw — see the
+    # entity_slug clause above for why `:lang` must not touch it.
     entity = Entities.get_entity!(entity_uuid, lang: locale)
-    data_record = EntityData.get!(id, lang: locale)
+    data_record = EntityData.get!(id)
     changeset = EntityData.change(data_record)
 
     {:noreply,
@@ -440,7 +452,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
         final_data =
           merge_multilang_data(
             socket.assigns.changeset,
-            current_lang,
+            merge_lang(socket, current_lang),
             validated_data,
             socket.assigns
           )
@@ -464,7 +476,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
         error_data =
           merge_multilang_data(
             socket.assigns.changeset,
-            current_lang,
+            merge_lang(socket, current_lang),
             form_data,
             socket.assigns
           )
@@ -532,7 +544,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
         final_data =
           merge_multilang_data(
             socket.assigns.changeset,
-            current_lang,
+            merge_lang(socket, current_lang),
             validated_data,
             socket.assigns
           )
@@ -557,7 +569,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
         error_data =
           merge_multilang_data(
             socket.assigns.changeset,
-            current_lang,
+            merge_lang(socket, current_lang),
             form_data,
             socket.assigns
           )
@@ -652,8 +664,9 @@ defmodule PhoenixKitEntities.Web.DataForm do
         {:noreply, socket}
 
       true ->
-        locale = socket.assigns[:current_locale]
-        data_record = EntityData.get_data!(data_uuid, lang: locale)
+        # Raw, no `:lang` — this changeset is what the next save writes back,
+        # so it has to keep every language. See handle_params/3.
+        data_record = EntityData.get_data!(data_uuid)
         changeset = EntityData.change(data_record)
 
         socket =
@@ -778,6 +791,26 @@ defmodule PhoenixKitEntities.Web.DataForm do
     end)
 
     {:noreply, socket}
+  end
+
+  # The language key submitted values get merged under.
+  #
+  # With multilang enabled this is just the active tab. With multilang
+  # disabled `current_lang` is nil — but the row can still carry multilang
+  # `data` (languages were configured once and later switched off), and
+  # `merge_multilang_data/4` keeps honouring that structure rather than
+  # flattening it. Merging under a nil key there would write a `null`
+  # language into the JSONB, so fall back to the row's embedded primary.
+  #
+  # Flat rows have no `_primary_language`, so this stays nil for them and
+  # `merge_multilang_data/4` passes the params straight through as before.
+  defp merge_lang(_socket, current_lang) when is_binary(current_lang), do: current_lang
+
+  defp merge_lang(socket, _current_lang) do
+    case Ecto.Changeset.get_field(socket.assigns.changeset, :data) do
+      %{"_primary_language" => primary} when is_binary(primary) -> primary
+      _ -> nil
+    end
   end
 
   # Strip lang_title/lang_slug from params — these are translation input names

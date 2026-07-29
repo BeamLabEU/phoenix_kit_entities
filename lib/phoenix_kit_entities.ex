@@ -1248,7 +1248,7 @@ defmodule PhoenixKitEntities do
 
   @impl PhoenixKit.Module
   @spec version() :: String.t()
-  def version, do: "0.2.9"
+  def version, do: "0.2.10"
 
   @impl PhoenixKit.Module
   @spec route_module() :: module()
