@@ -147,6 +147,39 @@ defmodule PhoenixKitEntities.Web.DataFormLiveTest do
     end
   end
 
+  describe "single-language layout over a multilang row" do
+    # The counterpart to the raw load above. With the Languages module off
+    # (as it is here) the form renders the single-language layout, which
+    # asks FormBuilder for `lang_code: nil` — a raw `data` read, one level
+    # above where a multilang row keeps its values. Without a flattened
+    # view the custom fields render blank and the next save writes those
+    # blanks over the primary language, losing exactly what loading raw
+    # was meant to protect.
+
+    test "custom fields render the primary language's values", %{conn: conn} = ctx do
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, _view, html} = live(conn, edit_url(ctx.entity, ctx.record))
+
+      assert html =~ ~s|name="phoenix_kit_entity_data[data][name]"|
+      assert html =~ ~s|value="Acme"|
+    end
+
+    test "saving keeps the primary language's field values", %{conn: conn} = ctx do
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, edit_url(ctx.entity, ctx.record))
+
+      view
+      |> form("form", phoenix_kit_entity_data: %{title: "Hello again"})
+      |> render_submit()
+
+      reloaded = EntityData.get(ctx.record.uuid)
+
+      assert reloaded.data["en-US"]["name"] == "Acme"
+      assert reloaded.data["en-US"]["active"] == true
+      assert reloaded.data["es-ES"]["_title"] == "Hola"
+    end
+  end
+
   describe "switch_language event" do
     test "ignores unknown language without crashing", %{conn: conn} = ctx do
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
