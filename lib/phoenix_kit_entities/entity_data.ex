@@ -960,7 +960,8 @@ defmodule PhoenixKitEntities.EntityData do
   ## Options
 
   * `:include_trashed` — when `true`, include trashed rows (default `false`)
-  * `:lang` — resolve multilingual fields to the given locale
+  * `:lang` — resolve multilingual fields to the given locale. Display-only —
+    see the warning on `resolve_language/2` before writing a resolved record back
   * any other opt accepted by `list_by_entity/2`
   """
   @spec list_tree(binary(), keyword()) :: [%{record: t(), depth: non_neg_integer()}]
@@ -2759,6 +2760,17 @@ defmodule PhoenixKitEntities.EntityData do
   For the primary language or flat (non-multilang) data, the struct is
   returned with the primary language data resolved. When no translation
   exists for a field, the primary language value is used as fallback.
+
+  > #### Read-only {: .warning}
+  >
+  > The returned struct is **lossy and display-only**. Its `data` is the
+  > flattened single-language map — `_primary_language` and every other
+  > language are gone. Never build an update changeset from it: writing it
+  > back replaces the row's whole multilang `data` with the one resolved
+  > language and permanently deletes the rest.
+  >
+  > Editors must load the record raw (`get!/1`, no `:lang`) and resolve
+  > per-language values for display themselves.
 
   ## Examples
 
