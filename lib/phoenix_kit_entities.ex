@@ -1085,6 +1085,36 @@ defmodule PhoenixKitEntities do
     }
   end
 
+  # Project-extension catalog entry for the `phoenix_kit_projects` hub —
+  # duck-typed contract (its Extensions.Registry discovers this function on
+  # every loaded module; no dependency on that package, no `@impl`). The
+  # Data tab config-links ONE entity per project and lists its records
+  # read-only; mutations stay in the entities admin.
+  def phoenix_kit_project_extensions do
+    [
+      %{
+        key: "entities_data",
+        name: "Data",
+        description: "Link an entity and browse its records inside the project",
+        icon: "hero-cube-transparent",
+        module_key: "entities",
+        default_enabled: false,
+        tabs: [
+          %{
+            key: "data",
+            label: "Data",
+            icon: "hero-cube-transparent",
+            lv: PhoenixKitEntities.Web.ProjectDataLive
+          }
+        ],
+        config_schema: [
+          %{key: "entity_uuid", type: :string, label: "Entity UUID"}
+        ],
+        permission_actions: [:view]
+      }
+    ]
+  end
+
   @impl PhoenixKit.Module
   @spec admin_tabs() :: [PhoenixKit.Dashboard.Tab.t()]
   def admin_tabs do

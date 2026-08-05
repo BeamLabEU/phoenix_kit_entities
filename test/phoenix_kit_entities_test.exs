@@ -111,3 +111,19 @@ defmodule PhoenixKitEntitiesTest do
     end
   end
 end
+
+defmodule PhoenixKitEntities.ProjectExtensionContractTest do
+  use ExUnit.Case, async: true
+
+  # The phoenix_kit_projects hub discovers this duck-typed catalog entry;
+  # pin the shape so a rename doesn't silently drop the Data tab.
+  test "phoenix_kit_project_extensions/0 declares the Data tab" do
+    assert [ext] = PhoenixKitEntities.phoenix_kit_project_extensions()
+    assert ext.key == "entities_data"
+    assert ext.module_key == "entities"
+    refute ext.default_enabled
+    assert [%{key: "data", lv: lv}] = ext.tabs
+    assert Code.ensure_loaded?(lv)
+    assert [%{key: "entity_uuid"}] = ext.config_schema
+  end
+end
