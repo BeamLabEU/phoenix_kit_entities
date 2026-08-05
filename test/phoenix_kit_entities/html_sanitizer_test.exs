@@ -90,14 +90,19 @@ defmodule PhoenixKit.Utils.HtmlSanitizerTest do
       refute result =~ "input"
     end
 
-    test "preserves safe links" do
+    test "preserves safe links (and stamps rel=noopener)" do
+      # Core >= 1.7.232 hardens outbound links with rel="noopener noreferrer".
       input = ~s(<a href="https://example.com">Link</a>)
-      assert HtmlSanitizer.sanitize(input) == input
+
+      assert HtmlSanitizer.sanitize(input) ==
+               ~s(<a href="https://example.com" rel="noopener noreferrer">Link</a>)
     end
 
-    test "preserves tables" do
+    test "preserves tables (parser-normalized with tbody)" do
       input = "<table><tr><td>Cell</td></tr></table>"
-      assert HtmlSanitizer.sanitize(input) == input
+
+      assert HtmlSanitizer.sanitize(input) ==
+               "<table><tbody><tr><td>Cell</td></tr></tbody></table>"
     end
 
     test "preserves lists" do

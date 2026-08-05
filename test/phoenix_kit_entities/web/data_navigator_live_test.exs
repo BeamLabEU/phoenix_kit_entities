@@ -132,14 +132,10 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
       {:ok, view, _html} = live(conn, navigator_url(ctx.entity))
 
+      # Selection lives client-side (BulkSelectScope hook); the button's
+      # event carries the selected uuids directly.
       uuids = Enum.map(ctx.records, & &1.uuid)
-
-      # Simulate selecting all 3 records, then bulk_action archive.
-      for uuid <- uuids do
-        render_hook(view, "toggle_select", %{"uuid" => uuid})
-      end
-
-      render_hook(view, "bulk_action", %{"action" => "archive"})
+      render_hook(view, "bulk_archive", %{"uuids" => uuids})
 
       assert_activity_logged("entity_data.bulk_status_changed",
         actor_uuid: ctx.actor_uuid,
@@ -154,11 +150,7 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
       {:ok, view, _html} = live(conn, navigator_url(ctx.entity))
 
-      for r <- ctx.records do
-        render_hook(view, "toggle_select", %{"uuid" => r.uuid})
-      end
-
-      render_hook(view, "bulk_action", %{"action" => "delete"})
+      render_hook(view, "bulk_delete", %{"uuids" => Enum.map(ctx.records, & &1.uuid)})
 
       assert_activity_logged("entity_data.bulk_trashed",
         actor_uuid: ctx.actor_uuid,
@@ -171,8 +163,7 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
       {:ok, view, _html} = live(conn, navigator_url(ctx.entity))
 
       [r | _] = ctx.records
-      render_hook(view, "toggle_select", %{"uuid" => r.uuid})
-      render_hook(view, "bulk_action", %{"action" => "restore"})
+      render_hook(view, "bulk_restore", %{"uuids" => [r.uuid]})
 
       assert_activity_logged("entity_data.bulk_status_changed",
         actor_uuid: ctx.actor_uuid,
@@ -185,7 +176,7 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
       {:ok, view, _html} = live(conn, navigator_url(ctx.entity))
 
-      render_hook(view, "bulk_action", %{"action" => "archive"})
+      render_hook(view, "bulk_archive", %{"uuids" => []})
 
       assert render(view) =~ "No records selected"
 
@@ -345,40 +336,45 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
       {:ok, records: records}
     end
 
-    test "toggle_select / select_all / deselect_all", %{conn: conn} = ctx do
+    test "the client-side selection markup contract renders", %{conn: conn} = ctx do
+      # Selection lives ENTIRELY client-side in core's BulkSelectScope
+      # hook — the server never sees per-row toggles. Pin the markup the
+      # hook drives: the select-all box, one value-carrying checkbox per
+      # row, and the action buttons that submit the selected uuids.
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
-      {:ok, view, _html} = live(conn, navigator_url(ctx.entity))
+      {:ok, _view, html} = live(conn, navigator_url(ctx.entity))
 
-      [r1 | _] = ctx.records
-      render_hook(view, "toggle_select", %{"uuid" => r1.uuid})
-      render_hook(view, "toggle_select", %{"uuid" => r1.uuid})
-      render_hook(view, "select_all", %{})
-      render_hook(view, "deselect_all", %{})
-      assert render(view) =~ "DN Test"
+      assert html =~ ~s(data-bulk-role="select-all")
+
+      for r <- ctx.records do
+        assert html =~ r.uuid
+      end
+
+      assert html =~ ~s(data-bulk-action="bulk_archive")
     end
 
-    test "bulk_action change_status moves selected to draft", %{conn: conn} = ctx do
+    test "bulk_set_status flips the selected records", %{conn: conn} = ctx do
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
       {:ok, view, _html} = live(conn, navigator_url(ctx.entity))
 
-      render_hook(view, "select_all", %{})
+      uuids = Enum.map(ctx.records, & &1.uuid)
+      render_hook(view, "bulk_set_status_published", %{"uuids" => uuids})
 
-      render_hook(view, "bulk_action", %{
-        "action" => "change_status",
-        "status" => "draft"
-      })
-
-      _ = ctx.records
+      for uuid <- uuids do
+        assert EntityData.get(uuid).status == "published"
+      end
     end
 
-    test "bulk_action delete removes selected records", %{conn: conn} = ctx do
+    test "bulk delete soft-trashes the selected records", %{conn: conn} = ctx do
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
       {:ok, view, _html} = live(conn, navigator_url(ctx.entity))
 
-      render_hook(view, "select_all", %{})
-      render_hook(view, "bulk_action", %{"action" => "delete"})
+      uuids = Enum.map(ctx.records, & &1.uuid)
+      render_hook(view, "bulk_delete", %{"uuids" => uuids})
 
-      _ = ctx
+      for uuid <- uuids do
+        assert EntityData.get(uuid, include_trashed: true).status == "trashed"
+      end
     end
 
     test "bulk_action with empty selection flashes error",
@@ -386,9 +382,8 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
       {:ok, view, _html} = live(conn, navigator_url(ctx.entity))
 
-      # No selection.
-      render_hook(view, "bulk_action", %{"action" => "archive"})
-      assert render(view) =~ "selected" or render(view) =~ "DN Test"
+      render_hook(view, "bulk_archive", %{"uuids" => []})
+      assert render(view) =~ "No records selected"
     end
   end
 
@@ -529,9 +524,7 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
       {:ok, view, _html} = live(conn, navigator_url(ctx.entity, status: "trashed"))
 
-      render_hook(view, "toggle_select", %{"uuid" => r1.uuid})
-      render_hook(view, "toggle_select", %{"uuid" => r2.uuid})
-      render_hook(view, "bulk_action", %{"action" => "permanent_delete"})
+      render_hook(view, "bulk_permanent_delete", %{"uuids" => [r1.uuid, r2.uuid]})
 
       assert render(view) =~ "permanently deleted"
       refute EntityData.get(r1.uuid)
@@ -547,9 +540,7 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
       {:ok, view, _html} = live(conn, navigator_url(ctx.entity, status: "trashed"))
 
-      render_hook(view, "toggle_select", %{"uuid" => r1.uuid})
-      render_hook(view, "toggle_select", %{"uuid" => r2.uuid})
-      render_hook(view, "bulk_action", %{"action" => "restore_from_trash"})
+      render_hook(view, "bulk_restore_from_trash", %{"uuids" => [r1.uuid, r2.uuid]})
 
       assert_activity_logged("entity_data.bulk_restored",
         actor_uuid: ctx.actor_uuid,
@@ -633,7 +624,7 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
       {:ok, view, _html} = live(conn, navigator_url(ctx.entity, status: "trashed"))
 
-      render_hook(view, "bulk_action", %{"action" => "permanent_delete"})
+      render_hook(view, "bulk_permanent_delete", %{"uuids" => []})
 
       assert render(view) =~ "No records selected"
     end
@@ -643,7 +634,7 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
       {:ok, view, _html} = live(conn, navigator_url(ctx.entity, status: "trashed"))
 
-      render_hook(view, "bulk_action", %{"action" => "restore_from_trash"})
+      render_hook(view, "bulk_restore_from_trash", %{"uuids" => []})
 
       assert render(view) =~ "No records selected"
     end
@@ -653,7 +644,7 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
       {:ok, view, _html} = live(conn, navigator_url(ctx.entity))
 
-      render_hook(view, "bulk_action", %{"action" => "trash"})
+      render_hook(view, "bulk_trash", %{"uuids" => []})
 
       assert render(view) =~ "No records selected"
     end
@@ -665,7 +656,7 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
 
       {:ok, view, _html} = live(conn, navigator_url(ctx.entity, status: "trashed"))
 
-      render_hook(view, "bulk_action", %{"action" => "permanent_delete"})
+      render_hook(view, "bulk_permanent_delete", %{"uuids" => []})
 
       assert render(view) =~ "Not authorized"
     end
@@ -699,14 +690,14 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
       {:ok, view, _html} = live(conn, navigator_url(ctx.entity, status: "trashed"))
 
-      # Select the trashed row so the bulk bar renders.
-      render_hook(view, "toggle_select", %{"uuid" => record.uuid})
+      # The action buttons live in the DOM regardless of selection (the
+      # BulkSelectScope hook toggles visibility client-side).
       html = render(view)
 
-      assert html =~ ~s(phx-value-action="restore_from_trash")
-      assert html =~ ~s(phx-value-action="permanent_delete")
+      assert html =~ ~s(data-bulk-action="bulk_restore_from_trash")
+      assert html =~ ~s(data-bulk-action="bulk_permanent_delete")
       # The non-trash views' Trash button should NOT appear.
-      refute html =~ ~s(phx-value-action="trash")
+      refute html =~ ~s(data-bulk-action="bulk_trash")
     end
 
     test "non-trash view's bulk bar shows Trash but NOT Permanent-delete",
@@ -716,12 +707,12 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
       {:ok, view, _html} = live(conn, navigator_url(ctx.entity))
 
-      render_hook(view, "toggle_select", %{"uuid" => record.uuid})
+      _ = record
       html = render(view)
 
-      assert html =~ ~s(phx-value-action="trash")
-      refute html =~ ~s(phx-value-action="permanent_delete")
-      refute html =~ ~s(phx-value-action="restore_from_trash")
+      assert html =~ ~s(data-bulk-action="bulk_trash")
+      refute html =~ ~s(data-bulk-action="bulk_permanent_delete")
+      refute html =~ ~s(data-bulk-action="bulk_restore_from_trash")
     end
   end
 

@@ -197,6 +197,7 @@ defmodule PhoenixKitEntities.SitemapSourceTest do
           %{
             name: "collide_entity",
             display_name: "Collide Entity",
+            display_name_plural: "Collide Entities",
             fields_definition: [
               %{"type" => "text", "key" => "title", "label" => "Title"},
               %{"type" => "text", "key" => "id", "label" => "External ID"}
@@ -277,6 +278,7 @@ defmodule PhoenixKitEntities.SitemapSourceTest do
           %{
             name: "internal_form",
             display_name: "Internal Form",
+            display_name_plural: "Internal Forms",
             fields_definition: [%{"type" => "text", "key" => "title", "label" => "Title"}],
             settings: %{"sitemap_exclude" => true},
             created_by_uuid: ctx.actor_uuid

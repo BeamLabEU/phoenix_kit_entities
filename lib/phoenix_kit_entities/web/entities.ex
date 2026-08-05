@@ -56,7 +56,7 @@ defmodule PhoenixKitEntities.Web.Entities do
   end
 
   def handle_event("archive_entity", %{"uuid" => uuid}, socket) do
-    if Scope.admin?(socket.assigns.phoenix_kit_current_scope) do
+    if Scope.can_access_admin_area?(socket.assigns.phoenix_kit_current_scope) do
       locale = socket.assigns[:current_locale]
       entity = Entities.get_entity!(uuid, lang: locale)
 
@@ -81,7 +81,7 @@ defmodule PhoenixKitEntities.Web.Entities do
   end
 
   def handle_event("restore_entity", %{"uuid" => uuid}, socket) do
-    if Scope.admin?(socket.assigns.phoenix_kit_current_scope) do
+    if Scope.can_access_admin_area?(socket.assigns.phoenix_kit_current_scope) do
       locale = socket.assigns[:current_locale]
       entity = Entities.get_entity!(uuid, lang: locale)
 
@@ -113,7 +113,7 @@ defmodule PhoenixKitEntities.Web.Entities do
     # `phoenix_kit_projects` reorder convention.
     moved_id = params["moved_id"]
 
-    if Scope.admin?(socket.assigns.phoenix_kit_current_scope) do
+    if Scope.can_access_admin_area?(socket.assigns.phoenix_kit_current_scope) do
       case Entities.reorder_entities(ordered_ids, actor_opts(socket)) do
         :ok ->
           {:noreply,
