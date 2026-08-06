@@ -520,6 +520,73 @@ defmodule PhoenixKitEntities.Controllers.EntityFormControllerTest do
     end
   end
 
+  describe "crafted (non-map / non-string) payloads" do
+    # SECURITY: this endpoint is un-authed by design, so the whole request
+    # body is attacker-shaped and nested params (`a[b]=c`) arrive as maps.
+    # `EntityData.changeset/2` is the shape gate this path relies on, but
+    # each of these crashed the controller with an unhandled
+    # `FunctionClauseError` — an un-authed 500 — BEFORE the changeset ever
+    # ran. Every one must now redirect like an ordinary submission.
+
+    test "a non-map phoenix_kit_entity_data is treated as an empty submission", %{entity: entity} do
+      conn = build_conn(:post, "/")
+
+      params = %{
+        "entity_slug" => entity.name,
+        "phoenix_kit_entity_data" => "not-a-map"
+      }
+
+      result = simple_invoke(conn, params)
+      assert result.status in [302, 303]
+    end
+
+    test "a non-map \"data\" value is treated as an empty submission", %{entity: entity} do
+      conn = build_conn(:post, "/")
+
+      params = %{
+        "entity_slug" => entity.name,
+        "phoenix_kit_entity_data" => %{"data" => ["a", "b"]}
+      }
+
+      result = simple_invoke(conn, params)
+      assert result.status in [302, 303]
+    end
+
+    test "a map under a title-candidate key falls back to the entity display name",
+         %{entity: entity} do
+      # `generate_submission_title/2` accepted any truthy value and handed
+      # it straight to `generate_slug/1`'s `String.downcase/1`.
+      conn = build_conn(:post, "/")
+
+      params = %{
+        "entity_slug" => entity.name,
+        "phoenix_kit_entity_data" => %{"data" => %{"title" => %{"evil" => "map"}}}
+      }
+
+      result = simple_invoke(conn, params)
+      assert result.status in [302, 303]
+    end
+
+    test "a non-string _form_loaded_at is treated as no timestamp", %{entity: entity} do
+      # Reached from `check_submission_time/2`, i.e. before any other
+      # handling — the earliest crash on this endpoint.
+      Entities.update_entity(entity, %{
+        settings: Map.merge(entity.settings, %{"public_form_time_check" => true})
+      })
+
+      conn = build_conn(:post, "/")
+
+      params = %{
+        "entity_slug" => entity.name,
+        "_form_loaded_at" => %{"evil" => "map"},
+        "phoenix_kit_entity_data" => %{"data" => %{"title" => "X"}}
+      }
+
+      result = simple_invoke(conn, params)
+      assert result.status in [302, 303]
+    end
+  end
+
   describe "redirect_back fallback" do
     test "no referer header → redirects to /", %{entity: entity} do
       conn = build_conn(:post, "/")

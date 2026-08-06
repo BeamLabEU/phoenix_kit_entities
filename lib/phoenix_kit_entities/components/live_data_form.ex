@@ -568,12 +568,29 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
 
   defp sanitize_field_value("checkbox", _value), do: :drop
 
-  # Every other/unrecognized field type — including `file`/`image`/
-  # `relation`, none of which this form renders a real submittable input
-  # for (see `FormBuilder.build_field/3`'s placeholder clauses) — passes
-  # through unchanged, same as `FormBuilder.validate_type/2`'s own
-  # catch-all. Nothing in this component's render paths naively
-  # stringifies their values the way the text-like types above do.
+  # `file`/`image`/`relation` render a placeholder here, never a real
+  # submittable input (see `FormBuilder.build_field/3`'s clauses for them),
+  # so a value arriving under one of their keys can only be crafted — there
+  # is no legitimate submission to preserve. Dropping is also lossless for
+  # a parent app that populates these out of band: a dropped key is simply
+  # absent from the merge, so whatever `record.data` already holds survives
+  # untouched.
+  #
+  # This closes the one registry type the rest of this function leaves to
+  # the catch-all. `file` values ARE rendered — by the readonly catch-all
+  # clause (`readonly_value/1`) and by `FormBuilder.build_field/3`'s `file`
+  # clause, which indexes each list entry (`file["filename"]`) — so
+  # "nothing stringifies them" was never true for `file`; see
+  # `safe_string/1` below for the matching render-side guard that also
+  # covers rows written before this clause existed.
+  defp sanitize_field_value(type, _value) when type in ~w(file image relation), do: :drop
+
+  # Every other/unrecognized field type passes through unchanged, same as
+  # `FormBuilder.validate_type/2`'s own catch-all. A type outside
+  # `FieldTypes.all/0` can only come from a hand-edited
+  # `fields_definition`, and this component has no render clause that can
+  # infer a safe shape for it; `safe_string/1` on the render side is what
+  # keeps an unexpected value from crashing a page.
   defp sanitize_field_value(_type, value), do: {:ok, value}
 
   # Autosave fires on every change (debounced 500ms) — logging an
@@ -787,10 +804,16 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
        when type in ["select", "radio"] do
     raw_value = Map.get(data, field["key"])
 
+    # `translated_option_label/3` falls back to the RAW stored value when it
+    # finds no translation entry (the `allow_other` free-text case), so it
+    # hands back whatever shape is in `data` — including a non-scalar term
+    # from a row written before the write-side shape gates existed. Piping
+    # it through `safe_string/1` keeps `{@display}` from raising the same
+    # `Protocol.UndefinedError` the text clauses are already protected from.
     display =
       case raw_value do
         value when value in [nil, ""] -> dash()
-        value -> FormBuilder.translated_option_label(field, value, lang_code)
+        value -> safe_string(FormBuilder.translated_option_label(field, value, lang_code))
       end
 
     assigns = %{label: FormBuilder.translated_label(field, lang_code), display: display}
@@ -829,13 +852,13 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
 
   defp readonly_list(nil), do: dash()
   defp readonly_list([]), do: dash()
-  defp readonly_list(values) when is_list(values), do: Enum.join(values, ", ")
+  defp readonly_list(values) when is_list(values), do: Enum.map_join(values, ", ", &safe_string/1)
   defp readonly_list(_), do: dash()
 
   defp readonly_text(nil), do: dash()
   defp readonly_text(""), do: dash()
   defp readonly_text(value) when is_binary(value), do: value
-  defp readonly_text(value), do: to_string(value)
+  defp readonly_text(value), do: safe_string(value)
 
   defp readonly_boolean(nil), do: dash()
   defp readonly_boolean(value) when value in [true, "true", "1", 1], do: gettext("Yes")
@@ -845,7 +868,25 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
   defp readonly_value(""), do: dash()
   defp readonly_value(value) when is_list(value), do: readonly_list(value)
   defp readonly_value(value) when is_binary(value), do: value
-  defp readonly_value(value), do: to_string(value)
+  defp readonly_value(value), do: safe_string(value)
+
+  # SECURITY: the last line of defence for the render side of the stored-DoS
+  # this component's `sanitize_values/2` and `EntityData.changeset/2` guard
+  # on the write side. Both of those only gate what lands in `data` FROM NOW
+  # ON — a row poisoned before they existed, or written by a parent app
+  # calling `EntityData` directly, still holds whatever term it holds, and
+  # this readonly view is exactly where it gets rendered. `to_string/1` /
+  # `Enum.join/2` raise `Protocol.UndefinedError` on a bare map (no
+  # `String.Chars` implementation), which crashes rendering for every
+  # subsequent viewer with no way out short of a manual DB edit. Nothing
+  # displayed here is load-bearing enough to be worth a crash, so anything
+  # without a `String.Chars` implementation degrades to `inspect/1` — the
+  # same treatment `EntityData.stringify_invalid_option/1` and
+  # `FormBuilder.stringify_invalid_option/1` already give their own
+  # attacker-reachable interpolations.
+  defp safe_string(value) when is_binary(value), do: value
+  defp safe_string(value) when is_atom(value) or is_number(value), do: to_string(value)
+  defp safe_string(value), do: inspect(value)
 
   defp dash, do: gettext("—")
 end

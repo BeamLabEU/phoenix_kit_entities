@@ -439,6 +439,89 @@ defmodule PhoenixKitEntities.LiveDataFormTest do
     end
   end
 
+  describe ":readonly mode renders already-stored non-scalar values without crashing" do
+    # `sanitize_values/2` and `EntityData.changeset/2`'s shape guards only
+    # gate what lands in `data` from now on. A row poisoned before they
+    # existed — or written by a parent app calling `EntityData` directly,
+    # or under a `file` key, which neither layer had an opinion on — still
+    # holds whatever term it holds, and THIS view is where it gets
+    # rendered. `to_string/1` / `Enum.join/2` raise `Protocol.UndefinedError`
+    # on a bare map, which crashed the page for every subsequent viewer
+    # with no fix short of a manual DB edit. These lock in that the
+    # readonly view degrades (inspect) instead.
+
+    test "a map stored under a text field renders instead of raising" do
+      fields = [%{"type" => "text", "key" => "name", "label" => "Name"}]
+      e = entity(fields)
+      r = record(e, %{"name" => %{"evil" => "map"}})
+
+      html =
+        render_form(%{record: r, mode: :readonly, lang: "et", actor: nil, submit_label: nil})
+
+      assert html =~ "Name"
+      assert html =~ "evil"
+    end
+
+    test "a map stored under a textarea field renders instead of raising" do
+      fields = [%{"type" => "textarea", "key" => "notes", "label" => "Notes"}]
+      e = entity(fields)
+      r = record(e, %{"notes" => %{"evil" => "map"}})
+
+      html =
+        render_form(%{record: r, mode: :readonly, lang: "et", actor: nil, submit_label: nil})
+
+      assert html =~ "Notes"
+      assert html =~ "evil"
+    end
+
+    test "a map stored under a select field renders instead of raising" do
+      # `translated_option_label/3` falls back to the RAW stored value when
+      # it has no translation entry, so the map reaches `{@display}`
+      # directly on this clause.
+      fields = [
+        %{"type" => "select", "key" => "color", "label" => "Color", "options" => ["Red"]}
+      ]
+
+      e = entity(fields)
+      r = record(e, %{"color" => %{"evil" => "map"}})
+
+      html =
+        render_form(%{record: r, mode: :readonly, lang: "et", actor: nil, submit_label: nil})
+
+      assert html =~ "Color"
+      assert html =~ "evil"
+    end
+
+    test "a list of maps stored under a checkbox field renders instead of raising" do
+      fields = [
+        %{"type" => "checkbox", "key" => "tools", "label" => "Tools", "options" => ["Hammer"]}
+      ]
+
+      e = entity(fields)
+      r = record(e, %{"tools" => ["Hammer", %{"evil" => "map"}]})
+
+      html =
+        render_form(%{record: r, mode: :readonly, lang: "et", actor: nil, submit_label: nil})
+
+      assert html =~ "Hammer"
+      assert html =~ "evil"
+    end
+
+    test "a list of maps stored under a file field renders instead of raising" do
+      # `file` reaches the readonly catch-all clause (`readonly_value/1`),
+      # and is the one registry type neither shape gate rejects.
+      fields = [%{"type" => "file", "key" => "attachment", "label" => "Attachment"}]
+      e = entity(fields)
+      r = record(e, %{"attachment" => [%{"filename" => "a.pdf"}]})
+
+      html =
+        render_form(%{record: r, mode: :readonly, lang: "et", actor: nil, submit_label: nil})
+
+      assert html =~ "Attachment"
+      assert html =~ "a.pdf"
+    end
+  end
+
   describe "sanitize_values/2 (component-layer value-shape gate)" do
     # M2: `whitelist_known_fields/2` only filters submitted params by KEY —
     # it has no opinion on the SHAPE of the value under a known key, and
@@ -569,6 +652,23 @@ defmodule PhoenixKitEntities.LiveDataFormTest do
 
       assert LiveDataForm.sanitize_values(%{"color" => "Red"}, fields) == %{"color" => "Red"}
       assert LiveDataForm.sanitize_values(%{"color" => %{"evil" => "map"}}, fields) == %{}
+    end
+
+    test "any value submitted under a file/image/relation field's key is dropped" do
+      # These three render a placeholder, never a submittable input, so a
+      # value arriving under their key can only be crafted. `file` in
+      # particular used to fall through the catch-all into `record.data`,
+      # where both render surfaces index or stringify it —
+      # `FormBuilder.build_field/3`'s `file["filename"]` and this module's
+      # `readonly_value/1` — which is the same stored-DoS the scalar types
+      # above are protected from.
+      for type <- ~w(file image relation) do
+        fields = [%{"type" => type, "key" => "attachment", "label" => "Attachment"}]
+
+        assert LiveDataForm.sanitize_values(%{"attachment" => ["a.pdf"]}, fields) == %{}
+        assert LiveDataForm.sanitize_values(%{"attachment" => %{"evil" => "map"}}, fields) == %{}
+        assert LiveDataForm.sanitize_values(%{"attachment" => "a.pdf"}, fields) == %{}
+      end
     end
 
     test "a mixed payload only drops the offending key, keeping the rest" do

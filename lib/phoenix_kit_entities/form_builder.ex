@@ -969,7 +969,20 @@ defmodule PhoenixKitEntities.FormBuilder do
           <p class="text-sm font-semibold text-base-content/70">
             {gettext("Current files:")}
           </p>
-          <%= for file <- @current_files do %>
+          <%!-- SECURITY: `is_map(file)` is not defensive noise. `file` fields
+          have no submittable input anywhere in this library (this clause is a
+          placeholder and nothing here consumes an upload), so every value
+          under a `file` key arrives from outside — a crafted admin autosave,
+          or the public `/entities/:entity_slug/submit` POST when the field is
+          listed in `public_form_fields`. `EntityData.changeset/2` has no
+          shape opinion on `file` (it falls to the catch-all clause of
+          `dispatch_field_type_validation/4`), so a list of plain strings
+          stores fine and then reaches `file["filename"]` here, where the
+          Access syntax raises `FunctionClauseError` on a binary — crashing
+          the admin editor for that record for good. Skipping non-map entries
+          renders the entries that do have the expected metadata shape and
+          ignores the rest. --%>
+          <%= for file <- @current_files, is_map(file) do %>
             <div class="flex items-center gap-2 p-2 bg-base-200 rounded text-sm">
               <.icon name="hero-document" class="w-4 h-4 text-base-content/60" />
               <span class="flex-1 truncate">{file["filename"] || gettext("Unknown file")}</span>
