@@ -1358,6 +1358,17 @@ defmodule PhoenixKitEntities.FormBuilder do
     end
   end
 
+  # `allow_other`'s branch requires every out-of-options entry to be a
+  # binary — same shape rule as the `select`/`radio` clauses above (both
+  # already gate on `is_binary(value)`). `allow_other` means "one
+  # free-text custom entry", not "any term"; without this, a crafted
+  # list-of-maps value sailed straight through this best-effort layer,
+  # relying entirely on `EntityData.changeset/2`'s
+  # `validate_checkbox_field/3` (the hard-blocking final gate) to catch
+  # it — kept in sync with that changeset-level fix for consistency
+  # between the two validators, not because this layer is itself
+  # security-load-bearing (see this module's moduledoc: it's best-effort,
+  # never a hard gate).
   defp validate_type(%{"type" => "checkbox", "options" => options} = field, values)
        when is_list(options) and is_list(values) do
     invalid_values = values -- options
@@ -1366,18 +1377,30 @@ defmodule PhoenixKitEntities.FormBuilder do
       Enum.empty?(invalid_values) ->
         {:ok, values}
 
-      FieldTypes.allow_other?(field) ->
+      FieldTypes.allow_other?(field) and Enum.all?(invalid_values, &is_binary/1) ->
         {:ok, values}
 
       true ->
         {:error,
          [
            gettext("contains invalid options: %{invalid}",
-             invalid: Enum.join(invalid_values, ", ")
+             invalid: Enum.map_join(invalid_values, ", ", &stringify_invalid_option/1)
            )
          ]}
     end
   end
 
   defp validate_type(_field, value), do: {:ok, value}
+
+  # `invalid_values` (used by the checkbox clause above) can now
+  # legitimately contain a non-binary term (a crafted map, for one — see
+  # the `allow_other` shape guard there), and `Enum.join/2` calls
+  # `to_string/1` on every element via `String.Chars`, which has no
+  # implementation for a bare map — this crashed building the ERROR
+  # MESSAGE ITSELF (a raised `Protocol.UndefinedError`, not the graceful
+  # `{:error, _}` this function returns everywhere else), independent of
+  # `allow_other`. `to_string/1` for a binary (the normal case),
+  # `inspect/1` for anything else (always succeeds, never raises).
+  defp stringify_invalid_option(value) when is_binary(value), do: value
+  defp stringify_invalid_option(value), do: inspect(value)
 end

@@ -143,6 +143,10 @@ defmodule PhoenixKitEntities.EntityData do
   @valid_statuses ~w(draft published archived trashed)
   @soft_delete_status "trashed"
 
+  # Field types whose stored value must be a single JSON scalar (or
+  # absent) — see `validate_field_type/3`'s shape guard below.
+  @text_like_types ~w(text textarea email url rich_text)
+
   # Mirrors `PhoenixKitEntities.FormBuilder`'s private sentinel for the
   # synthetic "Other" option rendered on select/radio/checkbox fields with
   # `allow_other?`. It's a UI marker only — `FormBuilder.merge_other_params/2`
@@ -446,16 +450,84 @@ defmodule PhoenixKitEntities.EntityData do
     end
   end
 
+  # SECURITY: this `case` used to have no branch at all for
+  # `text`/`textarea`/`rich_text` — they fell through to the catch-all
+  # (`_ -> changeset`), so `EntityData.changeset/2`, the FINAL,
+  # unconditional word on what lands in `data` (see this module's
+  # moduledoc / `LiveDataForm`'s own doc for why every other check here
+  # is best-effort), had no opinion on their value's shape. A map (or any
+  # other non-scalar term) sailed straight through and into storage.
+  #
+  # Every surface that renders a `text`/`textarea`/`rich_text` value does
+  # so naively: the readonly view calls `to_string/1` on it
+  # (`PhoenixKitEntities.Components.LiveDataForm.readonly_text/1` /
+  # `readonly_value/1`), the edit form interpolates it directly inside
+  # `<textarea>{@value}</textarea>` (`FormBuilder.build_field/3`) — a
+  # stored map raises `Protocol.UndefinedError` in both, crashing
+  # rendering for every subsequent viewer of the record. `LiveDataForm`
+  # now sanitizes by field type before a value ever reaches this
+  # changeset (see its `sanitize_values/2`), but this is the module's own
+  # final gate, reachable from the admin `DataForm` and the public
+  # `EntityForm` too — it must reject the same shapes independent of any
+  # particular caller.
+  #
+  # `email`/`url` are included in the same shape check (rather than left
+  # to fall through to `validate_email_field/3` / `validate_url_field/3`
+  # below) for a uniform, purpose-built error message on a shape
+  # mismatch; those two already separately guard on `is_binary(value)`
+  # before doing anything else, so this doesn't change what they accept —
+  # only which message a non-text value gets. `number`/`boolean`/`date`
+  # are NOT included: `number`/`boolean` have their own type coercion
+  # rules (a bare shape check would be either too strict or redundant —
+  # see `LiveDataForm.sanitize_field_value/2`'s narrower number/boolean
+  # clauses for that reasoning), and `validate_date_field/3` already
+  # guards on `is_binary(value)` the same way email/url do.
   defp validate_field_type(changeset, field_def, value) do
-    case field_def["type"] do
-      "number" -> validate_number_field(changeset, field_def, value)
-      "boolean" -> validate_boolean_field(changeset, field_def, value)
-      "email" -> validate_email_field(changeset, field_def, value)
-      "url" -> validate_url_field(changeset, field_def, value)
-      "date" -> validate_date_field(changeset, field_def, value)
-      type when type in ["select", "radio"] -> validate_choice_field(changeset, field_def, value)
-      "checkbox" -> validate_checkbox_field(changeset, field_def, value)
-      _ -> changeset
+    type = field_def["type"]
+
+    if type in @text_like_types and not text_like_shape?(value) do
+      add_error(
+        changeset,
+        :data,
+        gettext("field '%{label}' must be a text value", label: field_def["label"])
+      )
+    else
+      dispatch_field_type_validation(changeset, type, field_def, value)
+    end
+  end
+
+  defp text_like_shape?(value),
+    do: is_binary(value) or is_number(value) or is_boolean(value) or is_nil(value)
+
+  # Split out of `validate_field_type/3` (rather than nested in its `else`
+  # branch) purely to keep each function's cyclomatic complexity under
+  # `credo --strict`'s threshold — no behavior difference from having it
+  # inline.
+  defp dispatch_field_type_validation(changeset, type, field_def, value) do
+    case type do
+      "number" ->
+        validate_number_field(changeset, field_def, value)
+
+      "boolean" ->
+        validate_boolean_field(changeset, field_def, value)
+
+      "email" ->
+        validate_email_field(changeset, field_def, value)
+
+      "url" ->
+        validate_url_field(changeset, field_def, value)
+
+      "date" ->
+        validate_date_field(changeset, field_def, value)
+
+      type when type in ["select", "radio"] ->
+        validate_choice_field(changeset, field_def, value)
+
+      "checkbox" ->
+        validate_checkbox_field(changeset, field_def, value)
+
+      _ ->
+        changeset
     end
   end
 
@@ -524,6 +596,22 @@ defmodule PhoenixKitEntities.EntityData do
   # shape. The sentinel check comes first and applies unconditionally: it
   # must never validate as a real value, allow_other or not (see
   # `@other_sentinel`).
+  #
+  # SECURITY (M2 follow-up): the `allow_other?` branch used to accept
+  # ANY value unconditionally — including a crafted map — once a value
+  # wasn't a recognized option. `allow_other`'s whole premise is a
+  # free-text custom answer, i.e. a string; nothing else is a legitimate
+  # "Other" value. This reaches the same render surfaces text/textarea
+  # values do (`readonly_field/3`'s `select`/`radio` clause resolves the
+  # stored value through `FormBuilder.translated_option_label/3`, which
+  # falls back to the raw value and interpolates it via `{@display}` —
+  # `Protocol.UndefinedError` for a map, same as the text-field crash
+  # this module's `validate_field_type/3` shape guard already closes) —
+  # and, unlike `text`/`textarea`, this path is also reachable from the
+  # public, unauthenticated `EntityForm` (not just `LiveDataForm`, whose
+  # own `sanitize_values/2` already covers this specific gap for its
+  # path), so this changeset-level fix is the only thing closing it
+  # there.
   defp validate_choice_field(changeset, field_def, value) do
     options = field_def["options"] || []
 
@@ -538,7 +626,7 @@ defmodule PhoenixKitEntities.EntityData do
       value in options ->
         changeset
 
-      FieldTypes.allow_other?(field_def) ->
+      FieldTypes.allow_other?(field_def) and is_binary(value) ->
         changeset
 
       true ->
@@ -558,13 +646,20 @@ defmodule PhoenixKitEntities.EntityData do
   # `@other_sentinel` marker itself). A non-list value (e.g. a single
   # scalar string crafted into the request) is rejected outright rather
   # than silently passing through unvalidated.
+  #
+  # SECURITY (M2 follow-up): same `allow_other` shape gap as
+  # `validate_choice_field/3` above, one level down — an out-of-options
+  # LIST ELEMENT used to be waved through unconditionally when
+  # `allow_other` was set, map elements included. Now an out-of-options
+  # element is only accepted when it's ALSO a binary — `allow_other`
+  # means "one free-text custom entry", not "any term".
   defp validate_checkbox_field(changeset, field_def, value) when is_list(value) do
     options = field_def["options"] || []
     allow_other = FieldTypes.allow_other?(field_def)
 
     invalid_values =
       Enum.filter(value, fn v ->
-        v == @other_sentinel or (v not in options and not allow_other)
+        v == @other_sentinel or (v not in options and (not allow_other or not is_binary(v)))
       end)
 
     if Enum.empty?(invalid_values) do
@@ -575,7 +670,13 @@ defmodule PhoenixKitEntities.EntityData do
         :data,
         gettext("field '%{label}' contains invalid options: %{invalid}",
           label: field_def["label"],
-          invalid: Enum.join(invalid_values, ", ")
+          # Not Enum.join/2: the is_binary/1 guard above is what routes a
+          # non-binary term into invalid_values in the first place, so joining
+          # would raise Protocol.UndefinedError while building the very error
+          # that rejects it — trading a stored bad value for an attacker
+          # -triggered crash. Same treatment FormBuilder already gives its copy
+          # of this message.
+          invalid: Enum.map_join(invalid_values, ", ", &stringify_invalid_option/1)
         )
       )
     end
@@ -588,6 +689,9 @@ defmodule PhoenixKitEntities.EntityData do
       gettext("field '%{label}' must be a list of selected options", label: field_def["label"])
     )
   end
+
+  defp stringify_invalid_option(value) when is_binary(value), do: value
+  defp stringify_invalid_option(value), do: inspect(value)
 
   defp maybe_set_timestamps(changeset) do
     now = UtilsDate.utc_now()

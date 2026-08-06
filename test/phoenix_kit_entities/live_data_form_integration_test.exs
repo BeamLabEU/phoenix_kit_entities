@@ -16,9 +16,13 @@ defmodule PhoenixKitEntities.LiveDataFormIntegrationTest do
   """
   use PhoenixKitEntities.DataCase, async: true
 
+  import Phoenix.LiveViewTest
+
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.Components.LiveDataForm
   alias PhoenixKitEntities.EntityData
+
+  @endpoint PhoenixKitEntities.Test.Endpoint
 
   @fields [
     %{"type" => "text", "key" => "name", "label" => "Name"},
@@ -323,6 +327,167 @@ defmodule PhoenixKitEntities.LiveDataFormIntegrationTest do
 
       reloaded = EntityData.get!(record.uuid)
       assert reloaded.data == %{}
+    end
+  end
+
+  describe "value-shape sanitization (crafted map payload, M2)" do
+    # End-to-end version of the `sanitize_values/2` unit tests in
+    # `live_data_form_test.exs`: a crafted "autosave" can name any real
+    # field key (`whitelist_known_fields/2` only filters by key) — before
+    # this fix, a map value for a `text` field would sail into
+    # `record.data` and crash rendering (`Protocol.UndefinedError`) for
+    # every subsequent viewer, in BOTH `:edit` (`<textarea>{@value}</textarea>`)
+    # and `:readonly` (`to_string/1`). Confirms the map never reaches the
+    # row and that both render modes stay alive afterward — the record's
+    # last-known-good value is preserved instead.
+    test "a crafted map value for a text field is dropped, not persisted, and both render modes stay alive" do
+      fields = [%{"type" => "text", "key" => "name", "label" => "Name"}]
+      entity = create_entity!(fields)
+      record = create_record!(entity, %{"name" => "Old"})
+      socket = socket(record, entity)
+
+      {:noreply, updated_socket} =
+        LiveDataForm.handle_event(
+          "autosave",
+          %{"phoenix_kit_entity_data" => %{"data" => %{"name" => %{"evil" => "map"}}}},
+          socket
+        )
+
+      assert updated_socket.assigns.record.data["name"] == "Old"
+      assert_received {:live_data_form, :saved, updated_record}
+      refute is_map(updated_record.data["name"])
+
+      reloaded = EntityData.get!(record.uuid)
+      assert reloaded.data["name"] == "Old"
+
+      edit_html =
+        render_component(LiveDataForm, %{
+          id: "shape-guard-edit",
+          record: reloaded,
+          mode: :edit,
+          lang: nil,
+          actor: nil,
+          submit_label: nil
+        })
+
+      readonly_html =
+        render_component(LiveDataForm, %{
+          id: "shape-guard-readonly",
+          record: reloaded,
+          mode: :readonly,
+          lang: nil,
+          actor: nil,
+          submit_label: nil
+        })
+
+      assert edit_html =~ "Old"
+      assert readonly_html =~ "Old"
+    end
+
+    test "a crafted list-of-maps value for a checkbox field drops the non-binary entries instead of failing the whole save" do
+      fields = [
+        %{
+          "type" => "checkbox",
+          "key" => "tools",
+          "label" => "Tools",
+          "options" => ["Hammer", "Drill"]
+        }
+      ]
+
+      entity = create_entity!(fields)
+      record = create_record!(entity, %{"tools" => []})
+      socket = socket(record, entity)
+
+      {:noreply, updated_socket} =
+        LiveDataForm.handle_event(
+          "autosave",
+          %{
+            "phoenix_kit_entity_data" => %{
+              "data" => %{"tools" => [%{"evil" => "map"}, "Hammer"]}
+            }
+          },
+          socket
+        )
+
+      assert updated_socket.assigns.record.data["tools"] == ["Hammer"]
+
+      reloaded = EntityData.get!(record.uuid)
+      assert reloaded.data["tools"] == ["Hammer"]
+    end
+  end
+
+  describe "malformed payload guard (m2)" do
+    # DB-backed end-to-end version of the `extract_data_params/1` unit
+    # tests in `live_data_form_test.exs`: reaching `handle_event/3`'s
+    # guarded clauses at all needs `mode: :edit`, which unconditionally
+    # ends at `EntityData.update/3` (a live database), so proving the full
+    # "crafted payload -> no crash, no write" chain needs this DB-backed
+    # test rather than a pure unit test. Before this fix, both payloads
+    # below raised `BadMapError` synchronously inside `handle_event/3` —
+    # crashing the whole LiveView process (every component on the page for
+    # that user), not just this one.
+    test "a non-map phoenix_kit_entity_data payload does not crash and does not write" do
+      entity = create_entity!()
+      record = create_record!(entity, %{"name" => "Old"})
+      socket = socket(record, entity)
+
+      {:noreply, updated_socket} =
+        LiveDataForm.handle_event(
+          "autosave",
+          %{"phoenix_kit_entity_data" => "not-a-map"},
+          socket
+        )
+
+      assert updated_socket.assigns.record.data["name"] == "Old"
+
+      reloaded = EntityData.get!(record.uuid)
+      assert reloaded.data["name"] == "Old"
+    end
+
+    test "a non-map \"data\" value does not crash normalize_absent_checkboxes and does not write" do
+      fields = [
+        %{
+          "type" => "checkbox",
+          "key" => "tools",
+          "label" => "Tools",
+          "options" => ["Hammer", "Drill"]
+        }
+      ]
+
+      entity = create_entity!(fields)
+      record = create_record!(entity, %{"tools" => ["Hammer"]})
+      socket = socket(record, entity)
+
+      {:noreply, updated_socket} =
+        LiveDataForm.handle_event(
+          "autosave",
+          %{"phoenix_kit_entity_data" => %{"data" => ["a", "b"]}},
+          socket
+        )
+
+      assert updated_socket.assigns.record.data["tools"] == ["Hammer"]
+
+      reloaded = EntityData.get!(record.uuid)
+      assert reloaded.data["tools"] == ["Hammer"]
+    end
+
+    test "the same guards protect the submit event" do
+      entity = create_entity!()
+      record = create_record!(entity, %{"name" => "Old"})
+      socket = socket(record, entity, submit_label: "Kinnitan")
+
+      {:noreply, updated_socket} =
+        LiveDataForm.handle_event(
+          "submit",
+          %{"phoenix_kit_entity_data" => "not-a-map"},
+          socket
+        )
+
+      assert updated_socket.assigns.record.data["name"] == "Old"
+      refute_received {:live_data_form, :submitted, _}
+
+      reloaded = EntityData.get!(record.uuid)
+      assert reloaded.data["name"] == "Old"
     end
   end
 
