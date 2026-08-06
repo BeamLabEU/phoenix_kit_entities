@@ -670,7 +670,13 @@ defmodule PhoenixKitEntities.EntityData do
         :data,
         gettext("field '%{label}' contains invalid options: %{invalid}",
           label: field_def["label"],
-          invalid: Enum.join(invalid_values, ", ")
+          # Not Enum.join/2: the is_binary/1 guard above is what routes a
+          # non-binary term into invalid_values in the first place, so joining
+          # would raise Protocol.UndefinedError while building the very error
+          # that rejects it — trading a stored bad value for an attacker
+          # -triggered crash. Same treatment FormBuilder already gives its copy
+          # of this message.
+          invalid: Enum.map_join(invalid_values, ", ", &stringify_invalid_option/1)
         )
       )
     end
@@ -683,6 +689,9 @@ defmodule PhoenixKitEntities.EntityData do
       gettext("field '%{label}' must be a list of selected options", label: field_def["label"])
     )
   end
+
+  defp stringify_invalid_option(value) when is_binary(value), do: value
+  defp stringify_invalid_option(value), do: inspect(value)
 
   defp maybe_set_timestamps(changeset) do
     now = UtilsDate.utc_now()
