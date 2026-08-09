@@ -392,10 +392,17 @@ defmodule PhoenixKitEntities.Web.DataForm do
     previous_title = current_data.title || ""
     title = data_params["title"] || previous_title
     current_slug = data_params["slug"] || ""
-    auto_generated_slug = auto_generate_entity_slug(entity_uuid, record_uuid, previous_title)
+    lang = socket.assigns[:primary_language]
+
+    auto_generated_slug =
+      auto_generate_entity_slug(entity_uuid, record_uuid, previous_title, lang)
 
     if current_slug == "" || current_slug == auto_generated_slug do
-      Map.put(data_params, "slug", auto_generate_entity_slug(entity_uuid, record_uuid, title))
+      Map.put(
+        data_params,
+        "slug",
+        auto_generate_entity_slug(entity_uuid, record_uuid, title, lang)
+      )
     else
       data_params
     end
@@ -1041,9 +1048,11 @@ defmodule PhoenixKitEntities.Web.DataForm do
     entity_uuid = socket.assigns.entity.uuid
     record_uuid = socket.assigns.data_record.uuid
 
+    # current_lang is the language this title is IN — a German entry wants oe, an
+    # Estonian one o. It was a parameter here and was being discarded.
     slug_text =
       title
-      |> Slug.slugify()
+      |> Slug.slugify(locale: current_lang)
       |> Slug.ensure_unique(
         &EntityData.secondary_slug_exists?(entity_uuid, current_lang, &1, record_uuid)
       )
@@ -1057,7 +1066,14 @@ defmodule PhoenixKitEntities.Web.DataForm do
   defp compute_slug_and_data(socket, title, _primary, _current_lang, _changeset, data) do
     entity_uuid = socket.assigns.entity.uuid
     record_uuid = socket.assigns.data_record.uuid
-    slug_text = auto_generate_entity_slug(entity_uuid, record_uuid, title)
+
+    slug_text =
+      auto_generate_entity_slug(
+        entity_uuid,
+        record_uuid,
+        title,
+        socket.assigns[:primary_language]
+      )
     {slug_text, data}
   end
 
@@ -1205,12 +1221,15 @@ defmodule PhoenixKitEntities.Web.DataForm do
   defp normalize_record_key(key) when is_binary(key), do: key
   defp normalize_record_key(key), do: to_string(key)
 
-  defp auto_generate_entity_slug(_entity_uuid, _record_uuid, title) when title in [nil, ""],
-    do: ""
+  defp auto_generate_entity_slug(entity_uuid, record_uuid, title, lang \\ nil)
 
-  defp auto_generate_entity_slug(entity_uuid, current_record_uuid, title) do
+  defp auto_generate_entity_slug(_entity_uuid, _record_uuid, title, _lang)
+       when title in [nil, ""],
+       do: ""
+
+  defp auto_generate_entity_slug(entity_uuid, current_record_uuid, title, lang) do
     title
-    |> Slug.slugify()
+    |> Slug.slugify(locale: lang)
     |> Slug.ensure_unique(&slug_taken_by_other?(entity_uuid, &1, current_record_uuid))
   end
 
