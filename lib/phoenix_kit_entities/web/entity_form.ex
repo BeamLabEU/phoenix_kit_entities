@@ -1513,7 +1513,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
   end
 
   defp generate_slug_from_name(name) when is_binary(name),
-    do: Slug.slugify(name, separator: "_")
+    do: Slug.slugify(name, separator: "_", transliterate: true)
 
   defp generate_slug_from_name(_), do: ""
 

@@ -1052,7 +1052,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
     # Estonian one o. It was a parameter here and was being discarded.
     slug_text =
       title
-      |> Slug.slugify(locale: current_lang)
+      |> Slug.slugify(locale: current_lang, transliterate: true)
       |> Slug.ensure_unique(
         &EntityData.secondary_slug_exists?(entity_uuid, current_lang, &1, record_uuid)
       )
@@ -1229,7 +1229,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
 
   defp auto_generate_entity_slug(entity_uuid, current_record_uuid, title, lang) do
     title
-    |> Slug.slugify(locale: lang)
+    |> Slug.slugify(locale: lang, transliterate: true)
     |> Slug.ensure_unique(&slug_taken_by_other?(entity_uuid, &1, current_record_uuid))
   end
 

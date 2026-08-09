@@ -222,7 +222,7 @@ defmodule PhoenixKitEntities.Mirror.Importer do
 
   defp generate_slug_if_missing(entity_uuid, _slug, title)
        when is_binary(title) and title != "" do
-    base_slug = Slug.slugify(title)
+    base_slug = Slug.slugify(title, transliterate: true)
 
     if base_slug == "" do
       # Title couldn't be slugified, generate a random one
@@ -243,7 +243,7 @@ defmodule PhoenixKitEntities.Mirror.Importer do
 
   # Preview what slug would be generated (without uniqueness check)
   defp preview_generated_slug(title) when is_binary(title) and title != "" do
-    base_slug = Slug.slugify(title)
+    base_slug = Slug.slugify(title, transliterate: true)
     if base_slug == "", do: "(auto-generated)", else: base_slug
   end
 
