@@ -64,6 +64,25 @@ defmodule PhoenixKitEntities.FormBuilderRenderTest do
     rendered_to_string(rendered)
   end
 
+  # Same as `render_field/2` but with the field's value already present in
+  # `record.data` — the clauses that read stored data back (`file`'s
+  # current-files list) only branch when there's something to read.
+  defp render_field_with_value(type, value, opts \\ %{}) do
+    key = "field_#{type}"
+
+    field =
+      Map.merge(
+        %{"type" => type, "key" => key, "label" => "Label #{type}", "required" => false},
+        opts
+      )
+
+    changeset = Ecto.Changeset.cast(%EntityData{data: %{key => value}}, %{}, [])
+
+    field
+    |> FormBuilder.build_field(changeset)
+    |> rendered_to_string()
+  end
+
   describe "build_field/3 — every type renders without crashing" do
     test "text" do
       html = render_field("text")
@@ -137,6 +156,26 @@ defmodule PhoenixKitEntities.FormBuilderRenderTest do
       assert html =~ "file" or html =~ "upload"
     end
 
+    test "file with already-stored metadata renders the current-files list" do
+      html = render_field_with_value("file", [%{"filename" => "report.pdf", "size" => 1024}])
+      assert html =~ "report.pdf"
+    end
+
+    test "file with non-map entries renders instead of raising" do
+      # SECURITY: nothing in this library produces `file` data (this clause
+      # is an upload placeholder), and `EntityData.changeset/2` has no shape
+      # opinion on `file` — so a crafted `data[attachment][]=x`, including
+      # through the un-authed public form endpoint, stores a list of plain
+      # strings. `file["filename"]` then raises `FunctionClauseError` on a
+      # binary (Access has no clause for one), permanently breaking the
+      # admin editor for that record. Non-map entries are skipped; the
+      # well-formed ones alongside them still render.
+      html = render_field_with_value("file", ["crafted-entry", %{"filename" => "real.pdf"}, 42])
+
+      assert html =~ "real.pdf"
+      refute html =~ "crafted-entry"
+    end
+
     test "relation" do
       html = render_field("relation", %{"relation_entity" => "fb_render"})
       assert is_binary(html)
@@ -163,6 +202,13 @@ defmodule PhoenixKitEntities.FormBuilderRenderTest do
       rendered = FormBuilder.build_fields(ctx.entity, changeset, lang_code: "es")
       html = rendered_to_string(rendered)
       assert html =~ "entity-field-title-es"
+    end
+
+    test "with id_prefix opt, wrapper id folds in the prefix", ctx do
+      changeset = Ecto.Changeset.cast(ctx.record, %{}, [])
+      rendered = FormBuilder.build_fields(ctx.entity, changeset, id_prefix: "abc")
+      html = rendered_to_string(rendered)
+      assert html =~ ~s(id="entity-field-abc-title-primary")
     end
   end
 

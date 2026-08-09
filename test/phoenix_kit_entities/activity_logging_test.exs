@@ -102,6 +102,93 @@ defmodule PhoenixKitEntities.ActivityLoggingTest do
       )
     end
 
+    test "update with activity_log: false skips the activity row (used by LiveDataForm autosave)",
+         ctx do
+      {:ok, record} =
+        EntityData.create(
+          %{
+            entity_uuid: ctx.entity.uuid,
+            title: "Item",
+            slug: "item-no-log",
+            data: %{"name" => "Acme"},
+            created_by_uuid: ctx.actor_uuid
+          },
+          actor_uuid: ctx.actor_uuid
+        )
+
+      {:ok, updated} =
+        EntityData.update(record, %{title: "Renamed"},
+          actor_uuid: ctx.other_actor,
+          activity_log: false
+        )
+
+      # The record itself is still updated...
+      assert updated.title == "Renamed"
+      # ...but no entity_data.updated row was logged for it.
+      refute_activity_logged("entity_data.updated", resource_uuid: record.uuid)
+
+      # A follow-up update WITHOUT the opt logs normally — the opt only
+      # suppresses logging for the call that passes it.
+      {:ok, _} =
+        EntityData.update(updated, %{title: "Renamed Again"}, actor_uuid: ctx.other_actor)
+
+      assert_activity_logged("entity_data.updated",
+        actor_uuid: ctx.other_actor,
+        resource_uuid: record.uuid
+      )
+    end
+
+    test "update {:error, _} with activity_log: false also skips the error row " <>
+           "(LiveDataForm autosave against an incomplete required field must not flood the log)",
+         ctx do
+      {:ok, required_entity} =
+        Entities.create_entity(
+          %{
+            name: "log_test_required_#{System.unique_integer([:positive])}",
+            display_name: "Log Test Required",
+            display_name_plural: "Log Test Required",
+            fields_definition: [
+              %{"type" => "text", "key" => "name", "label" => "Name", "required" => true}
+            ],
+            created_by_uuid: ctx.actor_uuid
+          },
+          actor_uuid: ctx.actor_uuid
+        )
+
+      {:ok, record} =
+        EntityData.create(
+          %{
+            entity_uuid: required_entity.uuid,
+            title: "Item",
+            slug: "item-required-no-log",
+            data: %{"name" => "Acme"},
+            created_by_uuid: ctx.actor_uuid
+          },
+          actor_uuid: ctx.actor_uuid
+        )
+
+      # Autosave-style update that clears the required field — the
+      # changeset rejects it, exactly like an in-progress form where the
+      # required field hasn't been filled in yet.
+      {:error, _changeset} =
+        EntityData.update(record, %{data: %{"name" => ""}},
+          actor_uuid: ctx.other_actor,
+          activity_log: false
+        )
+
+      refute_activity_logged("entity_data.updated", actor_uuid: ctx.other_actor)
+
+      # Without the opt, the same failure logs normally — the opt only
+      # suppresses logging for the call that passes it.
+      {:error, _changeset} =
+        EntityData.update(record, %{data: %{"name" => ""}}, actor_uuid: ctx.other_actor)
+
+      assert_activity_logged("entity_data.updated",
+        actor_uuid: ctx.other_actor,
+        metadata_has: %{"db_pending" => true}
+      )
+    end
+
     test "create {:error, _} logs entity_data.created with db_pending: true", ctx do
       {:error, _} =
         EntityData.create(

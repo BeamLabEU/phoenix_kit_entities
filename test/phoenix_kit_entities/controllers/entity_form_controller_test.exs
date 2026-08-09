@@ -392,6 +392,73 @@ defmodule PhoenixKitEntities.Controllers.EntityFormControllerTest do
     end
   end
 
+  describe "allow_other custom option (Muu)" do
+    setup ctx do
+      {:ok, other_entity} =
+        Entities.create_entity(
+          %{
+            name: "form_ctrl_widget_other",
+            display_name: "Form Ctrl Widget Other",
+            display_name_plural: "Form Ctrl Widgets Other",
+            status: "published",
+            fields_definition: [
+              %{
+                "type" => "select",
+                "key" => "color",
+                "label" => "Color",
+                "options" => ["Red", "Blue"],
+                "allow_other" => true
+              }
+            ],
+            settings: %{
+              "public_form_enabled" => true,
+              "public_form_fields" => ["color"]
+            },
+            created_by_uuid: ctx.actor_uuid
+          },
+          actor_uuid: ctx.actor_uuid
+        )
+
+      {:ok, other_entity: other_entity}
+    end
+
+    # The companion `color__other` param is never itself in
+    # public_form_fields (only real field keys are), so merge_other_params
+    # must run BEFORE the allowlist filter — otherwise the free text is
+    # dropped and the raw "__other__" sentinel gets saved as `color`.
+    test "sentinel + companion free text resolves to the custom value before saving",
+         %{other_entity: entity} do
+      conn = build_conn(:post, "/", %{}, referer: "https://example.test/form")
+
+      params = %{
+        "entity_slug" => entity.name,
+        "phoenix_kit_entity_data" => %{
+          "data" => %{"color" => "__other__", "color__other" => "Crimson"}
+        }
+      }
+
+      result = simple_invoke(conn, params)
+      assert result.status in [302, 303]
+
+      [record] = EntityData.list_by_entity(entity.uuid)
+      assert record.data["color"] == "Crimson"
+    end
+
+    test "a known option is saved unchanged", %{other_entity: entity} do
+      conn = build_conn(:post, "/", %{}, referer: "https://example.test/form")
+
+      params = %{
+        "entity_slug" => entity.name,
+        "phoenix_kit_entity_data" => %{"data" => %{"color" => "Blue"}}
+      }
+
+      _result = simple_invoke(conn, params)
+
+      [record] = EntityData.list_by_entity(entity.uuid)
+      assert record.data["color"] == "Blue"
+    end
+  end
+
   describe "save_suspicious flag" do
     test "honeypot with save_suspicious → record created with status=draft + warnings",
          %{entity: entity} do
@@ -450,6 +517,73 @@ defmodule PhoenixKitEntities.Controllers.EntityFormControllerTest do
       }
 
       _result = simple_invoke(conn, params)
+    end
+  end
+
+  describe "crafted (non-map / non-string) payloads" do
+    # SECURITY: this endpoint is un-authed by design, so the whole request
+    # body is attacker-shaped and nested params (`a[b]=c`) arrive as maps.
+    # `EntityData.changeset/2` is the shape gate this path relies on, but
+    # each of these crashed the controller with an unhandled
+    # `FunctionClauseError` — an un-authed 500 — BEFORE the changeset ever
+    # ran. Every one must now redirect like an ordinary submission.
+
+    test "a non-map phoenix_kit_entity_data is treated as an empty submission", %{entity: entity} do
+      conn = build_conn(:post, "/")
+
+      params = %{
+        "entity_slug" => entity.name,
+        "phoenix_kit_entity_data" => "not-a-map"
+      }
+
+      result = simple_invoke(conn, params)
+      assert result.status in [302, 303]
+    end
+
+    test "a non-map \"data\" value is treated as an empty submission", %{entity: entity} do
+      conn = build_conn(:post, "/")
+
+      params = %{
+        "entity_slug" => entity.name,
+        "phoenix_kit_entity_data" => %{"data" => ["a", "b"]}
+      }
+
+      result = simple_invoke(conn, params)
+      assert result.status in [302, 303]
+    end
+
+    test "a map under a title-candidate key falls back to the entity display name",
+         %{entity: entity} do
+      # `generate_submission_title/2` accepted any truthy value and handed
+      # it straight to `generate_slug/1`'s `String.downcase/1`.
+      conn = build_conn(:post, "/")
+
+      params = %{
+        "entity_slug" => entity.name,
+        "phoenix_kit_entity_data" => %{"data" => %{"title" => %{"evil" => "map"}}}
+      }
+
+      result = simple_invoke(conn, params)
+      assert result.status in [302, 303]
+    end
+
+    test "a non-string _form_loaded_at is treated as no timestamp", %{entity: entity} do
+      # Reached from `check_submission_time/2`, i.e. before any other
+      # handling — the earliest crash on this endpoint.
+      Entities.update_entity(entity, %{
+        settings: Map.merge(entity.settings, %{"public_form_time_check" => true})
+      })
+
+      conn = build_conn(:post, "/")
+
+      params = %{
+        "entity_slug" => entity.name,
+        "_form_loaded_at" => %{"evil" => "map"},
+        "phoenix_kit_entity_data" => %{"data" => %{"title" => "X"}}
+      }
+
+      result = simple_invoke(conn, params)
+      assert result.status in [302, 303]
     end
   end
 

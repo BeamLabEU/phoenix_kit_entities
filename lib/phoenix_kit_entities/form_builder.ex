@@ -32,6 +32,62 @@ defmodule PhoenixKitEntities.FormBuilder do
 
   Forms are generated as Phoenix.Component HTML with proper validation,
   error handling, and styling consistent with the PhoenixKit design system.
+
+  ## Field-Level Translations (display-only)
+
+  A field definition may carry an optional `"translations"` key, resolved
+  by `translated_label/2` and `translated_option_label/3`:
+
+      %{
+        "key" => "color",
+        "label" => "Värv",
+        "type" => "radio",
+        "options" => ["Must", "Valge"],
+        "translations" => %{
+          "ru" => %{"label" => "Цвет", "options" => %{"Must" => "Чёрный", "Valge" => "Белый"}},
+          "en" => %{"label" => "Colour", "options" => %{"Must" => "Black", "Valge" => "White"}}
+        }
+      }
+
+  This is **display-only**: the canonical, stored/submitted value is
+  always the original `"label"` / option string (`"Must"`, never
+  `"Чёрный"`) — `"translations"` never affects validation,
+  `merge_other_params/2`, or what lands in `EntityData.data`. `"heading"`
+  fields are translated the same way (their `"translations"` map only
+  ever has a `"label"` entry, since headings have no options).
+
+  Resolution falls back to the original text whenever a lookup can't be
+  satisfied: `lang_code` is `nil`, the field has no `"translations"` key
+  at all, the language isn't present, or (for options) that specific
+  option has no translated entry. Language-code lookups tolerate
+  base/dialect mismatches the same way entity-level `settings["translations"]`
+  does (see `PhoenixKitEntities.get_entity_by_name/2`'s dialect-tolerant
+  lookup) — a field translated under `"ru-RU"` still resolves for a
+  caller passing the bare `"ru"`, and vice versa.
+
+  ### Which surfaces resolve this
+
+  Resolved wherever `build_fields/3` / `build_field/3` receive a non-nil
+  `opts[:lang_code]` (every rendering clause: labels; `select`/`radio`/
+  `checkbox` also translate their option text), and by
+  `PhoenixKitEntities.Components.LiveDataForm` in both modes — `:edit`
+  via `build_fields/3` (it passes its `lang` attr straight through as
+  `lang_code`), `:readonly` directly via `translated_label/2` /
+  `translated_option_label/3`.
+
+  **Not** resolved — these surfaces render the canonical field text
+  regardless of locale, by design; this is a scope boundary, not a bug:
+
+  - `PhoenixKitEntities.Web.DataForm` (the admin record editor) — the
+    non-multilang branch calls `build_fields/3` with `lang_code: nil`
+    hardcoded; the multilang branch only passes a real locale when the
+    multilang module itself is enabled, otherwise also `nil`.
+  - `PhoenixKitEntities.Components.EntityForm` (the public entity
+    submission form) — doesn't pass `lang_code` to `build_fields/3` at
+    all.
+  - Validation error messages (`EntityData.changeset/2` and
+    `validate_data/3` here) — always interpolate the canonical
+    `field_def["label"]` / `field["label"]`, never a translation.
   """
 
   import Phoenix.Component
@@ -39,8 +95,16 @@ defmodule PhoenixKitEntities.FormBuilder do
   import PhoenixKitWeb.Components.Core.FormFieldLabel, only: [label: 1]
   use Gettext, backend: PhoenixKitWeb.Gettext
 
+  alias PhoenixKit.Modules.Languages.DialectMapper
   alias PhoenixKit.Utils.Format
   alias PhoenixKit.Utils.Multilang
+  alias PhoenixKitEntities.FieldTypes
+
+  # Sentinel value for the synthetic "Other" option on radio/select/checkbox
+  # fields with `"allow_other" => true`. Submitted alongside a companion
+  # `<key>__other` free-text param; `merge_other_params/2` resolves the pair
+  # back into the free-text value before validation/storage.
+  @other_sentinel "__other__"
 
   @doc """
   Builds form fields HTML for an entire entity.
@@ -59,6 +123,16 @@ defmodule PhoenixKitEntities.FormBuilder do
   - `:wrapper_class` - CSS class for field wrapper divs
   - `:input_class` - CSS class for input elements
   - `:label_class` - CSS class for label elements
+  - `:id_prefix` - extra segment folded into each field wrapper's DOM id
+    (`"entity-field-\#{id_prefix}-\#{key}-\#{lang}"`). Every page that has
+    historically called this function renders exactly one form per entity
+    (admin `DataForm`, the public entity form), so the default (`nil`,
+    omitted from the id) is unchanged. Pages embedding more than one
+    instance of the *same* entity's fields at once — e.g.
+    `PhoenixKitEntities.Components.LiveDataForm` used once per record in a
+    list — MUST pass something unique per instance (the record's uuid) or
+    LiveView raises "Duplicate id found while testing LiveView" (in tests)
+    / silently misdirects DOM patches between instances (at runtime).
 
   ## Examples
 
@@ -84,7 +158,8 @@ defmodule PhoenixKitEntities.FormBuilder do
       fields_definition: fields_definition,
       changeset: changeset,
       opts: opts,
-      lang_suffix: lang_code || "primary"
+      lang_suffix: lang_code || "primary",
+      id_prefix: id_prefix_segment(opts[:id_prefix])
     }
 
     # Each wrapper carries a language-specific id so that switching the
@@ -93,13 +168,15 @@ defmodule PhoenixKitEntities.FormBuilder do
     # the previous tab leaks across (e.g. the user types "Acme" in EN-US,
     # switches to ES, and the ES input still shows "Acme" because the
     # `<input>` matched by id and the new server-rendered value=""
-    # doesn't override the live DOM value).
+    # doesn't override the live DOM value). `id_prefix` (see moduledoc)
+    # additionally scopes it per record instance for pages embedding more
+    # than one form for the same entity at once.
     ~H"""
     <div class="space-y-6">
       <%= for field <- @fields_definition do %>
         <div
           class={["form-field-wrapper", @opts[:wrapper_class]]}
-          id={"entity-field-#{field["key"]}-#{@lang_suffix}"}
+          id={"entity-field-#{@id_prefix}#{field["key"]}-#{@lang_suffix}"}
         >
           {build_field(field, @changeset, @opts)}
         </div>
@@ -107,6 +184,9 @@ defmodule PhoenixKitEntities.FormBuilder do
     </div>
     """
   end
+
+  defp id_prefix_segment(nil), do: ""
+  defp id_prefix_segment(prefix), do: "#{prefix}-"
 
   # When a lang_code is provided, extract that language's RAW (override-only)
   # data and replace the :data field in the changeset so downstream
@@ -210,6 +290,122 @@ defmodule PhoenixKitEntities.FormBuilder do
   defp inherited_value?("", _), do: true
   defp inherited_value?(a, b), do: to_string(a) == to_string(b)
 
+  # ── Field-level translations (display-only) ────────────────────
+
+  @doc """
+  Resolves a field's (or a `"heading"` field's) display label for
+  `lang_code`, honoring an optional `"translations"` key on the field
+  definition (see the moduledoc for the full contract).
+
+  Falls back to `field["label"]` whenever `lang_code` is `nil`, the
+  field has no `"translations"` map, the language isn't present in it,
+  or its `"label"` entry is missing/blank. Display-only — never affects
+  the canonical `field["label"]` itself.
+
+  ## Examples
+
+      iex> field = %{"label" => "Värv", "translations" => %{"ru" => %{"label" => "Цвет"}}}
+      iex> PhoenixKitEntities.FormBuilder.translated_label(field, "ru")
+      "Цвет"
+
+      iex> PhoenixKitEntities.FormBuilder.translated_label(field, "et")
+      "Värv"
+
+      iex> PhoenixKitEntities.FormBuilder.translated_label(field, nil)
+      "Värv"
+  """
+  @spec translated_label(map(), String.t() | nil) :: String.t() | nil
+  def translated_label(field, lang_code) when is_map(field) do
+    case Map.get(lookup_field_translation(field, lang_code), "label") do
+      value when is_binary(value) and value != "" -> value
+      _ -> field["label"]
+    end
+  end
+
+  @doc """
+  Resolves the display label for a single radio/select/checkbox option
+  value, honoring the field's optional `"translations" => %{lang =>
+  %{"options" => %{option_value => translated}}}` map.
+
+  `option_value` is always the canonical, stored/submitted string —
+  this only affects what text renders next to it (e.g. `<option
+  value={option_value}>{translated_option_label(...)}</option>`). Falls
+  back to `option_value` itself whenever `lang_code` is `nil`, the field
+  has no `"translations"` map, the language isn't present, or this
+  specific option has no translated entry (this is also what makes a
+  free-text `allow_other` value display as-is: it was never one of the
+  fixed options, so it never has a translation entry to find).
+
+  ## Examples
+
+      iex> field = %{"translations" => %{"ru" => %{"options" => %{"Must" => "Чёрный"}}}}
+      iex> PhoenixKitEntities.FormBuilder.translated_option_label(field, "Must", "ru")
+      "Чёрный"
+
+      iex> PhoenixKitEntities.FormBuilder.translated_option_label(field, "Valge", "ru")
+      "Valge"
+  """
+  @spec translated_option_label(map(), String.t(), String.t() | nil) :: String.t()
+  def translated_option_label(field, option_value, lang_code) when is_map(field) do
+    case lookup_field_translation(field, lang_code) do
+      %{"options" => %{} = options} ->
+        case Map.get(options, option_value) do
+          value when is_binary(value) and value != "" -> value
+          _ -> option_value
+        end
+
+      _ ->
+        option_value
+    end
+  end
+
+  defp lookup_field_translation(_field, nil), do: %{}
+
+  defp lookup_field_translation(field, lang_code) when is_binary(lang_code) do
+    case field["translations"] do
+      %{} = translations -> lookup_translation(translations, lang_code)
+      _ -> %{}
+    end
+  end
+
+  defp lookup_field_translation(_field, _lang_code), do: %{}
+
+  # Looks up a translation entry by locale, tolerating base/dialect
+  # mismatches — mirrors `PhoenixKitEntities`'s private `lookup_translation/2`
+  # for entity-level `settings["translations"]`.
+  #
+  # Match priority:
+  # 1. Exact key match (`"ru-RU"` -> `"ru-RU"`).
+  # 2. Same base code (`"ru"` -> first `"ru-*"` translation, deterministic
+  #    via sort).
+  defp lookup_translation(translations_map, lang_code) do
+    case Map.get(translations_map, lang_code) do
+      %{} = exact ->
+        exact
+
+      _ ->
+        base = safe_extract_base(lang_code)
+
+        translations_map
+        |> Enum.filter(fn {key, _v} ->
+          is_binary(key) and base != nil and safe_extract_base(key) == base
+        end)
+        |> Enum.sort_by(&elem(&1, 0))
+        |> case do
+          [{_key, value} | _] when is_map(value) -> value
+          _ -> %{}
+        end
+    end
+  end
+
+  defp safe_extract_base(code) when is_binary(code) and code != "" do
+    DialectMapper.extract_base(code)
+  rescue
+    _ -> nil
+  end
+
+  defp safe_extract_base(_code), do: nil
+
   @doc """
   Builds a single form field based on field definition.
 
@@ -244,7 +440,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     ~H"""
     <div>
       <.label>
-        {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
+        {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
       <input
         type="text"
@@ -281,7 +477,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     ~H"""
     <div>
       <.label for={@field["key"]}>
-        {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
+        {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
       <textarea
         name={"#{@changeset.data.__struct__.__schema__(:source)}[data][#{@field["key"]}]"}
@@ -317,7 +513,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     ~H"""
     <div>
       <.label for={@field["key"]}>
-        {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
+        {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
       <input
         type="email"
@@ -353,7 +549,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     ~H"""
     <div>
       <.label for={@field["key"]}>
-        {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
+        {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
       <input
         type="url"
@@ -389,7 +585,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     ~H"""
     <div>
       <.label for={@field["key"]}>
-        {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
+        {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
       <textarea
         name={"#{@changeset.data.__struct__.__schema__(:source)}[data][#{@field["key"]}]"}
@@ -427,7 +623,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     ~H"""
     <div>
       <.label for={@field["key"]}>
-        {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
+        {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
       <input
         type="number"
@@ -460,7 +656,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     ~H"""
     <div>
       <.label>
-        {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
+        {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
       <div class="form-control">
         <label class="label cursor-pointer justify-start gap-4">
@@ -498,7 +694,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     ~H"""
     <div>
       <.label for={@field["key"]}>
-        {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
+        {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
       <input
         type="date"
@@ -519,12 +715,22 @@ defmodule PhoenixKitEntities.FormBuilder do
 
   # Select Dropdown
   def build_field(%{"type" => "select"} = field, changeset, opts) do
-    assigns = %{field: field, changeset: changeset, opts: opts}
+    current_value = get_field_value(changeset, field["key"])
+    allow_other = FieldTypes.allow_other?(field)
+    other_value = allow_other && custom_other_value(current_value, field["options"])
+
+    assigns = %{
+      field: field,
+      changeset: changeset,
+      opts: opts,
+      allow_other: allow_other,
+      other_value: other_value
+    }
 
     ~H"""
     <div>
       <.label for={@field["key"]}>
-        {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
+        {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
       <label class={["select w-full", @opts[:input_class]]}>
         <select
@@ -540,11 +746,26 @@ defmodule PhoenixKitEntities.FormBuilder do
               value={option}
               selected={get_field_value(@changeset, @field["key"]) == option}
             >
-              {option}
+              {translated_option_label(@field, option, @opts[:lang_code])}
+            </option>
+          <% end %>
+          <%= if @allow_other do %>
+            <option value={other_sentinel()} selected={!!@other_value}>
+              {gettext("Other")}
             </option>
           <% end %>
         </select>
       </label>
+      <%= if @allow_other do %>
+        <input
+          type="text"
+          name={"#{@changeset.data.__struct__.__schema__(:source)}[data][#{@field["key"]}__other]"}
+          value={@other_value}
+          placeholder={gettext("Enter custom value")}
+          class={["input input-bordered w-full mt-2", @opts[:input_class]]}
+          disabled={@opts[:disabled]}
+        />
+      <% end %>
       <%= if @field["description"] do %>
         <.label class="label">
           <span class="label-text-alt">{@field["description"]}</span>
@@ -556,15 +777,25 @@ defmodule PhoenixKitEntities.FormBuilder do
 
   # Radio Buttons
   def build_field(%{"type" => "radio"} = field, changeset, opts) do
-    assigns = %{field: field, changeset: changeset, opts: opts}
+    current_value = get_field_value(changeset, field["key"])
+    allow_other = FieldTypes.allow_other?(field)
+    other_value = allow_other && custom_other_value(current_value, field["options"])
+
+    assigns = %{
+      field: field,
+      changeset: changeset,
+      opts: opts,
+      allow_other: allow_other,
+      other_value: other_value
+    }
 
     ~H"""
     <div>
       <.label>
-        {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
+        {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
       <div class="flex flex-col gap-2">
-        <%= for {option, index} <- Enum.with_index(@field["options"] || []) do %>
+        <%= for option <- @field["options"] || [] do %>
           <label class="flex items-center cursor-pointer">
             <input
               type="radio"
@@ -575,7 +806,29 @@ defmodule PhoenixKitEntities.FormBuilder do
               required={@field["required"]}
               disabled={@opts[:disabled]}
             />
-            <span class="label-text">{option}</span>
+            <span class="label-text">{translated_option_label(@field, option, @opts[:lang_code])}</span>
+          </label>
+        <% end %>
+        <%= if @allow_other do %>
+          <label class="flex items-center cursor-pointer gap-2">
+            <input
+              type="radio"
+              name={"#{@changeset.data.__struct__.__schema__(:source)}[data][#{@field["key"]}]"}
+              value={other_sentinel()}
+              class={["radio radio-primary mr-2", @opts[:input_class]]}
+              checked={!!@other_value}
+              required={@field["required"]}
+              disabled={@opts[:disabled]}
+            />
+            <span class="label-text">{gettext("Other")}</span>
+            <input
+              type="text"
+              name={"#{@changeset.data.__struct__.__schema__(:source)}[data][#{@field["key"]}__other]"}
+              value={@other_value}
+              placeholder={gettext("Enter custom value")}
+              class={["input input-bordered input-sm flex-1", @opts[:input_class]]}
+              disabled={@opts[:disabled]}
+            />
           </label>
         <% end %>
       </div>
@@ -590,15 +843,25 @@ defmodule PhoenixKitEntities.FormBuilder do
 
   # Checkbox Group
   def build_field(%{"type" => "checkbox"} = field, changeset, opts) do
-    assigns = %{field: field, changeset: changeset, opts: opts}
+    current_values = get_field_value(changeset, field["key"]) || []
+    allow_other = FieldTypes.allow_other?(field)
+    other_value = allow_other && checkbox_other_value(current_values, field["options"])
+
+    assigns = %{
+      field: field,
+      changeset: changeset,
+      opts: opts,
+      allow_other: allow_other,
+      other_value: other_value
+    }
 
     ~H"""
     <div>
       <.label>
-        {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
+        {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
       <div class="flex flex-col gap-2">
-        <%= for {option, index} <- Enum.with_index(@field["options"] || []) do %>
+        <%= for option <- @field["options"] || [] do %>
           <label class="flex items-center cursor-pointer">
             <input
               type="checkbox"
@@ -608,7 +871,28 @@ defmodule PhoenixKitEntities.FormBuilder do
               checked={option in (get_field_value(@changeset, @field["key"]) || [])}
               disabled={@opts[:disabled]}
             />
-            <span class="label-text">{option}</span>
+            <span class="label-text">{translated_option_label(@field, option, @opts[:lang_code])}</span>
+          </label>
+        <% end %>
+        <%= if @allow_other do %>
+          <label class="flex items-center cursor-pointer gap-2">
+            <input
+              type="checkbox"
+              name={"#{@changeset.data.__struct__.__schema__(:source)}[data][#{@field["key"]}][]"}
+              value={other_sentinel()}
+              class={["checkbox checkbox-primary mr-2", @opts[:input_class]]}
+              checked={!!@other_value}
+              disabled={@opts[:disabled]}
+            />
+            <span class="label-text">{gettext("Other")}</span>
+            <input
+              type="text"
+              name={"#{@changeset.data.__struct__.__schema__(:source)}[data][#{@field["key"]}__other]"}
+              value={@other_value}
+              placeholder={gettext("Enter custom value")}
+              class={["input input-bordered input-sm flex-1", @opts[:input_class]]}
+              disabled={@opts[:disabled]}
+            />
           </label>
         <% end %>
       </div>
@@ -628,7 +912,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     ~H"""
     <div>
       <.label>
-        {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
+        {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
       <div class="border-2 border-dashed border-base-300 rounded-lg p-6 text-center bg-base-200/50">
         <.icon name="hero-photo" class="w-12 h-12 mx-auto text-base-content/40 mb-3" />
@@ -676,7 +960,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     ~H"""
     <div>
       <.label>
-        {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
+        {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
 
       <%!-- Display current files if any --%>
@@ -685,7 +969,20 @@ defmodule PhoenixKitEntities.FormBuilder do
           <p class="text-sm font-semibold text-base-content/70">
             {gettext("Current files:")}
           </p>
-          <%= for file <- @current_files do %>
+          <%!-- SECURITY: `is_map(file)` is not defensive noise. `file` fields
+          have no submittable input anywhere in this library (this clause is a
+          placeholder and nothing here consumes an upload), so every value
+          under a `file` key arrives from outside — a crafted admin autosave,
+          or the public `/entities/:entity_slug/submit` POST when the field is
+          listed in `public_form_fields`. `EntityData.changeset/2` has no
+          shape opinion on `file` (it falls to the catch-all clause of
+          `dispatch_field_type_validation/4`), so a list of plain strings
+          stores fine and then reaches `file["filename"]` here, where the
+          Access syntax raises `FunctionClauseError` on a binary — crashing
+          the admin editor for that record for good. Skipping non-map entries
+          renders the entries that do have the expected metadata shape and
+          ignores the rest. --%>
+          <%= for file <- @current_files, is_map(file) do %>
             <div class="flex items-center gap-2 p-2 bg-base-200 rounded text-sm">
               <.icon name="hero-document" class="w-4 h-4 text-base-content/60" />
               <span class="flex-1 truncate">{file["filename"] || gettext("Unknown file")}</span>
@@ -740,7 +1037,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     ~H"""
     <div>
       <.label>
-        {@field["label"]}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
+        {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
       <div class="border-2 border-dashed border-base-300 rounded-lg p-6 text-center bg-base-200/50">
         <.icon name="hero-link" class="w-12 h-12 mx-auto text-base-content/40 mb-3" />
@@ -760,6 +1057,19 @@ defmodule PhoenixKitEntities.FormBuilder do
     """
   end
 
+  # Section Heading — display-only, not bound to the changeset (no data,
+  # no input, never required). Still accepts `opts` (unlike every other
+  # arg here) purely to read `opts[:lang_code]` for `translated_label/2`.
+  def build_field(%{"type" => "heading"} = field, _changeset, opts) do
+    assigns = %{label: translated_label(field, opts[:lang_code])}
+
+    ~H"""
+    <h3 class="text-base font-semibold border-b border-base-300 pb-1 mt-6 mb-2">
+      {@label}
+    </h3>
+    """
+  end
+
   # Fallback for unknown field types
   def build_field(field, changeset, opts) do
     assigns = %{field: field, changeset: changeset, opts: opts}
@@ -773,6 +1083,29 @@ defmodule PhoenixKitEntities.FormBuilder do
   end
 
   defp format_bytes(bytes), do: Format.bytes(bytes)
+
+  # The sentinel accessor exists (rather than inlining `@other_sentinel`) so
+  # templates can call it directly — `@` inside `~H` reads assigns, not
+  # module attributes.
+  defp other_sentinel, do: @other_sentinel
+
+  # For single-value fields (radio/select): the stored value counts as a
+  # custom "Other" entry when it's present but not one of the fixed options.
+  defp custom_other_value(value, _options) when value in [nil, ""], do: nil
+
+  defp custom_other_value(value, options) do
+    if value in (options || []), do: nil, else: value
+  end
+
+  # For checkbox (multi-value): whatever survives after removing the known
+  # options is the free-text "Other" entry. Only one text input exists, so
+  # if several unknown values are somehow present, the first one wins.
+  defp checkbox_other_value(values, options) do
+    case values -- (options || []) do
+      [] -> nil
+      [extra | _] -> extra
+    end
+  end
 
   @doc """
   Validates entity data against field definitions.
@@ -809,17 +1142,22 @@ defmodule PhoenixKitEntities.FormBuilder do
     validated_data = %{}
 
     result =
-      Enum.reduce(fields_definition, {validated_data, errors}, fn field, {data_acc, errors_acc} ->
-        field_key = field["key"]
-        field_value = Map.get(data_params, field_key)
+      Enum.reduce(fields_definition, {validated_data, errors}, fn
+        # Display-only — no data to validate or store.
+        %{"type" => "heading"}, acc ->
+          acc
 
-        case validate_field_value(field, field_value) do
-          {:ok, validated_value} ->
-            {Map.put(data_acc, field_key, validated_value), errors_acc}
+        field, {data_acc, errors_acc} ->
+          field_key = field["key"]
+          field_value = Map.get(data_params, field_key)
 
-          {:error, field_errors} ->
-            {data_acc, Map.put(errors_acc, field_key, field_errors)}
-        end
+          case validate_field_value(field, field_value) do
+            {:ok, validated_value} ->
+              {Map.put(data_acc, field_key, validated_value), errors_acc}
+
+            {:error, field_errors} ->
+              {data_acc, Map.put(errors_acc, field_key, field_errors)}
+          end
       end)
 
     case result do
@@ -848,15 +1186,20 @@ defmodule PhoenixKitEntities.FormBuilder do
     fields_definition = entity.fields_definition || []
 
     result =
-      Enum.reduce(fields_definition, {%{}, %{}}, fn field, {data_acc, errors_acc} ->
-        field_key = field["key"]
-        field_value = Map.get(data_params, field_key)
+      Enum.reduce(fields_definition, {%{}, %{}}, fn
+        # Display-only — no data to validate or store.
+        %{"type" => "heading"}, acc ->
+          acc
 
-        if is_nil(field_value) or field_value == "" do
-          {data_acc, errors_acc}
-        else
-          validate_secondary_field(field_key, field, field_value, data_acc, errors_acc)
-        end
+        field, {data_acc, errors_acc} ->
+          field_key = field["key"]
+          field_value = Map.get(data_params, field_key)
+
+          if is_nil(field_value) or field_value == "" do
+            {data_acc, errors_acc}
+          else
+            validate_secondary_field(field_key, field, field_value, data_acc, errors_acc)
+          end
       end)
 
     case result do
@@ -877,6 +1220,64 @@ defmodule PhoenixKitEntities.FormBuilder do
         {data_acc, Map.put(errors_acc, field_key, field_errors)}
     end
   end
+
+  @doc """
+  Resolves `allow_other` sentinel values in submitted params back into free text.
+
+  Radio/select/checkbox fields with `"allow_other" => true` render an extra
+  "Other" option whose value is the sentinel `"__other__"`, paired with a
+  companion `<key>__other` text input. This function replaces the sentinel
+  with the companion field's text (defaulting to `""` if absent) and drops
+  every `<key>__other` companion key from the result. A no-op for fields
+  without `allow_other`, or for values that aren't the sentinel.
+
+  ## Examples
+
+      iex> field = %{"type" => "radio", "key" => "color", "allow_other" => true}
+      iex> PhoenixKitEntities.FormBuilder.merge_other_params(
+      ...>   [field],
+      ...>   %{"color" => "__other__", "color__other" => "Crimson"}
+      ...> )
+      %{"color" => "Crimson"}
+  """
+  def merge_other_params(fields_definition, params) when is_map(params) do
+    other_keys =
+      for field <- fields_definition,
+          FieldTypes.allow_other?(field),
+          field["type"] in ["radio", "select", "checkbox"],
+          do: field["key"]
+
+    companion_keys = Enum.map(other_keys, &"#{&1}__other")
+
+    params
+    |> Enum.reduce(params, &resolve_other_param(&1, &2, other_keys, params))
+    |> Map.drop(companion_keys)
+  end
+
+  defp resolve_other_param({key, @other_sentinel}, acc, other_keys, params) do
+    if key in other_keys,
+      do: Map.put(acc, key, Map.get(params, "#{key}__other", "")),
+      else: acc
+  end
+
+  defp resolve_other_param({key, values}, acc, other_keys, params) when is_list(values) do
+    if key in other_keys and @other_sentinel in values do
+      text = Map.get(params, "#{key}__other", "")
+
+      resolved =
+        values
+        |> Enum.map(&if(&1 == @other_sentinel, do: text, else: &1))
+        # An "Other" checkbox ticked with no text typed shouldn't leave a
+        # blank entry in the stored list.
+        |> Enum.reject(&(&1 == ""))
+
+      Map.put(acc, key, resolved)
+    else
+      acc
+    end
+  end
+
+  defp resolve_other_param(_pair, acc, _other_keys, _params), do: acc
 
   @doc """
   Gets the current value of a field from a changeset.
@@ -910,7 +1311,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     end
   end
 
-  defp validate_required(%{"required" => true}, value) when value in [nil, ""] do
+  defp validate_required(%{"required" => true}, value) when value in [nil, "", []] do
     {:error, [gettext("is required")]}
   end
 
@@ -950,33 +1351,69 @@ defmodule PhoenixKitEntities.FormBuilder do
     end
   end
 
-  defp validate_type(%{"type" => "select", "options" => options}, value) when is_list(options) do
+  defp validate_type(%{"type" => "select", "options" => options} = field, value)
+       when is_list(options) do
     cond do
       value in [nil, ""] -> {:ok, nil}
       value in options -> {:ok, value}
+      FieldTypes.allow_other?(field) and is_binary(value) -> {:ok, value}
       true -> {:error, [gettext("must be one of: %{options}", options: Enum.join(options, ", "))]}
     end
   end
 
-  defp validate_type(%{"type" => "radio", "options" => options}, value) when is_list(options) do
+  defp validate_type(%{"type" => "radio", "options" => options} = field, value)
+       when is_list(options) do
     cond do
       value in [nil, ""] -> {:ok, nil}
       value in options -> {:ok, value}
+      FieldTypes.allow_other?(field) and is_binary(value) -> {:ok, value}
       true -> {:error, [gettext("must be one of: %{options}", options: Enum.join(options, ", "))]}
     end
   end
 
-  defp validate_type(%{"type" => "checkbox", "options" => options}, values)
+  # `allow_other`'s branch requires every out-of-options entry to be a
+  # binary — same shape rule as the `select`/`radio` clauses above (both
+  # already gate on `is_binary(value)`). `allow_other` means "one
+  # free-text custom entry", not "any term"; without this, a crafted
+  # list-of-maps value sailed straight through this best-effort layer,
+  # relying entirely on `EntityData.changeset/2`'s
+  # `validate_checkbox_field/3` (the hard-blocking final gate) to catch
+  # it — kept in sync with that changeset-level fix for consistency
+  # between the two validators, not because this layer is itself
+  # security-load-bearing (see this module's moduledoc: it's best-effort,
+  # never a hard gate).
+  defp validate_type(%{"type" => "checkbox", "options" => options} = field, values)
        when is_list(options) and is_list(values) do
     invalid_values = values -- options
 
-    if Enum.empty?(invalid_values) do
-      {:ok, values}
-    else
-      {:error,
-       [gettext("contains invalid options: %{invalid}", invalid: Enum.join(invalid_values, ", "))]}
+    cond do
+      Enum.empty?(invalid_values) ->
+        {:ok, values}
+
+      FieldTypes.allow_other?(field) and Enum.all?(invalid_values, &is_binary/1) ->
+        {:ok, values}
+
+      true ->
+        {:error,
+         [
+           gettext("contains invalid options: %{invalid}",
+             invalid: Enum.map_join(invalid_values, ", ", &stringify_invalid_option/1)
+           )
+         ]}
     end
   end
 
   defp validate_type(_field, value), do: {:ok, value}
+
+  # `invalid_values` (used by the checkbox clause above) can now
+  # legitimately contain a non-binary term (a crafted map, for one — see
+  # the `allow_other` shape guard there), and `Enum.join/2` calls
+  # `to_string/1` on every element via `String.Chars`, which has no
+  # implementation for a bare map — this crashed building the ERROR
+  # MESSAGE ITSELF (a raised `Protocol.UndefinedError`, not the graceful
+  # `{:error, _}` this function returns everywhere else), independent of
+  # `allow_other`. `to_string/1` for a binary (the normal case),
+  # `inspect/1` for anything else (always succeeds, never raises).
+  defp stringify_invalid_option(value) when is_binary(value), do: value
+  defp stringify_invalid_option(value), do: inspect(value)
 end

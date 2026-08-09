@@ -9,6 +9,7 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
   alias PhoenixKit.Utils.Date, as: UtilsDate
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.EntityData
+  alias PhoenixKitEntities.FormBuilder
 
   require Logger
 
@@ -221,12 +222,16 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
     end
   end
 
+  # SECURITY: `_form_loaded_at` is a plain body param, so a crafted POST can
+  # make it a map (`_form_loaded_at[x]=1`) or a list —
+  # `DateTime.from_iso8601/1` only has a binary clause and raised
+  # `FunctionClauseError` on anything else. This runs inside the
+  # security-check phase, i.e. on every public submission, so it was the
+  # earliest un-authed 500 on this endpoint. A non-binary value is treated
+  # as "no timestamp provided", exactly like an absent one.
   defp get_time_to_submit(params) do
     case Map.get(params, "_form_loaded_at") do
-      nil ->
-        nil
-
-      loaded_at_str ->
+      loaded_at_str when is_binary(loaded_at_str) ->
         case DateTime.from_iso8601(loaded_at_str) do
           {:ok, loaded_at, _offset} ->
             DateTime.diff(UtilsDate.utc_now(), loaded_at, :second)
@@ -234,6 +239,9 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
           _ ->
             nil
         end
+
+      _absent_or_malformed ->
+        nil
     end
   end
 
@@ -313,7 +321,13 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
 
   defp handle_submission(conn, entity, params, security_flags) do
     # Extract form data from params
-    form_data = get_in(params, ["phoenix_kit_entity_data", "data"]) || %{}
+    form_data = extract_form_data(params)
+
+    # Resolve any `allow_other` "Muu" sentinel + companion free-text params
+    # into the actual custom value — must happen before filtering by
+    # allowed_fields below, since the companion `<key>__other` param is
+    # never itself an allowed field and would otherwise be dropped.
+    form_data = FormBuilder.merge_other_params(entity.fields_definition || [], form_data)
 
     # Filter to only include allowed public form fields
     settings = entity.settings || %{}
@@ -374,6 +388,21 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
     end
   end
 
+  # SECURITY: this endpoint is un-authed by design (see the moduledoc), so
+  # the request body is entirely attacker-shaped — `phoenix_kit_entity_data`
+  # and its `"data"` value are both whatever was posted, not necessarily
+  # maps. `get_in(params, ["phoenix_kit_entity_data", "data"])` raised
+  # `FunctionClauseError` (Access has no clause for a binary) for
+  # `phoenix_kit_entity_data=x`, and a non-map `"data"` got through it only
+  # to hit `FormBuilder.merge_other_params/2`'s `when is_map(params)` guard
+  # — an unmatched-clause crash. Either way an unauthenticated request
+  # turned into a 500 before `EntityData.changeset/2` (the shape gate this
+  # path relies on) ever ran. Both shapes now degrade to "no fields
+  # submitted", the same result as an empty POST — same contract as
+  # `LiveDataForm.extract_data_params/1` on the LiveView side.
+  defp extract_form_data(%{"phoenix_kit_entity_data" => %{"data" => %{} = data}}), do: data
+  defp extract_form_data(_params), do: %{}
+
   defp public_form_enabled?(entity) do
     settings = entity.settings || %{}
     enabled = Map.get(settings, "public_form_enabled", false)
@@ -382,13 +411,24 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
     enabled && not Enum.empty?(fields)
   end
 
+  # SECURITY: the candidate keys are ordinary field keys — nothing forces
+  # their submitted values to be strings, and a nested param
+  # (`data[name][x]=1`) arrives as a map. The old `if value && value != ""`
+  # accepted it, and `generate_slug/1` immediately fed it to
+  # `String.downcase/1`, which has no clause for a map (or a list, or a
+  # number) — an unauthenticated 500, again before `EntityData.changeset/2`
+  # could reject anything. Only a non-empty binary is a usable title;
+  # anything else falls through to the next candidate and ultimately to
+  # `entity.display_name`.
   defp generate_submission_title(entity, data) do
     # Try to use a meaningful field value as title, or use entity display name
     title_candidates = ["name", "title", "subject", "email"]
 
     Enum.find_value(title_candidates, fn field ->
-      value = Map.get(data, field)
-      if value && value != "", do: value
+      case Map.get(data, field) do
+        value when is_binary(value) and value != "" -> value
+        _ -> nil
+      end
     end) || entity.display_name
   end
 
@@ -411,8 +451,11 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
     referer = get_req_header(conn, "referer") |> List.first()
     submitted_at = UtilsDate.utc_now()
 
-    # Get form timing data
-    form_loaded_at = Map.get(params, "_form_loaded_at")
+    # Get form timing data. Capped like the header values below — same
+    # untrusted-input class — via `cap_metadata_param/1`, whose binary-or-nil
+    # clauses also keep a crafted non-string (a nested `_form_loaded_at[x]`
+    # param arrives as a map) out of the stored JSONB entirely.
+    form_loaded_at = params |> Map.get("_form_loaded_at") |> cap_metadata_param()
     time_to_submit = get_time_to_submit(params)
 
     capped_user_agent = cap_string(user_agent, @metadata_string_cap)
@@ -436,6 +479,15 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
   defp cap_string(value, cap) when is_binary(value) do
     if byte_size(value) > cap, do: String.slice(value, 0, cap), else: value
   end
+
+  # `cap_string/2` deliberately has no non-binary clause — the header values
+  # it guards are always strings, and a surprise there should crash rather
+  # than store silently. Body params have no such guarantee, so they get
+  # this binary-or-nil wrapper instead.
+  defp cap_metadata_param(value) when is_binary(value),
+    do: cap_string(value, @metadata_string_cap)
+
+  defp cap_metadata_param(_value), do: nil
 
   # Returns the client IP for storage in submission metadata.
   # Best-effort; falls back to remote_ip when the forwarded value is

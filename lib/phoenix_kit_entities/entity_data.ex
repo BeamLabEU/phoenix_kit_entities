@@ -86,6 +86,7 @@ defmodule PhoenixKitEntities.EntityData do
   alias PhoenixKit.Utils.UUID, as: UUIDUtils
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.Events
+  alias PhoenixKitEntities.FieldTypes
   alias PhoenixKitEntities.Mirror.Exporter
   alias PhoenixKitEntities.UrlResolver
   @type t :: %__MODULE__{}
@@ -141,6 +142,20 @@ defmodule PhoenixKitEntities.EntityData do
 
   @valid_statuses ~w(draft published archived trashed)
   @soft_delete_status "trashed"
+
+  # Field types whose stored value must be a single JSON scalar (or
+  # absent) — see `validate_field_type/3`'s shape guard below.
+  @text_like_types ~w(text textarea email url rich_text)
+
+  # Mirrors `PhoenixKitEntities.FormBuilder`'s private sentinel for the
+  # synthetic "Other" option rendered on select/radio/checkbox fields with
+  # `allow_other?`. It's a UI marker only — `FormBuilder.merge_other_params/2`
+  # is supposed to resolve it into the companion free-text value before it
+  # ever reaches a changeset. If it somehow shows up here anyway (a caller
+  # that skipped `merge_other_params/2`, or a hand-crafted request), treat
+  # it as any other out-of-options value rather than letting `allow_other?`
+  # wave it through.
+  @other_sentinel "__other__"
 
   @doc """
   Creates a changeset for entity data creation and updates.
@@ -403,13 +418,24 @@ defmodule PhoenixKitEntities.EntityData do
     end)
   end
 
+  # Display-only — no data to validate or require.
+  defp validate_single_data_field(changeset, %{"type" => "heading"}, _data), do: changeset
+
   defp validate_single_data_field(changeset, field_def, data) do
     field_key = field_def["key"]
     field_value = data[field_key]
     is_required = field_def["required"] || false
 
     cond do
-      is_required && (is_nil(field_value) || field_value == "") ->
+      # `[]` is what an unticked (or never-touched) required checkbox
+      # group submits — it must count as "absent" here the same way
+      # `FormBuilder.validate_required/2` (form_builder.ex) already treats
+      # `value in [nil, "", []]` as missing. Before this, an empty
+      # required checkbox sailed through this changeset check (only
+      # `nil`/`""` were caught) while `FormBuilder.validate_data/2`
+      # rejected it — the two disagreed, and `LiveDataForm` relies on
+      # this changeset being the final, strict word.
+      is_required && field_value in [nil, "", []] ->
         add_error(
           changeset,
           :data,
@@ -424,15 +450,84 @@ defmodule PhoenixKitEntities.EntityData do
     end
   end
 
+  # SECURITY: this `case` used to have no branch at all for
+  # `text`/`textarea`/`rich_text` — they fell through to the catch-all
+  # (`_ -> changeset`), so `EntityData.changeset/2`, the FINAL,
+  # unconditional word on what lands in `data` (see this module's
+  # moduledoc / `LiveDataForm`'s own doc for why every other check here
+  # is best-effort), had no opinion on their value's shape. A map (or any
+  # other non-scalar term) sailed straight through and into storage.
+  #
+  # Every surface that renders a `text`/`textarea`/`rich_text` value does
+  # so naively: the readonly view calls `to_string/1` on it
+  # (`PhoenixKitEntities.Components.LiveDataForm.readonly_text/1` /
+  # `readonly_value/1`), the edit form interpolates it directly inside
+  # `<textarea>{@value}</textarea>` (`FormBuilder.build_field/3`) — a
+  # stored map raises `Protocol.UndefinedError` in both, crashing
+  # rendering for every subsequent viewer of the record. `LiveDataForm`
+  # now sanitizes by field type before a value ever reaches this
+  # changeset (see its `sanitize_values/2`), but this is the module's own
+  # final gate, reachable from the admin `DataForm` and the public
+  # `EntityForm` too — it must reject the same shapes independent of any
+  # particular caller.
+  #
+  # `email`/`url` are included in the same shape check (rather than left
+  # to fall through to `validate_email_field/3` / `validate_url_field/3`
+  # below) for a uniform, purpose-built error message on a shape
+  # mismatch; those two already separately guard on `is_binary(value)`
+  # before doing anything else, so this doesn't change what they accept —
+  # only which message a non-text value gets. `number`/`boolean`/`date`
+  # are NOT included: `number`/`boolean` have their own type coercion
+  # rules (a bare shape check would be either too strict or redundant —
+  # see `LiveDataForm.sanitize_field_value/2`'s narrower number/boolean
+  # clauses for that reasoning), and `validate_date_field/3` already
+  # guards on `is_binary(value)` the same way email/url do.
   defp validate_field_type(changeset, field_def, value) do
-    case field_def["type"] do
-      "number" -> validate_number_field(changeset, field_def, value)
-      "boolean" -> validate_boolean_field(changeset, field_def, value)
-      "email" -> validate_email_field(changeset, field_def, value)
-      "url" -> validate_url_field(changeset, field_def, value)
-      "date" -> validate_date_field(changeset, field_def, value)
-      "select" -> validate_select_field(changeset, field_def, value)
-      _ -> changeset
+    type = field_def["type"]
+
+    if type in @text_like_types and not text_like_shape?(value) do
+      add_error(
+        changeset,
+        :data,
+        gettext("field '%{label}' must be a text value", label: field_def["label"])
+      )
+    else
+      dispatch_field_type_validation(changeset, type, field_def, value)
+    end
+  end
+
+  defp text_like_shape?(value),
+    do: is_binary(value) or is_number(value) or is_boolean(value) or is_nil(value)
+
+  # Split out of `validate_field_type/3` (rather than nested in its `else`
+  # branch) purely to keep each function's cyclomatic complexity under
+  # `credo --strict`'s threshold — no behavior difference from having it
+  # inline.
+  defp dispatch_field_type_validation(changeset, type, field_def, value) do
+    case type do
+      "number" ->
+        validate_number_field(changeset, field_def, value)
+
+      "boolean" ->
+        validate_boolean_field(changeset, field_def, value)
+
+      "email" ->
+        validate_email_field(changeset, field_def, value)
+
+      "url" ->
+        validate_url_field(changeset, field_def, value)
+
+      "date" ->
+        validate_date_field(changeset, field_def, value)
+
+      type when type in ["select", "radio"] ->
+        validate_choice_field(changeset, field_def, value)
+
+      "checkbox" ->
+        validate_checkbox_field(changeset, field_def, value)
+
+      _ ->
+        changeset
     end
   end
 
@@ -496,22 +591,107 @@ defmodule PhoenixKitEntities.EntityData do
     end
   end
 
-  defp validate_select_field(changeset, field_def, value) do
+  # Shared scalar (single-value) choice validator for "select" and "radio"
+  # — both are "pick exactly one" fields with the same options/allow_other
+  # shape. The sentinel check comes first and applies unconditionally: it
+  # must never validate as a real value, allow_other or not (see
+  # `@other_sentinel`).
+  #
+  # SECURITY (M2 follow-up): the `allow_other?` branch used to accept
+  # ANY value unconditionally — including a crafted map — once a value
+  # wasn't a recognized option. `allow_other`'s whole premise is a
+  # free-text custom answer, i.e. a string; nothing else is a legitimate
+  # "Other" value. This reaches the same render surfaces text/textarea
+  # values do (`readonly_field/3`'s `select`/`radio` clause resolves the
+  # stored value through `FormBuilder.translated_option_label/3`, which
+  # falls back to the raw value and interpolates it via `{@display}` —
+  # `Protocol.UndefinedError` for a map, same as the text-field crash
+  # this module's `validate_field_type/3` shape guard already closes) —
+  # and, unlike `text`/`textarea`, this path is also reachable from the
+  # public, unauthenticated `EntityForm` (not just `LiveDataForm`, whose
+  # own `sanitize_values/2` already covers this specific gap for its
+  # path), so this changeset-level fix is the only thing closing it
+  # there.
+  defp validate_choice_field(changeset, field_def, value) do
     options = field_def["options"] || []
 
-    if value in options do
+    cond do
+      value == @other_sentinel ->
+        add_error(
+          changeset,
+          :data,
+          gettext("field '%{label}' has an invalid value", label: field_def["label"])
+        )
+
+      value in options ->
+        changeset
+
+      FieldTypes.allow_other?(field_def) and is_binary(value) ->
+        changeset
+
+      true ->
+        add_error(
+          changeset,
+          :data,
+          gettext("field '%{label}' must be one of: %{options}",
+            label: field_def["label"],
+            options: Enum.join(options, ", ")
+          )
+        )
+    end
+  end
+
+  # Checkbox groups are multi-value — every submitted entry must be
+  # in `options` (or allowed via `allow_other?`, but never the
+  # `@other_sentinel` marker itself). A non-list value (e.g. a single
+  # scalar string crafted into the request) is rejected outright rather
+  # than silently passing through unvalidated.
+  #
+  # SECURITY (M2 follow-up): same `allow_other` shape gap as
+  # `validate_choice_field/3` above, one level down — an out-of-options
+  # LIST ELEMENT used to be waved through unconditionally when
+  # `allow_other` was set, map elements included. Now an out-of-options
+  # element is only accepted when it's ALSO a binary — `allow_other`
+  # means "one free-text custom entry", not "any term".
+  defp validate_checkbox_field(changeset, field_def, value) when is_list(value) do
+    options = field_def["options"] || []
+    allow_other = FieldTypes.allow_other?(field_def)
+
+    invalid_values =
+      Enum.filter(value, fn v ->
+        v == @other_sentinel or (v not in options and (not allow_other or not is_binary(v)))
+      end)
+
+    if Enum.empty?(invalid_values) do
       changeset
     else
       add_error(
         changeset,
         :data,
-        gettext("field '%{label}' must be one of: %{options}",
+        gettext("field '%{label}' contains invalid options: %{invalid}",
           label: field_def["label"],
-          options: Enum.join(options, ", ")
+          # Not Enum.join/2: the is_binary/1 guard above is what routes a
+          # non-binary term into invalid_values in the first place, so joining
+          # would raise Protocol.UndefinedError while building the very error
+          # that rejects it — trading a stored bad value for an attacker
+          # -triggered crash. Same treatment FormBuilder already gives its copy
+          # of this message.
+          invalid: Enum.map_join(invalid_values, ", ", &stringify_invalid_option/1)
         )
       )
     end
   end
+
+  defp validate_checkbox_field(changeset, field_def, _value) do
+    add_error(
+      changeset,
+      :data,
+      gettext("field '%{label}' must be a list of selected options", label: field_def["label"])
+    )
+  end
+
+  defp stringify_invalid_option(value) when is_binary(value), do: value
+  defp stringify_invalid_option(value), do: inspect(value)
 
   defp maybe_set_timestamps(changeset) do
     now = UtilsDate.utc_now()
@@ -537,7 +717,7 @@ defmodule PhoenixKitEntities.EntityData do
   defp notify_data_event({:ok, %__MODULE__{} = entity_data}, :updated, opts) do
     Events.broadcast_data_updated(entity_data.entity_uuid, entity_data.uuid)
     maybe_mirror_data(entity_data)
-    log_data_activity(entity_data, "entity_data.updated", opts)
+    maybe_log_data_activity(entity_data, "entity_data.updated", opts)
     {:ok, entity_data}
   end
 
@@ -565,11 +745,40 @@ defmodule PhoenixKitEntities.EntityData do
   end
 
   defp notify_data_event({:error, _} = result, event, opts) do
-    log_data_error_activity(event, opts)
+    # `activity_log: false` (see `maybe_log_data_activity/3` below) must
+    # suppress this error-path row too, not just the success path.
+    # `EntityData.changeset/2` re-validates every required field on EVERY
+    # `update/3` call, so a `LiveDataForm` autosave against an
+    # incomplete-required-field record fails this changeset on every
+    # debounced keystroke until the last required field is filled — without
+    # this guard, each of those failures would still insert a
+    # `db_pending: true` activity row, flooding the log exactly the way
+    # `activity_log: false` exists to prevent.
+    if Keyword.get(opts, :activity_log, true) do
+      log_data_error_activity(event, opts)
+    end
+
     result
   end
 
   defp notify_data_event(result, _event, _opts), do: result
+
+  # `opts[:activity_log]` defaults to `true`. Passing `false` skips the
+  # activity-log entry for this update while leaving the PubSub
+  # broadcast and mirror export (both above, in `notify_data_event/3`)
+  # untouched — those still need to fire so live views/mirrors stay in
+  # sync. Used by high-frequency callers (`LiveDataForm` autosave) so a
+  # client that's still typing doesn't produce one activity row per
+  # debounced keystroke. Only wired into the `:updated` path — the other
+  # lifecycle events (create/delete/trash/restore) are one-shot actions
+  # that should always log.
+  defp maybe_log_data_activity(entity_data, action, opts) do
+    if Keyword.get(opts, :activity_log, true) do
+      log_data_activity(entity_data, action, opts)
+    else
+      :ok
+    end
+  end
 
   # Records a data-record-lifecycle activity entry. Actor UUID comes
   # from caller's `:actor_uuid` opt (the user performing the mutation)
@@ -760,7 +969,8 @@ defmodule PhoenixKitEntities.EntityData do
   ## Options
 
   * `:include_trashed` — when `true`, include trashed rows (default `false`)
-  * `:lang` — resolve multilingual fields to the given locale
+  * `:lang` — resolve multilingual fields to the given locale. Display-only —
+    see the warning on `resolve_language/2` before writing a resolved record back
   * any other opt accepted by `list_by_entity/2`
   """
   @spec list_tree(binary(), keyword()) :: [%{record: t(), depth: non_neg_integer()}]
@@ -1298,6 +1508,35 @@ defmodule PhoenixKitEntities.EntityData do
   @doc """
   Updates an entity data record.
 
+  ## Options
+
+    * `:actor_uuid` — the user performing the update, recorded on the
+      activity log entry.
+    * `:activity_log` — defaults to `true`; pass `false` to skip logging
+      this update's activity entry (the PubSub broadcast and mirror
+      export still fire regardless). Intended for high-frequency callers
+      like `LiveDataForm`'s autosave, where logging every debounced
+      keystroke would flood the activity log.
+    * `:require_status` — defaults to `nil` (no check, existing
+      behavior unchanged). Pass a list of status strings (e.g.
+      `["draft"]`) to guard against a cross-session race: the record is
+      re-read by `uuid` under `SELECT ... FOR UPDATE` inside a
+      transaction, and the update only proceeds if the record's
+      *current, freshly-read* status is in the list. If it isn't,
+      returns `{:error, :status_mismatch}` without touching the row,
+      the activity log, or PubSub — as if the call never happened. This
+      closes the window where a stale in-memory copy (e.g. a second
+      browser tab still holding an `:edit` view of a record that a
+      first tab has since submitted/published) would otherwise
+      overwrite `data` on a record whose status has since moved on.
+      When the status does match, the changeset is built against the
+      freshly-read row (not the possibly-stale `entity_data` argument),
+      so any other field also reflects the latest DB state going in.
+      Must be a list — a bare status string (e.g. `require_status:
+      "draft"` instead of `require_status: ["draft"]`) raises
+      `ArgumentError` immediately rather than reaching a confusing
+      `CaseClauseError`.
+
   ## Examples
 
       iex> PhoenixKitEntities.EntityData.update(record, %{title: "Updated"})
@@ -1305,13 +1544,74 @@ defmodule PhoenixKitEntities.EntityData do
 
       iex> PhoenixKitEntities.EntityData.update(record, %{title: ""})
       {:error, %Ecto.Changeset{}}
+
+      iex> PhoenixKitEntities.EntityData.update(record, %{title: "Updated"}, require_status: ["draft"])
+      {:error, :status_mismatch}
   """
-  @spec update(t(), map(), keyword()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
+  @spec update(t(), map(), keyword()) ::
+          {:ok, t()} | {:error, Ecto.Changeset.t() | :status_mismatch}
   def update(%__MODULE__{} = entity_data, attrs, opts \\ []) do
-    entity_data
-    |> changeset(attrs)
-    |> repo().update()
-    |> notify_data_event(:updated, opts)
+    case Keyword.get(opts, :require_status) do
+      nil ->
+        entity_data
+        |> changeset(attrs)
+        |> repo().update()
+        |> notify_data_event(:updated, opts)
+
+      statuses when is_list(statuses) ->
+        update_with_status_guard(entity_data, attrs, statuses, opts)
+
+      status when is_binary(status) ->
+        raise ArgumentError,
+              "require_status expects a list of statuses, got a binary " <>
+                "(#{inspect(status)}) — wrap it in a list, e.g. require_status: [#{inspect(status)}]"
+    end
+  end
+
+  # Re-reads the row by uuid under `FOR UPDATE` inside a transaction so
+  # the status check and the write are atomic w.r.t. any concurrent
+  # writer — without the lock, two processes could both read a matching
+  # status and both proceed, racing the same way this guard exists to
+  # prevent. Builds the changeset against the freshly-read row (`fresh`),
+  # never the possibly-stale `entity_data` argument, so every field goes
+  # into `repo().update/1` reflecting the latest DB state, not just
+  # `:data`. A status mismatch (or the row having disappeared entirely —
+  # same practical outcome, nothing left to guard) rolls back with no
+  # side effects: no write, no activity log, no PubSub broadcast.
+  defp update_with_status_guard(entity_data, attrs, statuses, opts) do
+    txn =
+      repo().transaction(fn ->
+        from(d in __MODULE__, where: d.uuid == ^entity_data.uuid, lock: "FOR UPDATE")
+        |> repo().one()
+        |> apply_status_guarded_update(statuses, attrs)
+      end)
+
+    case txn do
+      {:ok, updated} ->
+        notify_data_event({:ok, updated}, :updated, opts)
+
+      {:error, :status_mismatch} ->
+        {:error, :status_mismatch}
+
+      {:error, {:changeset_error, changeset}} ->
+        notify_data_event({:error, changeset}, :updated, opts)
+    end
+  end
+
+  # `nil` covers the row having disappeared entirely between the caller
+  # loading it and this re-read — same practical outcome as a status
+  # mismatch (nothing left to guard), so it rolls back the same way.
+  defp apply_status_guarded_update(nil, _statuses, _attrs), do: repo().rollback(:status_mismatch)
+
+  defp apply_status_guarded_update(%__MODULE__{} = fresh, statuses, attrs) do
+    if fresh.status in statuses do
+      case fresh |> changeset(attrs) |> repo().update() do
+        {:ok, updated} -> updated
+        {:error, changeset} -> repo().rollback({:changeset_error, changeset})
+      end
+    else
+      repo().rollback(:status_mismatch)
+    end
   end
 
   @doc """
@@ -2469,6 +2769,17 @@ defmodule PhoenixKitEntities.EntityData do
   For the primary language or flat (non-multilang) data, the struct is
   returned with the primary language data resolved. When no translation
   exists for a field, the primary language value is used as fallback.
+
+  > #### Read-only {: .warning}
+  >
+  > The returned struct is **lossy and display-only**. Its `data` is the
+  > flattened single-language map — `_primary_language` and every other
+  > language are gone. Never build an update changeset from it: writing it
+  > back replaces the row's whole multilang `data` with the one resolved
+  > language and permanently deletes the rest.
+  >
+  > Editors must load the record raw (`get!/1`, no `:lang`) and resolve
+  > per-language values for display themselves.
 
   ## Examples
 
