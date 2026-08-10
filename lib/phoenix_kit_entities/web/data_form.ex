@@ -392,17 +392,12 @@ defmodule PhoenixKitEntities.Web.DataForm do
     previous_title = current_data.title || ""
     title = data_params["title"] || previous_title
     current_slug = data_params["slug"] || ""
-    lang = socket.assigns[:primary_language]
 
     auto_generated_slug =
-      auto_generate_entity_slug(entity_uuid, record_uuid, previous_title, lang)
+      auto_generate_entity_slug(entity_uuid, record_uuid, previous_title)
 
     if current_slug == "" || current_slug == auto_generated_slug do
-      Map.put(
-        data_params,
-        "slug",
-        auto_generate_entity_slug(entity_uuid, record_uuid, title, lang)
-      )
+      Map.put(data_params, "slug", auto_generate_entity_slug(entity_uuid, record_uuid, title))
     else
       data_params
     end
@@ -1048,11 +1043,19 @@ defmodule PhoenixKitEntities.Web.DataForm do
     entity_uuid = socket.assigns.entity.uuid
     record_uuid = socket.assigns.data_record.uuid
 
-    # current_lang is the language this title is IN — a German entry wants oe, an
-    # Estonian one o. It was a parameter here and was being discarded.
+    # `transliterate: true` is load-bearing: without it core's `[^a-z0-9]+`
+    # pass deletes every non-ASCII character outright, so a Cyrillic or Greek
+    # title slugs to "". It romanizes instead.
+    #
+    # Note this is NOT language-aware. Core's transliteration is a Cyrillic map
+    # plus an NFD combining-mark strip, so "ö" becomes "o" for every language —
+    # German does not get "oe". `PhoenixKit.Utils.Slug.slugify/2` accepts only
+    # `:separator` and `:transliterate`; passing a `:locale` here would be
+    # silently ignored. `current_lang` still matters below, where it scopes the
+    # uniqueness check to the language the slug lives in.
     slug_text =
       title
-      |> Slug.slugify(locale: current_lang, transliterate: true)
+      |> Slug.slugify(transliterate: true)
       |> Slug.ensure_unique(
         &EntityData.secondary_slug_exists?(entity_uuid, current_lang, &1, record_uuid)
       )
@@ -1067,13 +1070,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
     entity_uuid = socket.assigns.entity.uuid
     record_uuid = socket.assigns.data_record.uuid
 
-    slug_text =
-      auto_generate_entity_slug(
-        entity_uuid,
-        record_uuid,
-        title,
-        socket.assigns[:primary_language]
-      )
+    slug_text = auto_generate_entity_slug(entity_uuid, record_uuid, title)
     {slug_text, data}
   end
 
@@ -1221,15 +1218,15 @@ defmodule PhoenixKitEntities.Web.DataForm do
   defp normalize_record_key(key) when is_binary(key), do: key
   defp normalize_record_key(key), do: to_string(key)
 
-  defp auto_generate_entity_slug(entity_uuid, record_uuid, title, lang \\ nil)
+  defp auto_generate_entity_slug(_entity_uuid, _record_uuid, title) when title in [nil, ""],
+    do: ""
 
-  defp auto_generate_entity_slug(_entity_uuid, _record_uuid, title, _lang)
-       when title in [nil, ""],
-       do: ""
-
-  defp auto_generate_entity_slug(entity_uuid, current_record_uuid, title, lang) do
+  # Primary-language slug. No language parameter: core's transliteration is
+  # not locale-sensitive (see the note in compute_slug_and_data/5), and the
+  # uniqueness check below is scoped by entity, not by language.
+  defp auto_generate_entity_slug(entity_uuid, current_record_uuid, title) do
     title
-    |> Slug.slugify(locale: lang, transliterate: true)
+    |> Slug.slugify(transliterate: true)
     |> Slug.ensure_unique(&slug_taken_by_other?(entity_uuid, &1, current_record_uuid))
   end
 

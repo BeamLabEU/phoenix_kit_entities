@@ -39,7 +39,7 @@ Dynamic content types for PhoenixKit. Define custom entities (like "Product", "T
 Add to your parent app's `mix.exs`:
 
 ```elixir
-{:phoenix_kit_entities, "~> 0.1"}
+{:phoenix_kit_entities, "~> 0.3"}
 ```
 
 Run `mix deps.get` and start the server. The module appears in:
@@ -112,7 +112,7 @@ After updating the remote: `mix deps.update phoenix_kit_entities`, then `mix dep
 ### Hex package
 
 ```elixir
-{:phoenix_kit_entities, "~> 0.1.0"}
+{:phoenix_kit_entities, "~> 0.3"}
 ```
 
 ## Project structure

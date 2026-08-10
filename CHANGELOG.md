@@ -1,3 +1,42 @@
+## 0.3.0 - 2026-08-10
+
+### Changed
+
+- **⚠️ Requires `phoenix_kit ~> 2.0`.** The core pin moved to `~> 2.0`, so this
+  release no longer resolves against core 1.7.
+
+  Core 2.0.0 squashes the migration chain into a single `V135` baseline and makes
+  V135 the chain's floor: `mix ecto.migrate` now *refuses* on a database below it
+  rather than migrating. Check `mix phoenix_kit.status` **before** upgrading. A
+  host below V135 must install `phoenix_kit 1.7.236` — the migration bridge, the
+  last release carrying the full pre-squash chain — migrate until the reported
+  version is at least V135, and only then move to 2.0.
+
+  This package does not call migration internals, so the change is the pin
+  itself.
+
+### Added
+
+- **Data tab for the `phoenix_kit_projects` hub (PR #26).** Contributed through
+  `phoenix_kit_project_extensions/0`, the duck-typed one-way discovery contract —
+  no dependency on the projects package.
+
+### Fixed
+
+- **Non-ASCII titles slugged to an empty string (PR #26).** Three call sites
+  invoked core's `Slug.slugify/1` without `transliterate: true`, which defaults
+  to `false` — after which the `[^a-z0-9]+` pass deletes every non-ASCII
+  character outright, so a Cyrillic or Greek title produced `""`. Now
+  romanizes.
+- Post-merge fix on `main`: PR #26 also passed a `locale:` option to
+  `Slug.slugify/2` with a comment promising language-aware output ("a German
+  entry wants oe"). Core's `slugify/2` reads only `:separator` and
+  `:transliterate`, so `:locale` was silently discarded and German still
+  produced `schon`, not `schoen`. The dead option, its misleading comment, and
+  the now-unused `lang` parameter threaded through
+  `auto_generate_entity_slug/4` were removed. Slug output is unchanged by this
+  removal — the option never had any effect.
+
 ## 0.2.11 - 2026-08-06
 
 ### Fixed

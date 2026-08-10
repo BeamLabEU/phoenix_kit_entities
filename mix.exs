@@ -1,7 +1,7 @@
 defmodule PhoenixKitEntities.MixProject do
   use Mix.Project
 
-  @version "0.2.11"
+  @version "0.3.0"
   @source_url "https://github.com/BeamLabEU/phoenix_kit_entities"
 
   def project do
@@ -89,7 +89,7 @@ defmodule PhoenixKitEntities.MixProject do
       # 1.7.214+ required: Scope.can_access_admin_area?/1 (the rename of the
       # now-`@deprecated` Scope.admin?/1) — an older core has no such function,
       # so this is an UndefinedFunctionError at runtime, not a warning.
-      pk_dep(:phoenix_kit, "~> 1.7.214"),
+      pk_dep(:phoenix_kit, "~> 2.0"),
 
       # LiveView is needed for the admin pages.
       {:phoenix_live_view, "~> 1.0"},
