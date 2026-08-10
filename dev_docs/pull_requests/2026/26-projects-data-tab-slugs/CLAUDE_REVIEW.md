@@ -21,51 +21,56 @@ after which the `[^a-z0-9]+` pass deletes every non-ASCII character — so a
 Cyrillic or Greek title slugged to `""`. Same class of defect as
 `phoenix_kit_document_creator#32`, which this sweep also merged.
 
-## Fixed on `main`: the `locale:` option does nothing
+## Correction: my "fix" to the `locale:` option was wrong, and is reverted
 
-The PR also passes a `locale:` option and adds a comment asserting the
-behaviour it buys:
+**The PR was right. I was wrong, and the error shipped in 0.3.0.**
 
-```elixir
-# current_lang is the language this title is IN — a German entry wants oe, an
-# Estonian one o. It was a parameter here and was being discarded.
-|> Slug.slugify(locale: current_lang, transliterate: true)
-```
+On first review I removed the `locale:` option the PR passes to
+`Slug.slugify/2`, on the grounds that core accepts only `:separator` and
+`:transliterate` and would silently discard it. I ran an empirical check that
+appeared to confirm this — German `Schön` came back `schon`, not `schoen`, at
+every locale.
 
-**`PhoenixKit.Utils.Slug.slugify/2` has no `:locale` option.** It reads exactly
-two keys — `Keyword.get(opts, :separator, "-")` and
-`Keyword.get(opts, :transliterate, false)` — so an unknown `:locale` key is
-silently discarded. Core's transliteration is a Cyrillic map plus an NFD
-combining-mark strip, which is not locale-sensitive by construction.
+**That check ran against core 1.7.232.** This repo's `deps.update --all` had not
+run yet at that point in the sweep, so the `PhoenixKit.Utils.Slug` I exercised
+was the old hand-rolled table, which genuinely has no `:locale`. Core **2.0.0**
+rewrote that module to delegate to the [`locale_slug`](https://hex.pm/packages/locale_slug)
+package, and locale support is one of the headline reasons it did.
 
-Verified empirically against core 2.0.0 rather than by reading:
+Re-run against core 2.0.0, which is what this release actually requires:
 
 | Input | no locale | `locale: "de"` | `locale: "et"` |
 |---|---|---|---|
-| `Schön Wetter` | `schon-wetter` | `schon-wetter` | `schon-wetter` |
-| `Õun ja Mänd` | `oun-ja-mand` | `oun-ja-mand` | `oun-ja-mand` |
-| `Привет мир` | `privet-mir` | `privet-mir` | `privet-mir` |
+| `Größe Fußball` | `grosse-fussball` | **`groesse-fussball`** | `grosse-fussball` |
+| `Töö õun` | `too-oun` | **`toeoe-oun`** | `too-oun` |
+| `Цветокоррекция` | `tsvetokorrektsiya` | `tsvetokorrektsiya` | `tsvetokorrektsiya` |
 
-German gets `schon`, **not** `schoen`. The option changes nothing, and the
-comment documents behaviour the system does not have — the worse half of the
-problem, since a future reader would trust it.
+German expands `ö`/`ß` to `oe`/`ss`; Estonian folds them. The PR's comment —
+"a German entry wants oe, an Estonian one o" — describes exactly this, and core's
+own moduledoc gives the same examples. Passing `current_lang` is correct and the
+parameter genuinely was being discarded before the PR.
 
-This is the same failure mode as the bug the PR is fixing: an option that looks
-load-bearing and is silently ignored.
+**Reverted in 0.3.1:** `locale:` restored at both call sites, the `lang`
+parameter restored through `auto_generate_entity_slug/4` and its three call
+sites, and the comment rewritten to describe core 2.0's actual behaviour.
 
-**What I changed on `main`:**
-- Dropped `locale:` from both `Slug.slugify/2` call sites; kept `transliterate: true`.
-- Rewrote the comment to state what actually happens, and to note that
-  `current_lang` still matters where it genuinely does — scoping the uniqueness
-  check to the language the slug lives in.
-- Reverted `auto_generate_entity_slug/4` to `/3`. The added `lang` parameter fed
-  only the dead option (`slug_taken_by_other?/3` never took it), so once the
-  option went, the parameter was dead code that `--warnings-as-errors` would
-  reject. Updated its three call sites.
+One thing kept from the revert: `auto_generate_entity_slug/4`'s `\\ nil` default
+is removed, because every call site passes four arguments and
+`--warnings-as-errors` rejects an unused default. That was latent in the PR.
 
-Making transliteration genuinely locale-aware would mean changing core's
-`Slug.transliterate/1`, which is out of scope for this sweep and would need its
-own release.
+Also worth recording, since it is the opposite of what I first wrote:
+**`:transliterate` is now ignored by core** — romanization is always on in 2.0,
+and the option is accepted only so existing call sites keep compiling. So the
+`transliterate: true` in these calls is redundant rather than load-bearing. It
+stays for consistency with the rest of the umbrella.
+
+### What this means for the other slug work in this sweep
+
+`phoenix_kit_document_creator#32` and `phoenix_kit_posts#15` are unaffected in
+behaviour — passing `transliterate: true` is harmless under core 2.0, and their
+diagnosis was right for the core they were written against. But the comments I
+added to `phoenix_kit_posts` claiming `slugify/2` has no `:locale` are wrong for
+core 2.0 and are corrected in posts 0.2.1.
 
 ## Verification
 
