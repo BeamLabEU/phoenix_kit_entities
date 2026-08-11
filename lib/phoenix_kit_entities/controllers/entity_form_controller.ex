@@ -3,7 +3,7 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
   Controller for handling public entity form submissions.
   """
   use PhoenixKitWeb, :controller
-  use Gettext, backend: PhoenixKitWeb.Gettext
+  use Gettext, backend: PhoenixKitEntities.Gettext
 
   alias PhoenixKit.Users.RateLimiter
   alias PhoenixKit.Utils.Date, as: UtilsDate

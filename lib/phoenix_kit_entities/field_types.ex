@@ -44,7 +44,7 @@ defmodule PhoenixKitEntities.FieldTypes do
       PhoenixKitEntities.FieldTypes.requires_options?("select") # => true
   """
 
-  use Gettext, backend: PhoenixKitWeb.Gettext
+  use Gettext, backend: PhoenixKitEntities.Gettext
 
   alias PhoenixKitEntities.FieldType
 
@@ -360,6 +360,37 @@ defmodule PhoenixKitEntities.FieldTypes do
   end
 
   @doc """
+  Translated display label for a field type.
+
+  Same reasoning as `description_for/1`: each clause is a literal
+  `gettext(...)` call so `mix gettext.extract` picks the strings up —
+  calling `gettext(type.label)` over the raw `@field_types` map value
+  would feed a variable into the extractor and the labels would never be
+  translated.
+  """
+  @spec label_for(String.t()) :: String.t()
+  def label_for("text"), do: gettext("Text")
+  def label_for("textarea"), do: gettext("Text Area")
+  def label_for("email"), do: gettext("Email")
+  def label_for("url"), do: gettext("URL")
+  def label_for("rich_text"), do: gettext("Rich Text Editor")
+  def label_for("number"), do: gettext("Number")
+  def label_for("boolean"), do: gettext("Boolean")
+  def label_for("date"), do: gettext("Date")
+  def label_for("select"), do: gettext("Select Dropdown")
+  def label_for("radio"), do: gettext("Radio Buttons")
+  def label_for("checkbox"), do: gettext("Checkboxes")
+  def label_for("file"), do: gettext("File Upload")
+  def label_for("heading"), do: gettext("Section Heading")
+
+  def label_for(type_name) when is_binary(type_name) do
+    case Map.get(@field_types, type_name) do
+      nil -> type_name
+      map -> Map.get(map, :label, type_name)
+    end
+  end
+
+  @doc """
   Checks if a field type requires options to be defined.
 
   ## Examples
@@ -440,9 +471,9 @@ defmodule PhoenixKitEntities.FieldTypes do
     |> Enum.map(fn type ->
       %{
         value: type.name,
-        label: type.label,
+        label: label_for(type.name),
         description: description_for(type.name),
-        category: Map.get(category_labels, type.category, "Other"),
+        category: Map.get(category_labels, type.category, gettext("Other")),
         icon: type.icon,
         requires_options: type.requires_options
       }

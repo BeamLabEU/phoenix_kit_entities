@@ -72,7 +72,7 @@ defmodule PhoenixKitEntities.EntityData do
 
   use Ecto.Schema
   use PhoenixKit.SchemaPrefix
-  use Gettext, backend: PhoenixKitWeb.Gettext
+  use Gettext, backend: PhoenixKitEntities.Gettext
   import Ecto.Changeset
   import Ecto.Query, warn: false
   require Logger
@@ -308,7 +308,7 @@ defmodule PhoenixKitEntities.EntityData do
     entity_uuid = get_field(changeset, :entity_uuid)
 
     if is_nil(entity_uuid) do
-      add_error(changeset, :entity_uuid, "entity_uuid must be present")
+      add_error(changeset, :entity_uuid, gettext("entity_uuid must be present"))
     else
       changeset
     end

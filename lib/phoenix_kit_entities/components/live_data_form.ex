@@ -172,6 +172,10 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
   """
 
   use PhoenixKitWeb, :live_component
+  # Override the backend `use PhoenixKitWeb, :live_component` wires by
+  # default (PhoenixKitWeb.Gettext, core's own — unreachable from this
+  # package's `mix gettext.extract`). See lib/phoenix_kit_entities/gettext.ex.
+  use Gettext, backend: PhoenixKitEntities.Gettext
 
   require Logger
 

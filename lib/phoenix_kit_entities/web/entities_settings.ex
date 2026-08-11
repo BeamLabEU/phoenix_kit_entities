@@ -5,6 +5,10 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
   """
 
   use PhoenixKitWeb, :live_view
+  # Override the backend `use PhoenixKitWeb, :live_view` wires by default
+  # (PhoenixKitWeb.Gettext, core's own — unreachable from this package's
+  # `mix gettext.extract`). See lib/phoenix_kit_entities/gettext.ex.
+  use Gettext, backend: PhoenixKitEntities.Gettext
   on_mount(PhoenixKitEntities.Web.Hooks)
 
   require Logger

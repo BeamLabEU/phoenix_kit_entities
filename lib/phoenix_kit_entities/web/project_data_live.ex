@@ -17,6 +17,7 @@ defmodule PhoenixKitEntities.Web.ProjectDataLive do
   """
 
   use Phoenix.LiveView
+  use Gettext, backend: PhoenixKitEntities.Gettext
 
   alias PhoenixKit.Utils.Routes
   alias PhoenixKitEntities.EntityData
@@ -64,20 +65,20 @@ defmodule PhoenixKitEntities.Web.ProjectDataLive do
             navigate={Routes.path("/admin/entities/#{@entity.name}/data/new")}
             class="btn btn-primary btn-sm gap-1"
           >
-            New record
+            {gettext("New record")}
           </.link>
           <.link
             navigate={Routes.path("/admin/entities/#{@entity.name}/data")}
             class="btn btn-ghost btn-sm gap-1"
           >
-            Open in Entities
+            {gettext("Open in Entities")}
           </.link>
         </div>
 
         <%= if @records == [] do %>
           <div class="card border border-dashed border-base-300 bg-base-100">
             <div class="card-body items-center text-center py-8">
-              <p class="text-sm opacity-70">No records yet.</p>
+              <p class="text-sm opacity-70">{gettext("No records yet.")}</p>
             </div>
           </div>
         <% else %>
@@ -85,9 +86,9 @@ defmodule PhoenixKitEntities.Web.ProjectDataLive do
             <table class="table table-sm">
               <thead>
                 <tr>
-                  <th>Title</th>
-                  <th>Status</th>
-                  <th>Updated</th>
+                  <th>{gettext("Title")}</th>
+                  <th>{gettext("Status")}</th>
+                  <th>{gettext("Updated")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -102,7 +103,7 @@ defmodule PhoenixKitEntities.Web.ProjectDataLive do
                   </td>
                   <td>
                     <span class={["badge badge-sm", status_class(record.status)]}>
-                      {record.status}
+                      {PhoenixKitEntities.Web.DataNavigator.status_label(record.status)}
                     </span>
                   </td>
                   <td class="text-xs opacity-60 whitespace-nowrap">
@@ -113,21 +114,25 @@ defmodule PhoenixKitEntities.Web.ProjectDataLive do
             </table>
           </div>
           <p :if={@total > length(@records)} class="text-xs opacity-50">
-            Showing {length(@records)} of {@total} — the full list lives in the Entities admin.
+            {gettext("Showing %{shown} of %{total} — the full list lives in the Entities admin.",
+              shown: length(@records),
+              total: @total
+            )}
           </p>
         <% end %>
       <% else %>
         <div class="card border border-dashed border-base-300 bg-base-100">
           <div class="card-body py-6 gap-2">
             <p class="text-sm opacity-70 text-center">
-              No entity linked to this project yet.
+              {gettext("No entity linked to this project yet.")}
             </p>
             <p class="text-xs opacity-50 text-center">
-              Paste an entity UUID into this tab's settings in the project's
-              Modules &amp; features panel.
+              {gettext(
+                "Paste an entity UUID into this tab's settings in the project's Modules & features panel."
+              )}
             </p>
             <div :if={@candidates != []} class="mt-2">
-              <p class="text-xs font-semibold opacity-60 mb-1">Available entities:</p>
+              <p class="text-xs font-semibold opacity-60 mb-1">{gettext("Available entities:")}</p>
               <div class="flex flex-col gap-1">
                 <div
                   :for={candidate <- @candidates}
@@ -145,9 +150,8 @@ defmodule PhoenixKitEntities.Web.ProjectDataLive do
     """
   end
 
-  defp records_label(0), do: "No records"
-  defp records_label(1), do: "1 record"
-  defp records_label(n), do: "#{n} records"
+  defp records_label(0), do: gettext("No records")
+  defp records_label(n), do: ngettext("%{count} record", "%{count} records", n)
 
   defp status_class("published"), do: "badge-success"
   defp status_class("draft"), do: "badge-ghost"

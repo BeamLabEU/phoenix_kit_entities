@@ -5,6 +5,10 @@ defmodule PhoenixKitEntities.Web.Entities do
   """
 
   use PhoenixKitWeb, :live_view
+  # Override the backend `use PhoenixKitWeb, :live_view` wires by default
+  # (PhoenixKitWeb.Gettext, core's own — unreachable from this package's
+  # `mix gettext.extract`). See lib/phoenix_kit_entities/gettext.ex.
+  use Gettext, backend: PhoenixKitEntities.Gettext
   on_mount(PhoenixKitEntities.Web.Hooks)
 
   require Logger
@@ -447,16 +451,17 @@ defmodule PhoenixKitEntities.Web.Entities do
                       <div class="flex items-center">
                         <.icon name="hero-list-bullet" class="w-4 h-4 mr-1" />
                         <span>
-                          {length(entity.fields_definition || [])}
-                          {if length(entity.fields_definition || []) == 1,
-                            do: gettext("field"),
-                            else: gettext("fields")}
+                          {ngettext(
+                            "%{count} field",
+                            "%{count} fields",
+                            length(entity.fields_definition || [])
+                          )}
                         </span>
                       </div>
 
                       <%= if entity.creator do %>
                         <span class="badge badge-outline badge-xs h-auto">
-                          {gettext("by")} {entity.creator.email}
+                          {gettext("by %{email}", email: entity.creator.email)}
                         </span>
                       <% end %>
                     </div>
@@ -501,8 +506,8 @@ defmodule PhoenixKitEntities.Web.Entities do
 
                     <%!-- Created Date --%>
                     <div class="text-xs text-base-content/50 mt-2 pt-2 border-t border-base-300">
-                      {gettext("Created")} {PhoenixKit.Utils.Date.format_date_with_user_format(
-                        entity.date_created
+                      {gettext("Created %{date}",
+                        date: PhoenixKit.Utils.Date.format_date_with_user_format(entity.date_created)
                       )}
                     </div>
                   </div>
