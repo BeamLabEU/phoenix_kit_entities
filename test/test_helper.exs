@@ -18,6 +18,8 @@
 # - Schema setup runs core's versioned migrations directly via
 #   `PhoenixKit.Migration` — no module-owned test DDL.
 
+require Logger
+
 alias PhoenixKitEntities.Test.Repo, as: TestRepo
 
 # Pin URL prefix to "/" via persistent_term so PhoenixKit.Utils.Routes.path/2
@@ -146,7 +148,29 @@ if repo_available do
   {:ok, _pid} = PhoenixKitEntities.Test.Endpoint.start_link()
 end
 
+# The `gettext_backend`/`gettext_domain` API on PhoenixKit.Dashboard.Tab
+# (phoenix_kit core PR #522) is required by the i18n smoke test. This
+# module's floor already requires phoenix_kit ~> 2.0, which ships the API,
+# but the check stays in place so a future floor relaxation degrades
+# gracefully instead of raising UndefinedFunctionError.
+i18n_api_available =
+  Code.ensure_loaded?(PhoenixKit.Dashboard.Tab) and
+    function_exported?(PhoenixKit.Dashboard.Tab, :localized_label, 1)
+
+unless i18n_api_available do
+  Logger.info(
+    "[test_helper] PhoenixKit.Dashboard.Tab.localized_label/1 not available — " <>
+      "i18n tests excluded. They will run automatically once `phoenix_kit` is " <>
+      "upgraded to a release that ships the gettext_backend API."
+  )
+end
+
 # Exclude integration tests when DB is not available
-exclude = if repo_available, do: [], else: [:integration]
+exclude =
+  [
+    if(!repo_available, do: :integration),
+    if(!i18n_api_available, do: :requires_phoenix_kit_i18n_api)
+  ]
+  |> Enum.filter(& &1)
 
 ExUnit.start(exclude: exclude)
