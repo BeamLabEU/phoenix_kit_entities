@@ -40,7 +40,7 @@ deliberately does not include:
 
 ```bash
 mix deps.get                # Install dependencies
-createdb phoenix_kit_entities_test  # First-time test DB setup
+createdb phoenix_kit_entities_test  # First-time test DB setup — see "Testing" below for the PGDATABASE/PGPOOL override
 ```
 
 ### Testing
@@ -532,8 +532,9 @@ function is created by core's V40.
 
 ### Setup
 
-This module owns its own test database (`phoenix_kit_entities_test`).
-Create it once:
+By default this module points at its own test database
+(`phoenix_kit_entities_test`) — that's only the default, not a
+guarantee; see the `PGDATABASE` override below. Create it once:
 
 ```bash
 createdb phoenix_kit_entities_test
@@ -541,6 +542,24 @@ createdb phoenix_kit_entities_test
 
 If the DB is absent, integration tests auto-exclude via the
 `:integration` tag (see `test/test_helper.exs`) — unit tests still run.
+
+`database:` / `pool_size:` in `config/test.exs` read `PGDATABASE` /
+`PGPOOL` instead, falling back to the hardcoded name above and
+`System.schedulers_online() * 2` when unset — same mechanism core
+`phoenix_kit`'s `config/test.exs` uses. Set both to point this suite
+at a database it doesn't own and can't `CREATEDB` for itself, e.g. a
+shared instance also used by sibling `phoenix_kit_*` modules:
+
+```bash
+PGDATABASE=migration_test_db PGPOOL=6 mix test
+```
+
+**Caution:** if `PGDATABASE` points at a database other modules also
+use, don't combine it with `PHOENIX_KIT_PATH=../phoenix_kit` (local
+core checkout) — `test_helper.exs`'s migration call would then run
+*that* core's migration chain against the shared database, moving its
+schema for every other module pointed at the same `PGDATABASE`, not
+just this suite.
 
 The critical config wiring is in `config/test.exs`:
 
