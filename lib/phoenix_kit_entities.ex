@@ -87,6 +87,7 @@ defmodule PhoenixKitEntities do
   use Ecto.Schema
   use PhoenixKit.SchemaPrefix
   use PhoenixKit.Module
+  use Gettext, backend: PhoenixKitEntities.Gettext
 
   import Ecto.Changeset
   import Ecto.Query, warn: false
@@ -1086,7 +1087,11 @@ defmodule PhoenixKitEntities do
   def permission_metadata do
     %{
       key: "entities",
-      label: "Entities",
+      # gettext_noop/1 anchors extraction to this definition site so
+      # `mix gettext.extract` keeps finding the msgid even if the literal
+      # `gettext("Entities")` calls elsewhere in this package (tab page
+      # titles) get reworded independently.
+      label: gettext_noop("Entities"),
       icon: "hero-cube-transparent",
       description: "Dynamic content types and custom data structures",
       # Renders the label translated in the admin permissions matrix, the
@@ -1132,7 +1137,7 @@ defmodule PhoenixKitEntities do
     [
       Tab.new!(
         id: :admin_entities,
-        label: "Entities",
+        label: gettext_noop("Entities"),
         icon: "hero-cube",
         path: "entities",
         priority: 540,
@@ -1263,7 +1268,7 @@ defmodule PhoenixKitEntities do
     [
       Tab.new!(
         id: :admin_settings_entities,
-        label: "Entities",
+        label: gettext_noop("Entities"),
         icon: "hero-cube",
         path: "entities",
         priority: 935,
