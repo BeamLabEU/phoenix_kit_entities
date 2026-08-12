@@ -93,7 +93,7 @@ defmodule PhoenixKitEntities.FormBuilder do
   import Phoenix.Component
   import PhoenixKitWeb.Components.Core.Icon, only: [icon: 1]
   import PhoenixKitWeb.Components.Core.FormFieldLabel, only: [label: 1]
-  use Gettext, backend: PhoenixKitWeb.Gettext
+  use Gettext, backend: PhoenixKitEntities.Gettext
 
   alias PhoenixKit.Modules.Languages.DialectMapper
   alias PhoenixKit.Utils.Format

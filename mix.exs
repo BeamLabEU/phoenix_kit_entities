@@ -43,7 +43,7 @@ defmodule PhoenixKitEntities.MixProject do
 
   def application do
     [
-      extra_applications: [:logger]
+      extra_applications: [:logger, :gettext]
     ]
   end
 
@@ -94,6 +94,10 @@ defmodule PhoenixKitEntities.MixProject do
       # LiveView is needed for the admin pages.
       {:phoenix_live_view, "~> 1.0"},
 
+      # Own Gettext backend for translated sidebar tabs, permission labels,
+      # and admin UI — see priv/gettext/ and lib/phoenix_kit_entities/gettext.ex.
+      {:gettext, "~> 1.0"},
+
       # Optional: add ex_doc for generating documentation
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
 
@@ -110,7 +114,7 @@ defmodule PhoenixKitEntities.MixProject do
     [
       licenses: ["MIT"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib .formatter.exs mix.exs README.md CHANGELOG.md LICENSE)
+      files: ~w(lib priv .formatter.exs mix.exs README.md CHANGELOG.md LICENSE)
     ]
   end
 

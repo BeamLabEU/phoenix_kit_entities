@@ -10,6 +10,10 @@ defmodule PhoenixKitEntities.Web.EntityForm do
   @dialyzer {:nowarn_function, parse_accept_list: 1}
 
   use PhoenixKitWeb, :live_view
+  # Override the backend `use PhoenixKitWeb, :live_view` wires by default
+  # (PhoenixKitWeb.Gettext, core's own — unreachable from this package's
+  # `mix gettext.extract`). See lib/phoenix_kit_entities/gettext.ex.
+  use Gettext, backend: PhoenixKitEntities.Gettext
   on_mount(PhoenixKitEntities.Web.Hooks)
 
   require Logger
@@ -1444,30 +1448,18 @@ defmodule PhoenixKitEntities.Web.EntityForm do
 
   # Template Helper Functions
 
-  def field_type_label("text"), do: gettext("Text")
-  def field_type_label("textarea"), do: gettext("Text Area")
-  def field_type_label("email"), do: gettext("Email")
-  def field_type_label("url"), do: gettext("URL")
-  def field_type_label("rich_text"), do: gettext("Rich Text Editor")
-  def field_type_label("number"), do: gettext("Number")
-  def field_type_label("boolean"), do: gettext("Boolean")
-  def field_type_label("date"), do: gettext("Date")
-  def field_type_label("select"), do: gettext("Select Dropdown")
-  def field_type_label("radio"), do: gettext("Radio Buttons")
-  def field_type_label("checkbox"), do: gettext("Checkboxes")
-
-  def field_type_label(type_name) do
-    case FieldTypes.get_type(type_name) do
-      nil -> type_name
-      type_info -> type_info.label
-    end
-  end
+  # FieldTypes.label_for/1 is the single source of truth for translated
+  # field-type labels (one literal `gettext(...)` clause per type, so
+  # `mix gettext.extract` picks them up) — this just delegates to it
+  # instead of keeping a second copy of the same clauses here.
+  def field_type_label(type_name), do: FieldTypes.label_for(type_name)
 
   def field_category_label(:basic), do: gettext("Basic")
   def field_category_label(:numeric), do: gettext("Numeric")
   def field_category_label(:boolean), do: gettext("Boolean")
   def field_category_label(:datetime), do: gettext("Date & Time")
   def field_category_label(:choice), do: gettext("Choice")
+  def field_category_label(:advanced), do: gettext("Advanced")
   def field_category_label(other), do: to_string(other)
 
   def field_type_icon(type_name) do
@@ -2764,19 +2756,21 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                           <%= if stats["honeypot_triggers"] do %>
                             <div class="badge badge-warning gap-1">
                               <.icon name="hero-bug-ant" class="w-3 h-3" />
-                              {gettext("Honeypot")}: {stats["honeypot_triggers"]}
+                              {gettext("Honeypot: %{count}", count: stats["honeypot_triggers"])}
                             </div>
                           <% end %>
                           <%= if stats["too_fast_triggers"] do %>
                             <div class="badge badge-warning gap-1">
                               <.icon name="hero-bolt" class="w-3 h-3" />
-                              {gettext("Too Fast")}: {stats["too_fast_triggers"]}
+                              {gettext("Too Fast: %{count}", count: stats["too_fast_triggers"])}
                             </div>
                           <% end %>
                           <%= if stats["rate_limited_triggers"] do %>
                             <div class="badge badge-warning gap-1">
                               <.icon name="hero-clock" class="w-3 h-3" />
-                              {gettext("Rate Limited")}: {stats["rate_limited_triggers"]}
+                              {gettext("Rate Limited: %{count}",
+                                count: stats["rate_limited_triggers"]
+                              )}
                             </div>
                           <% end %>
                         </div>
@@ -2786,8 +2780,8 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                     <%!-- Last submission time --%>
                     <%= if stats["last_submission_at"] do %>
                       <div class="mt-4 text-sm text-base-content/60">
-                        {gettext("Last submission")}: {format_stats_datetime(
-                          stats["last_submission_at"]
+                        {gettext("Last submission: %{datetime}",
+                          datetime: format_stats_datetime(stats["last_submission_at"])
                         )}
                       </div>
                     <% end %>
@@ -3193,7 +3187,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                         value="true"
                         checked={FieldTypes.allow_other?(@field_form)}
                       />
-                      <span class="label-text">{gettext("Allow custom option (Muu)")}</span>
+                      <span class="label-text">{gettext("Allow a custom \"Other\" option")}</span>
                     </.label>
                   </div>
                 <% end %>

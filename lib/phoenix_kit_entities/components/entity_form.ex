@@ -12,7 +12,7 @@ defmodule PhoenixKitEntities.Components.EntityForm do
   - `entity_slug` (required) - The slug/name of the entity to render form for
   """
   use Phoenix.Component
-  use Gettext, backend: PhoenixKitWeb.Gettext
+  use Gettext, backend: PhoenixKitEntities.Gettext
 
   alias PhoenixKit.Utils.Date, as: UtilsDate
   alias PhoenixKitEntities, as: Entities

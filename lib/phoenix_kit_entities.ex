@@ -87,6 +87,7 @@ defmodule PhoenixKitEntities do
   use Ecto.Schema
   use PhoenixKit.SchemaPrefix
   use PhoenixKit.Module
+  use Gettext, backend: PhoenixKitEntities.Gettext
 
   import Ecto.Changeset
   import Ecto.Query, warn: false
@@ -1086,9 +1087,17 @@ defmodule PhoenixKitEntities do
   def permission_metadata do
     %{
       key: "entities",
-      label: "Entities",
+      # gettext_noop/1 anchors extraction to this definition site so
+      # `mix gettext.extract` keeps finding the msgid even if the literal
+      # `gettext("Entities")` calls elsewhere in this package (tab page
+      # titles) get reworded independently.
+      label: gettext_noop("Entities"),
       icon: "hero-cube-transparent",
-      description: "Dynamic content types and custom data structures"
+      description: "Dynamic content types and custom data structures",
+      # Renders the label translated in the admin permissions matrix, the
+      # same way the sidebar tabs below translate theirs.
+      gettext_backend: PhoenixKitEntities.Gettext,
+      gettext_domain: "default"
     }
   end
 
@@ -1128,7 +1137,7 @@ defmodule PhoenixKitEntities do
     [
       Tab.new!(
         id: :admin_entities,
-        label: "Entities",
+        label: gettext_noop("Entities"),
         icon: "hero-cube",
         path: "entities",
         priority: 540,
@@ -1138,7 +1147,9 @@ defmodule PhoenixKitEntities do
         group: :admin_modules,
         subtab_display: :when_active,
         highlight_with_subtabs: false,
-        dynamic_children: &__MODULE__.entities_children/1
+        dynamic_children: &__MODULE__.entities_children/1,
+        gettext_backend: PhoenixKitEntities.Gettext,
+        gettext_domain: "default"
       )
     ]
   end
@@ -1177,14 +1188,14 @@ defmodule PhoenixKitEntities do
   @spec entities_children(any(), String.t() | nil) :: [PhoenixKit.Dashboard.Tab.t()]
   @spec entities_children(any()) :: [PhoenixKit.Dashboard.Tab.t()]
   def entities_children(_scope, locale) when is_binary(locale) or is_nil(locale) do
-    cached_entity_summaries(locale || Gettext.get_locale(PhoenixKitWeb.Gettext))
+    cached_entity_summaries(locale || Gettext.get_locale(PhoenixKitEntities.Gettext))
     |> build_entity_tabs()
   rescue
     _ -> []
   end
 
   def entities_children(_scope) do
-    locale = Gettext.get_locale(PhoenixKitWeb.Gettext)
+    locale = Gettext.get_locale(PhoenixKitEntities.Gettext)
 
     cached_entity_summaries(locale)
     |> build_entity_tabs()
@@ -1257,14 +1268,16 @@ defmodule PhoenixKitEntities do
     [
       Tab.new!(
         id: :admin_settings_entities,
-        label: "Entities",
+        label: gettext_noop("Entities"),
         icon: "hero-cube",
         path: "entities",
         priority: 935,
         level: :admin,
         parent: :admin_settings,
         permission: "entities",
-        match: :prefix
+        match: :prefix,
+        gettext_backend: PhoenixKitEntities.Gettext,
+        gettext_domain: "default"
       )
     ]
   end

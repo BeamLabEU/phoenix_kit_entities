@@ -5,6 +5,10 @@ defmodule PhoenixKitEntities.Web.DataForm do
   """
 
   use PhoenixKitWeb, :live_view
+  # Override the backend `use PhoenixKitWeb, :live_view` wires by default
+  # (PhoenixKitWeb.Gettext, core's own — unreachable from this package's
+  # `mix gettext.extract`). See lib/phoenix_kit_entities/gettext.ex.
+  use Gettext, backend: PhoenixKitEntities.Gettext
   on_mount(PhoenixKitEntities.Web.Hooks)
 
   require Logger
@@ -1211,7 +1215,11 @@ defmodule PhoenixKitEntities.Web.DataForm do
   defp add_form_errors(changeset, errors) do
     Enum.reduce(errors, changeset, fn {field_key, field_errors}, acc ->
       Enum.reduce(field_errors, acc, fn error, inner_acc ->
-        Ecto.Changeset.add_error(inner_acc, :data, "#{field_key}: #{error}")
+        Ecto.Changeset.add_error(
+          inner_acc,
+          :data,
+          gettext("%{key}: %{error}", key: field_key, error: error)
+        )
       end)
     end)
   end

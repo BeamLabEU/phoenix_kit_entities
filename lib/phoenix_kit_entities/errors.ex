@@ -6,7 +6,8 @@ defmodule PhoenixKitEntities.Errors do
   Keeping the API layer locale-agnostic means callers can pattern-match
   on atoms and decide their own presentation. Anything user-facing
   (flash messages, error banners) goes through `message/1` which wraps
-  each mapping in `gettext/1` using the `PhoenixKitWeb.Gettext` backend.
+  each mapping in `gettext/1` using this package's own
+  `PhoenixKitEntities.Gettext` backend.
 
   ## Supported reason shapes
 
@@ -15,8 +16,8 @@ defmodule PhoenixKitEntities.Errors do
     * tagged tuples — `{:invalid_field_type, type}`,
       `{:requires_options, type}`, `{:missing_required_keys, [keys]}`,
       `{:user_entity_limit_reached, max}`. The dynamic part is
-      interpolated via `gettext` bindings so the wording lives in core
-      `.po` files.
+      interpolated via `gettext` bindings so the wording lives in this
+      package's own `.po` files.
     * strings — passed through unchanged (legacy / pre-existing
       messages already translated at the call site)
     * anything else — rendered as `"Unexpected error: <inspect>"` via
@@ -31,7 +32,7 @@ defmodule PhoenixKitEntities.Errors do
       "Invalid field type: blob"
   """
 
-  use Gettext, backend: PhoenixKitWeb.Gettext
+  use Gettext, backend: PhoenixKitEntities.Gettext
 
   @typedoc """
   Plain atoms returned by the Entities public API.

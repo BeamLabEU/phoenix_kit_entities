@@ -5,6 +5,10 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
   """
 
   use PhoenixKitWeb, :live_view
+  # Override the backend `use PhoenixKitWeb, :live_view` wires by default
+  # (PhoenixKitWeb.Gettext, core's own — unreachable from this package's
+  # `mix gettext.extract`). See lib/phoenix_kit_entities/gettext.ex.
+  use Gettext, backend: PhoenixKitEntities.Gettext
   on_mount(PhoenixKitEntities.Web.Hooks)
 
   require Logger
@@ -1135,7 +1139,9 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
                         {gettext("Archived")}
                       </option>
                       <option value="trashed" selected={@selected_status == "trashed"}>
-                        {gettext("Trash")}{if @trashed_records > 0, do: " (#{@trashed_records})", else: ""}
+                        {if @trashed_records > 0,
+                          do: gettext("Trash (%{count})", count: @trashed_records),
+                          else: gettext("Trash")}
                       </option>
                     </select>
                   </label>
@@ -1663,15 +1669,21 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
                         <% end %>
                         <span>
                           <.icon name="hero-calendar" class="w-3 h-3 inline mr-1" />
-                          {gettext("Created")} {PhoenixKit.Utils.Date.format_date_with_user_format(
-                            data_record.date_created
+                          {gettext("Created %{date}",
+                            date:
+                              PhoenixKit.Utils.Date.format_date_with_user_format(
+                                data_record.date_created
+                              )
                           )}
                         </span>
                         <%= if data_record.date_updated != data_record.date_created do %>
                           <span>
                             <.icon name="hero-clock" class="w-3 h-3 inline mr-1" />
-                            {gettext("Updated")} {PhoenixKit.Utils.Date.format_date_with_user_format(
-                              data_record.date_updated
+                            {gettext("Updated %{date}",
+                              date:
+                                PhoenixKit.Utils.Date.format_date_with_user_format(
+                                  data_record.date_updated
+                                )
                             )}
                           </span>
                         <% end %>
