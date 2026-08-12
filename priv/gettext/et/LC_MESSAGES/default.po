@@ -169,17 +169,17 @@ msgstr "Lisa peidetud väli, mille tavaliselt täidavad botid"
 #: lib/phoenix_kit_entities/web/data_form.ex:1320
 #, elixir-autogen, elixir-format
 msgid "Add data for the %{entity} entity"
-msgstr "Lisage andmed olemi %{entity} jaoks"
+msgstr "Lisage andmed üksuse %{entity} jaoks"
 
 #: lib/phoenix_kit_entities/web/entity_form.ex:2116
 #, elixir-autogen, elixir-format
 msgid "Add fields to define what data this entity can store"
-msgstr "Lisa väljad, et määrata, milliseid andmeid see olem saab salvestada"
+msgstr "Lisa väljad, et määrata, milliseid andmeid see üksus saab salvestada"
 
 #: lib/phoenix_kit_entities/web/entity_form.ex:2390
 #, elixir-autogen, elixir-format
 msgid "Add fields to this entity first before configuring the public form."
-msgstr "Enne avaliku vormi seadistamist lisa sellele olemile väljad."
+msgstr "Enne avaliku vormi seadistamist lisa sellele üksusele väljad."
 
 #: lib/phoenix_kit_entities/field_types.ex:324
 #: lib/phoenix_kit_entities/web/entity_form.ex:1477
@@ -195,7 +195,7 @@ msgstr "Kõik"
 #: lib/phoenix_kit_entities/web/entities.ex:204
 #, elixir-autogen, elixir-format
 msgid "All Entities"
-msgstr "Kõik olemid"
+msgstr "Kõik üksused"
 
 #: lib/phoenix_kit_entities/web/data_navigator.ex:1130
 #, elixir-autogen, elixir-format
@@ -210,7 +210,7 @@ msgstr "Kõik andmekirjed"
 #: lib/phoenix_kit_entities/web/entity_form.ex:2270
 #, elixir-autogen, elixir-format
 msgid "Allow this entity to be embedded as a form on public pages"
-msgstr "Luba seda olemit kuvada avalikel lehtedel vormina"
+msgstr "Luba seda üksust kuvada avalikel lehtedel vormina"
 
 #: lib/phoenix_kit_entities/errors.ex:71
 #, elixir-autogen, elixir-format
@@ -244,7 +244,7 @@ msgstr "Arhiveeritud (peidetud)"
 #: lib/phoenix_kit_entities/web/entities_settings.ex:824
 #, elixir-autogen, elixir-format
 msgid "Are you sure you want to disable the entities system? This will make all entities and data inaccessible."
-msgstr "Kas olete kindel, et soovite keelata olemite süsteemi? See muudab kõik olemid ja andmed kättesaamatuks."
+msgstr "Kas olete kindel, et soovite keelata üksuste süsteemi? See muudab kõik üksused ja andmed kättesaamatuks."
 
 #: lib/phoenix_kit_entities/web/entity_form.ex:2065
 #, elixir-autogen, elixir-format
@@ -259,12 +259,12 @@ msgstr "Ekspordi andmekirjed automaatselt nende loomisel või uuendamisel"
 #: lib/phoenix_kit_entities/web/entity_form.ex:2868
 #, elixir-autogen, elixir-format
 msgid "Automatically export entity schema when changes are saved"
-msgstr "Ekspordi olemi skeem automaatselt muudatuste salvestamisel"
+msgstr "Ekspordi üksuse skeem automaatselt muudatuste salvestamisel"
 
 #: lib/phoenix_kit_entities/web/project_data_live.ex:135
 #, elixir-autogen, elixir-format
 msgid "Available entities:"
-msgstr "Saadaval olevad olemid:"
+msgstr "Saadaval olevad üksused:"
 
 #: lib/phoenix_kit_entities/web/entity_form.ex:2831
 #, elixir-autogen, elixir-format
@@ -304,7 +304,7 @@ msgstr "Brändid"
 #: lib/phoenix_kit_entities/web/data_navigator.ex:972
 #, elixir-autogen, elixir-format
 msgid "Browse and manage all entity data records across your system"
-msgstr "Sirvi ja halda kõiki oma süsteemi olemite andmekirjeid"
+msgstr "Sirvi ja halda kõiki oma süsteemi üksuste andmekirjeid"
 
 #: lib/phoenix_kit_entities/web/data_navigator.ex:960
 #, elixir-autogen, elixir-format
@@ -469,12 +469,12 @@ msgstr "Suhtlus"
 #: lib/phoenix_kit_entities/web/entity_form.ex:2834
 #, elixir-autogen, elixir-format
 msgid "Configure automatic backup to file for this entity"
-msgstr "Seadista selle olemi automaatne varundamine faili"
+msgstr "Seadista selle üksuse automaatne varundamine faili"
 
 #: lib/phoenix_kit_entities/web/entities_settings.ex:792
 #, elixir-autogen, elixir-format
 msgid "Configure the entities system behavior and preferences"
-msgstr "Seadistage olemite süsteemi käitumist ja eelistusi"
+msgstr "Seadistage üksuste süsteemi käitumist ja eelistusi"
 
 #: lib/phoenix_kit_entities/web/entity_form.ex:2186
 #, elixir-autogen, elixir-format
@@ -496,7 +496,7 @@ msgstr "Loo %{entity}"
 #: lib/phoenix_kit_entities/web/entity_form.ex:2946
 #, elixir-autogen, elixir-format
 msgid "Create Entity"
-msgstr "Loo olem"
+msgstr "Loo üksus"
 
 #: lib/phoenix_kit_entities/web/data_form.ex:1313
 #, elixir-autogen, elixir-format
@@ -506,13 +506,13 @@ msgstr "Loo uus %{entity}"
 #: lib/phoenix_kit_entities/web/entity_form.ex:1753
 #, elixir-autogen, elixir-format
 msgid "Create New Entity"
-msgstr "Loo uus olem"
+msgstr "Loo uus üksus"
 
 #: lib/phoenix_kit_entities/web/data_navigator.ex:1316
 #: lib/phoenix_kit_entities/web/entities.ex:258
 #, elixir-autogen, elixir-format
 msgid "Create Your First Entity"
-msgstr "Loo oma esimene olem"
+msgstr "Loo oma esimene üksus"
 
 #: lib/phoenix_kit_entities/web/entity_form.ex:1799
 #: lib/phoenix_kit_entities/web/entity_form.ex:2958
@@ -528,7 +528,7 @@ msgstr "Looge ja hallake kohandatud sisutüüpe dünaamiliste väljadega"
 #: lib/phoenix_kit_entities/web/data_navigator.ex:1310
 #, elixir-autogen, elixir-format
 msgid "Create your first entity to start managing data records."
-msgstr "Loo oma esimene olem, et alustada andmekirjete haldamist."
+msgstr "Loo oma esimene üksus, et alustada andmekirjete haldamist."
 
 #: lib/phoenix_kit_entities/web/data_navigator.ex:1422
 #: lib/phoenix_kit_entities/web/entities.ex:272
@@ -650,7 +650,7 @@ msgstr "Kustuta jäädavalt"
 #: lib/phoenix_kit_entities/web/entity_form.ex:1960
 #, elixir-autogen, elixir-format
 msgid "Describe what this entity represents..."
-msgstr "Kirjelda, mida see olem kujutab..."
+msgstr "Kirjelda, mida see üksus kujutab..."
 
 #: lib/phoenix_kit_entities/web/entity_form.ex:2301
 #, elixir-autogen, elixir-format
@@ -698,12 +698,12 @@ msgstr "Keelatud"
 #: lib/phoenix_kit_entities/web/entities_settings.ex:303
 #, elixir-autogen, elixir-format
 msgid "Disabled data sync for %{count} entities"
-msgstr "Andmete sünkroonimine keelati %{count} olemi jaoks"
+msgstr "Andmete sünkroonimine keelati %{count} üksuse jaoks"
 
 #: lib/phoenix_kit_entities/web/entities_settings.ex:275
 #, elixir-autogen, elixir-format
 msgid "Disabled definition sync for %{count} entities"
-msgstr "Definitsioonide sünkroonimine keelati %{count} olemi jaoks"
+msgstr "Definitsioonide sünkroonimine keelati %{count} üksuse jaoks"
 
 #: lib/phoenix_kit_entities/web/entities_settings.ex:822
 #, elixir-autogen, elixir-format
@@ -783,7 +783,7 @@ msgstr "Muuda andmeid"
 #: lib/phoenix_kit_entities/web/entity_form.ex:1753
 #, elixir-autogen, elixir-format
 msgid "Edit Entity"
-msgstr "Muuda olemit"
+msgstr "Muuda üksust"
 
 #: lib/phoenix_kit_entities/web/entity_form.ex:2969
 #, elixir-autogen, elixir-format
@@ -846,12 +846,12 @@ msgstr "Kõigepealt lubage definitsioonide sünkroonimine"
 #: lib/phoenix_kit_entities/web/entities_settings.ex:809
 #, elixir-autogen, elixir-format
 msgid "Enable or disable the entire entities module"
-msgstr "Luba või keela kogu olemite moodul"
+msgstr "Luba või keela kogu üksuste moodul"
 
 #: lib/phoenix_kit_entities/web/entity_form.ex:2249
 #, elixir-autogen, elixir-format
 msgid "Enable this entity to be used as an embeddable form on public pages"
-msgstr "Luba seda olemit kasutada avalikel lehtedel manustatava vormina"
+msgstr "Luba seda üksust kasutada avalikel lehtedel manustatava vormina"
 
 #: lib/phoenix_kit_entities/form_builder.ex:677
 #: lib/phoenix_kit_entities/web/entities_settings.ex:716
@@ -862,12 +862,12 @@ msgstr "Lubatud"
 #: lib/phoenix_kit_entities/web/entities_settings.ex:292
 #, elixir-autogen, elixir-format
 msgid "Enabled data sync for %{count} entities"
-msgstr "Andmete sünkroonimine lubati %{count} olemi jaoks"
+msgstr "Andmete sünkroonimine lubati %{count} üksuse jaoks"
 
 #: lib/phoenix_kit_entities/web/entities_settings.ex:262
 #, elixir-autogen, elixir-format
 msgid "Enabled definition sync for %{count} entities"
-msgstr "Definitsioonide sünkroonimine lubati %{count} olemi jaoks"
+msgstr "Definitsioonide sünkroonimine lubati %{count} üksuse jaoks"
 
 #: lib/phoenix_kit_entities/web/entities_settings.ex:835
 #, elixir-autogen, elixir-format
@@ -896,89 +896,89 @@ msgstr "Sisesta rikastekst..."
 #: lib/phoenix_kit_entities/web/entities_settings.ex:848
 #, elixir-autogen, elixir-format
 msgid "Entities"
-msgstr "Olemid"
+msgstr "Üksused"
 
 #: lib/phoenix_kit_entities/web/entities_settings.ex:33
 #: lib/phoenix_kit_entities/web/entities_settings.ex:791
 #, elixir-autogen, elixir-format
 msgid "Entities Settings"
-msgstr "Olemite seaded"
+msgstr "Üksuste seaded"
 
 #: lib/phoenix_kit_entities/web/entities_settings.ex:807
 #, elixir-autogen, elixir-format
 msgid "Entities System"
-msgstr "Olemite süsteem"
+msgstr "Üksuste süsteem"
 
 #: lib/phoenix_kit_entities/web/entities_settings.ex:108
 #, elixir-autogen, elixir-format
 msgid "Entities settings saved successfully"
-msgstr "Olemite seaded salvestati edukalt"
+msgstr "Üksuste seaded salvestati edukalt"
 
 #: lib/phoenix_kit_entities/web/entities_settings.ex:171
 #, elixir-autogen, elixir-format
 msgid "Entities system disabled successfully"
-msgstr "Olemite süsteem keelati edukalt"
+msgstr "Üksuste süsteem keelati edukalt"
 
 #: lib/phoenix_kit_entities/web/entities_settings.ex:145
 #, elixir-autogen, elixir-format
 msgid "Entities system enabled successfully"
-msgstr "Olemite süsteem lubati edukalt"
+msgstr "Üksuste süsteem lubati edukalt"
 
 #: lib/phoenix_kit_entities/web/data_navigator.ex:1419
 #: lib/phoenix_kit_entities/web/entities.ex:269
 #: lib/phoenix_kit_entities/web/entities_settings.ex:985
 #, elixir-autogen, elixir-format
 msgid "Entity"
-msgstr "Olem"
+msgstr "Üksus"
 
 #: lib/phoenix_kit_entities/web/entities.ex:74
 #, elixir-autogen, elixir-format
 msgid "Entity '%{name}' archived successfully"
-msgstr "Olem „%{name}” edukalt arhiveeritud"
+msgstr "Üksus „%{name}” edukalt arhiveeritud"
 
 #: lib/phoenix_kit_entities/web/entities.ex:99
 #, elixir-autogen, elixir-format
 msgid "Entity '%{name}' restored successfully"
-msgstr "Olem „%{name}” edukalt taastatud"
+msgstr "Üksus „%{name}” edukalt taastatud"
 
 #: lib/phoenix_kit_entities/web/data_form.ex:734
 #: lib/phoenix_kit_entities/web/data_navigator.ex:690
 #: lib/phoenix_kit_entities/web/entity_form.ex:1204
 #, elixir-autogen, elixir-format
 msgid "Entity '%{name}' was %{status} in another session."
-msgstr "Olem „%{name}” oli teises seansis %{status}."
+msgstr "Üksus „%{name}” oli teises seansis %{status}."
 
 #: lib/phoenix_kit_entities/web/entity_form.ex:1807
 #, elixir-autogen, elixir-format
 msgid "Entity Information"
-msgstr "Olemi teave"
+msgstr "Üksuse teave"
 
 #: lib/phoenix_kit_entities/web/entities.ex:197
 #, elixir-autogen, elixir-format
 msgid "Entity Manager"
-msgstr "Olemite haldur"
+msgstr "Üksuste haldur"
 
 #: lib/phoenix_kit_entities/web/entity_form.ex:1904
 #, elixir-autogen, elixir-format
 msgid "Entity Name (Plural)"
-msgstr "Olemi nimi (mitmus)"
+msgstr "Üksuse nimi (mitmus)"
 
 #: lib/phoenix_kit_entities/web/entity_form.ex:1884
 #, elixir-autogen, elixir-format
 msgid "Entity Name (Singular)"
-msgstr "Olemi nimi (ainsus)"
+msgstr "Üksuse nimi (ainsus)"
 
 #: lib/phoenix_kit_entities/web/data_form.ex:1550
 #: lib/phoenix_kit_entities/web/data_form.ex:1686
 #, elixir-autogen, elixir-format
 msgid "Entity Type"
-msgstr "Olemi tüüp"
+msgstr "Üksuse tüüp"
 
 #: lib/phoenix_kit_entities/web/entity_form.ex:1058
 #: lib/phoenix_kit_entities/web/entity_form.ex:1091
 #, elixir-autogen, elixir-format
 msgid "Entity created successfully"
-msgstr "Olem edukalt loodud"
+msgstr "Üksus edukalt loodud"
 
 #: lib/phoenix_kit_entities/controllers/entity_form_controller.ex:65
 #: lib/phoenix_kit_entities/web/entities_settings.ex:219
@@ -986,39 +986,39 @@ msgstr "Olem edukalt loodud"
 #: lib/phoenix_kit_entities/web/entities_settings.ex:243
 #, elixir-autogen, elixir-format
 msgid "Entity not found"
-msgstr "Olemit ei leitud"
+msgstr "Üksust ei leitud"
 
 #: lib/phoenix_kit_entities/errors.ex:68
 #, elixir-autogen, elixir-format
 msgid "Entity not found."
-msgstr "Olemit ei leitud."
+msgstr "Üksust ei leitud."
 
 #: lib/phoenix_kit_entities/form_builder.ex:1045
 #, elixir-autogen, elixir-format
 msgid "Entity relations coming soon"
-msgstr "Olemitevahelised seosed lisatakse peagi"
+msgstr "Üksustevahelised seosed lisatakse peagi"
 
 #: lib/phoenix_kit_entities/web/entity_form.ex:1057
 #: lib/phoenix_kit_entities/web/entity_form.ex:1084
 #, elixir-autogen, elixir-format
 msgid "Entity saved successfully"
-msgstr "Olem edukalt salvestatud"
+msgstr "Üksus edukalt salvestatud"
 
 #: lib/phoenix_kit_entities/web/data_form.ex:746
 #, elixir-autogen, elixir-format
 msgid "Entity schema updated. Form revalidated."
-msgstr "Olemi skeem on uuendatud. Vorm on uuesti valideeritud."
+msgstr "Üksuse skeem on uuendatud. Vorm on uuesti valideeritud."
 
 #: lib/phoenix_kit_entities/web/entity_form.ex:1214
 #, elixir-autogen, elixir-format
 msgid "Entity updated in another session."
-msgstr "Olemit uuendati teises seansis."
+msgstr "Üksust uuendati teises seansis."
 
 #: lib/phoenix_kit_entities/web/data_form.ex:759
 #: lib/phoenix_kit_entities/web/data_navigator.ex:718
 #, elixir-autogen, elixir-format
 msgid "Entity was deleted in another session."
-msgstr "Olem kustutati teises seansis."
+msgstr "Üksus kustutati teises seansis."
 
 #: lib/phoenix_kit_entities/web/entities_settings.ex:960
 #, elixir-autogen, elixir-format
@@ -1093,7 +1093,7 @@ msgstr "Andmekirje arhiveerimine ebaõnnestus"
 #: lib/phoenix_kit_entities/web/entities.ex:80
 #, elixir-autogen, elixir-format
 msgid "Failed to archive entity"
-msgstr "Olemi arhiveerimine ebaõnnestus"
+msgstr "Üksuse arhiveerimine ebaõnnestus"
 
 #: lib/phoenix_kit_entities/web/data_navigator.ex:370
 #, elixir-autogen, elixir-format
@@ -1103,12 +1103,12 @@ msgstr "Kirje kustutamine ebaõnnestus"
 #: lib/phoenix_kit_entities/web/entities_settings.ex:180
 #, elixir-autogen, elixir-format
 msgid "Failed to disable entities: %{reason}"
-msgstr "Olemite keelamine ebaõnnestus: %{reason}"
+msgstr "Üksuste keelamine ebaõnnestus: %{reason}"
 
 #: lib/phoenix_kit_entities/web/entities_settings.ex:154
 #, elixir-autogen, elixir-format
 msgid "Failed to enable entities: %{reason}"
-msgstr "Olemite lubamine ebaõnnestus: %{reason}"
+msgstr "Üksuste lubamine ebaõnnestus: %{reason}"
 
 #: lib/phoenix_kit_entities/web/data_navigator.ex:293
 #, elixir-autogen, elixir-format
@@ -1118,7 +1118,7 @@ msgstr "Andmekirje taastamine ebaõnnestus"
 #: lib/phoenix_kit_entities/web/entities.ex:105
 #, elixir-autogen, elixir-format
 msgid "Failed to restore entity"
-msgstr "Olemi taastamine ebaõnnestus"
+msgstr "Üksuse taastamine ebaõnnestus"
 
 #: lib/phoenix_kit_entities/web/data_navigator.ex:340
 #, elixir-autogen, elixir-format
@@ -1293,7 +1293,7 @@ msgstr "Genereeri"
 #: lib/phoenix_kit_entities/web/entity_form.ex:1938
 #, elixir-autogen, elixir-format
 msgid "Generate from Entity Name"
-msgstr "Genereeri olemi nimest"
+msgstr "Genereeri üksuse nimest"
 
 #: lib/phoenix_kit_entities/web/entity_form.ex:3033
 #, elixir-autogen, elixir-format
@@ -1362,17 +1362,17 @@ msgstr "Impordi kõik"
 #: lib/phoenix_kit_entities/web/entities_settings.ex:1433
 #, elixir-autogen, elixir-format
 msgid "Import All Entities"
-msgstr "Impordi kõik olemid"
+msgstr "Impordi kõik üksused"
 
 #: lib/phoenix_kit_entities/web/entities_settings.ex:1154
 #, elixir-autogen, elixir-format
 msgid "Import Entities"
-msgstr "Impordi olemid"
+msgstr "Impordi üksused"
 
 #: lib/phoenix_kit_entities/web/entities_settings.ex:1424
 #, elixir-autogen, elixir-format
 msgid "Import This Entity"
-msgstr "Impordi see olem"
+msgstr "Impordi see üksus"
 
 #: lib/phoenix_kit_entities/web/entities_settings.ex:548
 #, elixir-autogen, elixir-format
@@ -1561,7 +1561,7 @@ msgstr "Uued andmed"
 #: lib/phoenix_kit_entities/web/entity_form.ex:72
 #, elixir-autogen, elixir-format
 msgid "New Entity"
-msgstr "Uus olem"
+msgstr "Uus üksus"
 
 #: lib/phoenix_kit_entities/web/project_data_live.ex:68
 #, elixir-autogen, elixir-format
@@ -1586,12 +1586,12 @@ msgstr "Andmekirjeid pole veel"
 #: lib/phoenix_kit_entities/web/data_navigator.ex:1307
 #, elixir-autogen, elixir-format
 msgid "No Entities Created Yet"
-msgstr "Ühtegi olemit pole veel loodud"
+msgstr "Ühtegi üksust pole veel loodud"
 
 #: lib/phoenix_kit_entities/web/entities.ex:247
 #, elixir-autogen, elixir-format
 msgid "No Entities Yet"
-msgstr "Olemeid pole veel"
+msgstr "Üksusi pole veel"
 
 #: lib/phoenix_kit_entities/web/entity_form.ex:2113
 #, elixir-autogen, elixir-format
@@ -1611,17 +1611,17 @@ msgstr "Ühtegi andmekirjet ei vasta praegustele filtritele. Proovi muuta otsing
 #: lib/phoenix_kit_entities/web/entities_settings.ex:1110
 #, elixir-autogen, elixir-format
 msgid "No entities defined yet"
-msgstr "Olemeid pole veel määratletud"
+msgstr "Üksusi pole veel määratletud"
 
 #: lib/phoenix_kit_entities/web/entities_settings.ex:1403
 #, elixir-autogen, elixir-format
 msgid "No entities found to import"
-msgstr "Importimiseks ei leitud ühtegi olemit"
+msgstr "Importimiseks ei leitud ühtegi üksust"
 
 #: lib/phoenix_kit_entities/web/project_data_live.ex:127
 #, elixir-autogen, elixir-format
 msgid "No entity linked to this project yet."
-msgstr "Selle projektiga ei ole veel ühtegi olemit seotud."
+msgstr "Selle projektiga ei ole veel ühtegi üksust seotud."
 
 #: lib/phoenix_kit_entities/web/entity_form.ex:3299
 #, elixir-autogen, elixir-format
@@ -1636,12 +1636,12 @@ msgstr "Valikuid pole veel lisatud. Alustamiseks klõpsa \"Lisa valik\"."
 #: lib/phoenix_kit_entities/web/data_navigator.ex:1373
 #, elixir-autogen, elixir-format
 msgid "No published entities available. Publish an entity first to create data."
-msgstr "Avaldatud olemeid pole saadaval. Andmete loomiseks avalda kõigepealt olem."
+msgstr "Avaldatud üksusi pole saadaval. Andmete loomiseks avalda kõigepealt üksus."
 
 #: lib/phoenix_kit_entities/web/data_navigator.ex:1102
 #, elixir-autogen, elixir-format
 msgid "No published entities available. Publish an entity first."
-msgstr "Avaldatud olemeid pole saadaval. Avalda kõigepealt olem."
+msgstr "Avaldatud üksusi pole saadaval. Avalda kõigepealt üksus."
 
 #: lib/phoenix_kit_entities/web/project_data_live.ex:153
 #, elixir-autogen, elixir-format
@@ -1708,7 +1708,7 @@ msgstr "Kasutada saab ainult avaldatuid"
 #: lib/phoenix_kit_entities/web/project_data_live.ex:74
 #, elixir-autogen, elixir-format
 msgid "Open in Entities"
-msgstr "Ava Olemites"
+msgstr "Ava Üksustes"
 
 #: lib/phoenix_kit_entities/web/entity_form.ex:3176
 #, elixir-autogen, elixir-format
@@ -1738,7 +1738,7 @@ msgstr "Ülem"
 #: lib/phoenix_kit_entities/web/project_data_live.ex:130
 #, elixir-autogen, elixir-format
 msgid "Paste an entity UUID into this tab's settings in the project's Modules & features panel."
-msgstr "Kleepige olemi UUID selle vahekaardi seadetesse projekti paneelil „Moodulid ja funktsioonid“."
+msgstr "Kleepige üksuse UUID selle vahekaardi seadetesse projekti paneelil „Moodulid ja funktsioonid“."
 
 #: lib/phoenix_kit_entities/web/data_navigator.ex:1217
 #, elixir-autogen, elixir-format
@@ -1754,7 +1754,7 @@ msgstr "Kustutada see kirje jäädavalt? Seda ei saa tagasi võtta ja see ebaõn
 #: lib/phoenix_kit_entities/web/data_navigator.ex:175
 #, elixir-autogen, elixir-format
 msgid "Please select an entity to view its data"
-msgstr "Vali olem, et vaadata selle andmeid"
+msgstr "Vali üksus, et vaadata selle andmeid"
 
 #: lib/phoenix_kit_entities/controllers/entity_form_controller.ex:184
 #, elixir-autogen, elixir-format
@@ -1779,7 +1779,7 @@ msgstr "Avaliku vormi seadistus"
 #: lib/phoenix_kit_entities/controllers/entity_form_controller.ex:70
 #, elixir-autogen, elixir-format
 msgid "Public form is not enabled for this entity"
-msgstr "Selle olemi avalik vorm ei ole lubatud"
+msgstr "Selle üksuse avalik vorm ei ole lubatud"
 
 #: lib/phoenix_kit_entities/web/data_form.ex:1507
 #: lib/phoenix_kit_entities/web/data_form.ex:1643
@@ -1897,7 +1897,7 @@ msgstr "Tagasi lükatud"
 #: lib/phoenix_kit_entities/web/entity_form.ex:1348
 #, elixir-autogen, elixir-format
 msgid "Relation field requires a target entity"
-msgstr "Seose väli nõuab sihtolemit"
+msgstr "Seose väli nõuab sihtüksust"
 
 #: lib/phoenix_kit_entities/web/entity_form.ex:2169
 #, elixir-autogen, elixir-format
@@ -1964,7 +1964,7 @@ msgstr "Salvesta, kuid märgi kahtlaseks"
 #: lib/phoenix_kit_entities/web/entity_form.ex:2916
 #, elixir-autogen, elixir-format
 msgid "Save the entity first to configure backup settings."
-msgstr "Varunduse seadete häälestamiseks salvesta esmalt olem."
+msgstr "Varunduse seadete häälestamiseks salvesta esmalt üksus."
 
 #: lib/phoenix_kit_entities/components/live_data_form.ex:715
 #: lib/phoenix_kit_entities/web/data_form.ex:1351
@@ -2012,7 +2012,7 @@ msgstr "Rippmenüü"
 #: lib/phoenix_kit_entities/web/data_navigator.ex:1351
 #, elixir-autogen, elixir-format
 msgid "Select Entity Type"
-msgstr "Vali olemi tüüp"
+msgstr "Vali üksuse tüüp"
 
 #: lib/phoenix_kit_entities/web/data_navigator.ex:1415
 #, elixir-autogen, elixir-format
@@ -2047,7 +2047,7 @@ msgstr "Näita üksikasjalikke veateateid, kui turvakontrollid ebaõnnestuvad (a
 #: lib/phoenix_kit_entities/web/project_data_live.ex:117
 #, elixir-autogen, elixir-format
 msgid "Showing %{shown} of %{total} — the full list lives in the Entities admin."
-msgstr "Kuvatud %{shown} %{total}-st — täielik nimekiri asub Olemite haldusliideses."
+msgstr "Kuvatud %{shown} %{total}-st — täielik nimekiri asub Üksuste haldusliideses."
 
 #: lib/phoenix_kit_entities/field_types.ex:337
 #, elixir-autogen, elixir-format
@@ -2148,7 +2148,7 @@ msgstr "Sünkroniseeri kirjed failiga"
 #: lib/phoenix_kit_entities/web/entities_settings.ex:876
 #, elixir-autogen, elixir-format
 msgid "Sync entity definitions and data to filesystem for version control and backup."
-msgstr "Sünkroonige olemite definitsioonid ja andmed failisüsteemiga versioonihalduse ja varundamise jaoks."
+msgstr "Sünkroonige üksuste definitsioonid ja andmed failisüsteemiga versioonihalduse ja varundamise jaoks."
 
 #: lib/phoenix_kit_entities/web/entity_form.ex:1974
 #, elixir-autogen, elixir-format
@@ -2203,12 +2203,12 @@ msgstr "Vormi esitamisel tekkis viga. Palun proovige uuesti."
 #: lib/phoenix_kit_entities/web/entity_form.ex:1765
 #, elixir-autogen, elixir-format
 msgid "This entity is currently being edited by another user. You are in view-only mode."
-msgstr "Seda olemit muudab hetkel teine kasutaja. Oled ainult vaatamise režiimis."
+msgstr "Seda üksust muudab hetkel teine kasutaja. Oled ainult vaatamise režiimis."
 
 #: lib/phoenix_kit_entities/web/entity_form.ex:1146
 #, elixir-autogen, elixir-format
 msgid "This entity was deleted in another session."
-msgstr "See olem kustutati teises seansis."
+msgstr "See üksus kustutati teises seansis."
 
 #: lib/phoenix_kit_entities/form_builder.ex:923
 #: lib/phoenix_kit_entities/form_builder.ex:1048
@@ -2323,7 +2323,7 @@ msgstr "Uuenda %{entity}"
 #: lib/phoenix_kit_entities/web/entity_form.ex:2946
 #, elixir-autogen, elixir-format
 msgid "Update Entity"
-msgstr "Uuenda olemit"
+msgstr "Uuenda üksust"
 
 #: lib/phoenix_kit_entities/web/entity_form.ex:3223
 #, elixir-autogen, elixir-format
@@ -2339,7 +2339,7 @@ msgstr "Uuenda ja naase"
 #: lib/phoenix_kit_entities/web/data_form.ex:1318
 #, elixir-autogen, elixir-format
 msgid "Update data for the %{entity} entity"
-msgstr "Uuendage olemi %{entity} andmeid"
+msgstr "Uuendage üksuse %{entity} andmeid"
 
 #: lib/phoenix_kit_entities/web/project_data_live.ex:91
 #, elixir-autogen, elixir-format
@@ -2355,7 +2355,7 @@ msgstr "Kasutage ainult väiketähti, numbreid ja sidekriipse."
 #: lib/phoenix_kit_entities/web/entity_form.ex:1825
 #, elixir-autogen, elixir-format
 msgid "Use the language tabs below to translate this entity's name, plural name, slug, and description. The primary language (marked with a star) is required. Other languages are optional — any empty fields will fall back to the primary language value."
-msgstr "Kasuta allolevaid keelesakke, et tõlkida selle olemi nimi, mitmuse nimi, slug ja kirjeldus. Peamine keel (tähistatud tärniga) on kohustuslik. Teised keeled on vabatahtlikud — tühjad väljad asendatakse peamise keele väärtusega."
+msgstr "Kasuta allolevaid keelesakke, et tõlkida selle üksuse nimi, mitmuse nimi, slug ja kirjeldus. Peamine keel (tähistatud tärniga) on kohustuslik. Teised keeled on vabatahtlikud — tühjad väljad asendatakse peamise keele väärtusega."
 
 #: lib/phoenix_kit_entities/web/entity_form.ex:1497
 #, elixir-autogen, elixir-format
@@ -2403,7 +2403,7 @@ msgstr "Jah"
 #: lib/phoenix_kit_entities/errors.ex:100
 #, elixir-autogen, elixir-format
 msgid "You have reached the maximum limit of %{max} entities"
-msgstr "Olete jõudnud oma olemite piirini (maksimaalselt %{max})"
+msgstr "Olete jõudnud oma üksuste piirini (maksimaalselt %{max})"
 
 #: lib/phoenix_kit_entities/controllers/entity_form_controller.ex:170
 #, elixir-autogen, elixir-format
@@ -2573,7 +2573,7 @@ msgstr "vanem ei saa olla selle kirje järglane"
 #: lib/phoenix_kit_entities/entity_data.ex:235
 #, elixir-autogen, elixir-format
 msgid "parent must belong to the same entity"
-msgstr "vanem peab kuuluma samasse olemisse"
+msgstr "vanem peab kuuluma samasse üksusse"
 
 #: lib/phoenix_kit_entities/entity_data.ex:226
 #, elixir-autogen, elixir-format

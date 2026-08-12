@@ -63,11 +63,11 @@ defmodule PhoenixKitEntities.I18nTest do
       end)
     end
 
-    test "et locale resolves the admin 'Entities' tab to 'Olemid'" do
+    test "et locale resolves the admin 'Entities' tab to 'Üksused'" do
       [tab | _] = PhoenixKitEntities.admin_tabs()
 
       Gettext.with_locale(EntitiesGettext, "et", fn ->
-        assert Tab.localized_label(tab) == "Olemid"
+        assert Tab.localized_label(tab) == "Üksused"
       end)
     end
 
