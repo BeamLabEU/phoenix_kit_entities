@@ -1,3 +1,52 @@
+## 0.4.0 - 2026-08-12
+
+### Added
+
+- **Per-module Gettext i18n (en/ru/et)** (#28). This package now owns a
+  `PhoenixKitEntities.Gettext` backend and its own catalogues under
+  `priv/gettext/` (487 msgids per locale). Previously every `gettext` call here
+  resolved against core's `PhoenixKitWeb.Gettext`, so strings extracted from
+  this package would never land in any `.po` file it ships and the admin UI
+  rendered in English whatever the locale.
+- **`FieldTypes.label_for/1`** — translated display labels for field types.
+  Each clause is a literal `gettext(...)` call, because `gettext(type.label)`
+  over the raw `@field_types` map would feed a variable to the extractor and
+  the labels would never be translated at all.
+- **`PGDATABASE` / `PGPOOL` overrides for the test suite** (#29).
+  `config/test.exs` reads both from the environment, falling back to the
+  previous hardcoded database name and `System.schedulers_online() * 2`.
+  Without them the only way to run the `:integration` half of the suite was a
+  Postgres role holding `CREATEDB`, which shared and managed instances
+  withhold. CI and local runs are unaffected.
+
+### Fixed
+
+- **The package shipped without its `priv/` directory.** `files:` in `mix.exs`
+  listed only `lib`, so the new `priv/gettext/**` catalogues would not have
+  reached a single Hex consumer — every install would have rendered raw msgids
+  regardless of locale (#28).
+- **`version/0` reported `0.2.10`.** `mix.exs` declared 0.3.2, so releases
+  0.3.0, 0.3.1 and 0.3.2 all shipped reporting a version they were not. It is
+  now derived from `Mix.Project.config()` at compile time rather than
+  hardcoded, which makes the drift unrepresentable, and a test pins the
+  derivation.
+- **The field-type picker reordered itself per locale.** `for_picker/0` sorted
+  by the *translated* category label, so the grouping changed with the active
+  language — English puts "Date & Time" before "Choice", while Estonian's
+  "Kuupäev ja aeg" sorts after "Valik". It now sorts by `category_list/0`
+  order, which is locale-independent (#28).
+- **Dialyzer failed on the new Gettext backend.** Gettext 1.0 + Expo 1.1
+  generate a `Gettext.Plural.plural/2` call against Expo's opaque
+  `PluralForms` struct inside `use Gettext.Backend`, reported as
+  `call_without_opaque`. Added the narrowly-scoped `.dialyzer_ignore.exs` that
+  the other `phoenix_kit_*` packages with their own backend already carry, and
+  wired `ignore_warnings:` in `mix.exs`.
+
+### Changed
+
+- Dependency updates: `phoenix` 1.8.11, `beamlab_ex_aws_sqs` 5.0.1, `hackney`
+  4.7.4 and the transitive set.
+
 ## 0.3.2 - 2026-08-11
 
 ### Changed

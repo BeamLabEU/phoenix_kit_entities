@@ -41,6 +41,15 @@ defmodule PhoenixKitEntitiesTest do
     test "disable_system/0 is exported" do
       assert function_exported?(PhoenixKitEntities, :disable_system, 0)
     end
+
+    # Nothing pinned this before, and it drifted badly: `version/0` returned
+    # "0.2.10" while mix.exs declared 0.3.2, so three published releases
+    # reported a version they were not. It is now derived from
+    # `Mix.Project.config()` at compile time, which makes the drift
+    # unrepresentable — this asserts that derivation stays in place.
+    test "version/0 matches the mix.exs version" do
+      assert PhoenixKitEntities.version() == Mix.Project.config()[:version]
+    end
   end
 
   describe "permission_metadata/0" do

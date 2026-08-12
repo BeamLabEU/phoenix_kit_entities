@@ -1289,9 +1289,14 @@ defmodule PhoenixKitEntities do
   @spec css_sources() :: [atom()]
   def css_sources, do: [:phoenix_kit_entities]
 
+  # Read from mix.exs at compile time rather than hardcoded, so this can never
+  # drift from the package version again. It had: releases 0.3.0, 0.3.1 and
+  # 0.3.2 all shipped reporting "0.2.10".
+  @version Mix.Project.config()[:version]
+
   @impl PhoenixKit.Module
   @spec version() :: String.t()
-  def version, do: "0.2.10"
+  def version, do: @version
 
   @impl PhoenixKit.Module
   @spec route_module() :: module()

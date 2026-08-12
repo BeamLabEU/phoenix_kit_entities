@@ -1,7 +1,7 @@
 defmodule PhoenixKitEntities.MixProject do
   use Mix.Project
 
-  @version "0.3.2"
+  @version "0.4.0"
   @source_url "https://github.com/BeamLabEU/phoenix_kit_entities"
 
   def project do
@@ -20,7 +20,10 @@ defmodule PhoenixKitEntities.MixProject do
       package: package(),
 
       # Dialyzer
-      dialyzer: [plt_add_apps: [:phoenix_kit, :mix]],
+      dialyzer: [
+        plt_add_apps: [:phoenix_kit, :mix],
+        ignore_warnings: ".dialyzer_ignore.exs"
+      ],
 
       # Coverage — exclude test-support modules so the percentage tracks
       # production code, not boilerplate (DataCase, LiveCase, Test.Endpoint,
