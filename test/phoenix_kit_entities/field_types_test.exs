@@ -247,6 +247,28 @@ defmodule PhoenixKitEntities.FieldTypesTest do
       [text_row | _] = Enum.filter(FieldTypes.for_picker(), &(&1.value == "text"))
       assert text_row.description == FieldTypes.description_for("text")
     end
+
+    test "orders entries by category_list/0 position, not by the translated category label" do
+      # Sorting by translated label reorders the picker per-locale (and even
+      # in en, "Advanced" < "Basic" alphabetically, so a label-based sort
+      # would put :advanced-category types before :basic ones). The
+      # contract is: grouped by category in category_list/0's declared
+      # order, independent of what each category's label happens to say.
+      category_position =
+        FieldTypes.category_list()
+        |> Enum.with_index()
+        |> Map.new(fn {{_category, label}, index} -> {label, index} end)
+
+      positions =
+        FieldTypes.for_picker()
+        |> Enum.map(&Map.fetch!(category_position, &1.category))
+
+      assert positions == Enum.sort(positions)
+    end
+
+    test "the first entry belongs to the first category (Basic), matching the @doc example" do
+      assert %{category: "Basic"} = List.first(FieldTypes.for_picker())
+    end
   end
 
   # --- description_for/1 ---

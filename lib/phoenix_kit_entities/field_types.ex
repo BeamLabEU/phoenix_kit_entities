@@ -453,7 +453,11 @@ defmodule PhoenixKitEntities.FieldTypes do
   @doc """
   Returns field types suitable for a field picker UI.
 
-  Formats the data for use in select dropdowns or type choosers.
+  Formats the data for use in select dropdowns or type choosers. Grouped by
+  category in `category_list/0` order (Basic, Numeric, Boolean, Date & Time,
+  Choice, Advanced) — sorting by the translated category *label* instead
+  would reorder the picker per-locale (en groups "Date & Time" before
+  "Choice"; et's "Kuupäev ja aeg" sorts after "Valik").
 
   ## Examples
 
@@ -461,13 +465,20 @@ defmodule PhoenixKitEntities.FieldTypes do
       [
         %{value: "text", label: "Text", category: "Basic", icon: "hero-pencil"},
         ...
+        %{value: "file", label: "File Upload", category: "Advanced", icon: "hero-document-arrow-up"}
       ]
   """
   def for_picker do
     category_labels = Map.new(category_list())
 
+    category_order =
+      category_list()
+      |> Enum.with_index()
+      |> Map.new(fn {{category, _label}, index} -> {category, index} end)
+
     @field_types
     |> Map.values()
+    |> Enum.sort_by(&Map.get(category_order, &1.category, map_size(category_order)))
     |> Enum.map(fn type ->
       %{
         value: type.name,
@@ -478,7 +489,6 @@ defmodule PhoenixKitEntities.FieldTypes do
         requires_options: type.requires_options
       }
     end)
-    |> Enum.sort_by(& &1.category)
   end
 
   @doc """
