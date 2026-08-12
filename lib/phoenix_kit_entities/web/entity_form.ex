@@ -1448,26 +1448,11 @@ defmodule PhoenixKitEntities.Web.EntityForm do
 
   # Template Helper Functions
 
-  def field_type_label("text"), do: gettext("Text")
-  def field_type_label("textarea"), do: gettext("Text Area")
-  def field_type_label("email"), do: gettext("Email")
-  def field_type_label("url"), do: gettext("URL")
-  def field_type_label("rich_text"), do: gettext("Rich Text Editor")
-  def field_type_label("number"), do: gettext("Number")
-  def field_type_label("boolean"), do: gettext("Boolean")
-  def field_type_label("date"), do: gettext("Date")
-  def field_type_label("select"), do: gettext("Select Dropdown")
-  def field_type_label("radio"), do: gettext("Radio Buttons")
-  def field_type_label("checkbox"), do: gettext("Checkboxes")
-  def field_type_label("file"), do: gettext("File Upload")
-  def field_type_label("heading"), do: gettext("Section Heading")
-
-  def field_type_label(type_name) do
-    case FieldTypes.get_type(type_name) do
-      nil -> type_name
-      _type_info -> FieldTypes.label_for(type_name)
-    end
-  end
+  # FieldTypes.label_for/1 is the single source of truth for translated
+  # field-type labels (one literal `gettext(...)` clause per type, so
+  # `mix gettext.extract` picks them up) — this just delegates to it
+  # instead of keeping a second copy of the same clauses here.
+  def field_type_label(type_name), do: FieldTypes.label_for(type_name)
 
   def field_category_label(:basic), do: gettext("Basic")
   def field_category_label(:numeric), do: gettext("Numeric")
