@@ -19,7 +19,15 @@ defmodule PhoenixKitEntities.Controllers.EntityFormControllerTest do
   @endpoint PhoenixKitEntities.Test.Endpoint
 
   setup do
-    actor_uuid = Ecto.UUID.generate()
+    # A real admin row, not a bare `Ecto.UUID.generate()`. The public form is
+    # unauthenticated, so `EntityData.create/2` auto-fills the creator from the
+    # first admin — with no user in the database at all there is nobody to
+    # attribute a submission to, and `create/2` documents that as a validation
+    # error on `created_by`. Every install that can serve a public form has an
+    # admin (somebody configured the form), so a userless database is a fixture
+    # artifact rather than a scenario to encode.
+    admin = PhoenixKit.Test.Fixtures.admin_fixture()
+    actor_uuid = admin.uuid
 
     {:ok, entity} =
       Entities.create_entity(

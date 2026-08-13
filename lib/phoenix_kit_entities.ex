@@ -618,8 +618,11 @@ defmodule PhoenixKitEntities do
   # write n+1; ties resolve via the date_created secondary sort and
   # clear on the next drag.
   defp maybe_add_entity_position(attrs) when is_map(attrs) do
-    has_position =
-      Map.has_key?(attrs, :position) or Map.has_key?(attrs, "position")
+    # Value, not key presence — see `maybe_add_created_by/1` above. An explicit
+    # `position: nil` meant "already decided" here, so the auto-position was
+    # skipped and the cast nil also bypassed the schema's `default: 0`, leaving
+    # the entity unordered.
+    has_position = not is_nil(Map.get(attrs, :position) || Map.get(attrs, "position"))
 
     if has_position do
       attrs
@@ -629,15 +632,32 @@ defmodule PhoenixKitEntities do
   end
 
   # Auto-fill created_by_uuid with first admin if not provided
+  # As in `EntityData.maybe_add_created_by/1`: "provided" is about the value, not
+  # the key. A caller passing an explicit `created_by_uuid: nil` skipped the
+  # auto-fill here too — caught by `validate_creator_reference/1` as a changeset
+  # error rather than a NOT NULL raise, but it is the same defect, and a caller
+  # that means "I have no creator" should still get the default.
   defp maybe_add_created_by(attrs) when is_map(attrs) do
     has_created_by_uuid =
-      Map.has_key?(attrs, :created_by_uuid) or Map.has_key?(attrs, "created_by_uuid")
+      not is_nil(Map.get(attrs, :created_by_uuid) || Map.get(attrs, "created_by_uuid"))
 
     if has_created_by_uuid do
       attrs
     else
       creator_uuid = Auth.get_first_admin_uuid() || Auth.get_first_user_uuid()
-      if creator_uuid, do: Map.put(attrs, :created_by_uuid, creator_uuid), else: attrs
+
+      # Match the caller's key form — mixing atom and string keys makes Ecto's
+      # cast/3 raise. Same precedence as `EntityData`'s `attr_key/3`: an existing
+      # key wins in either form, otherwise follow the shape of the map.
+      key =
+        cond do
+          Map.has_key?(attrs, :created_by_uuid) -> :created_by_uuid
+          Map.has_key?(attrs, "created_by_uuid") -> "created_by_uuid"
+          Enum.any?(Map.keys(attrs), &is_binary/1) -> "created_by_uuid"
+          true -> :created_by_uuid
+        end
+
+      if creator_uuid, do: Map.put(attrs, key, creator_uuid), else: attrs
     end
   end
 

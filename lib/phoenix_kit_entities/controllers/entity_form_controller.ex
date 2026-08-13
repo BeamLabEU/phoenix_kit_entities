@@ -338,10 +338,15 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
       |> Enum.filter(fn {key, _value} -> key in allowed_fields end)
       |> Enum.into(%{})
 
-    # Build entity data params
-    # For public submissions, use the current user if logged in, otherwise nil (system)
+    # Build entity data params.
+    #
+    # This form is deliberately unauthenticated, so `current_user` is nil for
+    # exactly the flow the feature exists to serve. Omit the key entirely in that
+    # case rather than sending an explicit nil: `EntityData.create/2` auto-fills
+    # the creator only when none was supplied, and `created_by_uuid` is NOT NULL.
+    # The submission is still identifiable as public through metadata's
+    # `"source" => "public_form"`.
     current_user = conn.assigns[:current_user]
-    created_by_uuid = if current_user, do: current_user.uuid, else: nil
     title = generate_submission_title(entity, filtered_data)
 
     # Capture submission metadata if enabled (default is true)
@@ -355,17 +360,21 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
     # Add security flags to metadata if any were triggered
     {metadata, status} = apply_security_flags(metadata, security_flags, Logger)
 
-    entity_data_params = %{
-      "entity_uuid" => entity.uuid,
-      "title" => title,
-      "slug" => generate_slug(title),
-      "status" => status,
-      "data" => filtered_data,
-      "metadata" => metadata,
-      "created_by_uuid" => created_by_uuid
-    }
+    entity_data_params =
+      %{
+        "entity_uuid" => entity.uuid,
+        "title" => title,
+        "slug" => generate_slug(title),
+        "status" => status,
+        "data" => filtered_data,
+        "metadata" => metadata
+      }
+      |> maybe_put_creator(current_user)
 
-    case EntityData.create(entity_data_params) do
+    # Pass the actor explicitly, nil included: an anonymous submission has no
+    # actor, and the activity log's fallback would otherwise file it under the
+    # creator the auto-fill chose.
+    case EntityData.create(entity_data_params, actor_uuid: current_user && current_user.uuid) do
       {:ok, _data_record} ->
         # Track successful submission
         increment_form_stats(entity, :submitted, security_flags)
@@ -410,6 +419,12 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
     # Form is only truly enabled if it's enabled AND has at least one field selected
     enabled && not Enum.empty?(fields)
   end
+
+  # Attribute the submission only when someone is actually signed in. Sending
+  # `"created_by_uuid" => nil` instead would satisfy `EntityData.create/2`'s
+  # "was a creator supplied?" check and defeat its auto-fill.
+  defp maybe_put_creator(params, nil), do: params
+  defp maybe_put_creator(params, user), do: Map.put(params, "created_by_uuid", user.uuid)
 
   # SECURITY: the candidate keys are ordinary field keys — nothing forces
   # their submitted values to be strings, and a nested param

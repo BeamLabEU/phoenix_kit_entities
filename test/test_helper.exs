@@ -165,6 +165,14 @@ unless i18n_api_available do
   )
 end
 
+# `PhoenixKit.Test.Fixtures.user_fixture/1` and friends go through
+# `PhoenixKit.Users.Auth.register_user/2`, which calls the Hammer-backed rate
+# limiter. Without this its ETS table does not exist and every fixture dies with
+# "the table identifier does not refer to an existing ETS table". Mirrors core's
+# `phoenix_kit/test/test_helper.exs` and the same lines in billing, calendar,
+# ecommerce, projects and staff.
+{:ok, _pid} = PhoenixKit.Users.RateLimiter.Backend.start_link([])
+
 # Exclude integration tests when DB is not available
 exclude =
   [
