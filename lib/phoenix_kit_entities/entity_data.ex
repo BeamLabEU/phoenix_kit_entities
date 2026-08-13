@@ -1376,6 +1376,10 @@ defmodule PhoenixKitEntities.EntityData do
     # Cannot tell -> fill a creator. An attributed submission is a smaller
     # failure than one that cannot be saved at all.
     _ -> false
+  catch
+    # An unreachable database RAISES on an unowned checkout but EXITS on a dead
+    # pool, so rescue alone would let a public request crash here.
+    _, _ -> false
   end
 
   # Overwrite the caller's own key form when one is already there. Choosing by
