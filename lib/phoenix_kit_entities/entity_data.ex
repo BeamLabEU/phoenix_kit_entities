@@ -349,7 +349,7 @@ defmodule PhoenixKitEntities.EntityData do
   defp validate_creator_reference(changeset) do
     cond do
       not is_nil(get_field(changeset, :created_by_uuid)) -> changeset
-      # From V167 a missing creator is a supported value, not an error: that is
+      # From V169 a missing creator is a supported value, not an error: that is
       # what an anonymous public submission looks like.
       anonymous_creator_supported?() -> changeset
       true -> add_error(changeset, :created_by_uuid, gettext("created_by_uuid must be present"))
@@ -1309,7 +1309,7 @@ defmodule PhoenixKitEntities.EntityData do
   # An explicit `created_by_uuid: nil` is not "I forgot", it is "this row has no
   # author": the public entity form is unauthenticated by design and passes
   # exactly that. Honouring it stores NULL, which is what the column means from
-  # core V167 on. Before V167 the column is NOT NULL and honouring it raises a
+  # core V169 on. Before V169 the column is NOT NULL and honouring it raises a
   # Postgrex 23502 out of an unauthenticated controller
   # (BeamLabEU/phoenix_kit#706), so on those installs the auto-fill still runs —
   # a submission attributed to the first admin beats one that cannot be saved.
@@ -1342,18 +1342,18 @@ defmodule PhoenixKitEntities.EntityData do
     end
   end
 
-  # Core V167 is what makes `phoenix_kit_entity_data.created_by_uuid` nullable.
+  # Core V169 is what makes `phoenix_kit_entity_data.created_by_uuid` nullable.
   # This module pins core from Hex, so it runs against installs on both sides of
   # that line and has to ask the DATABASE, not the compiled dependency.
   #
   # The constant must track the real migration number: nothing reserves one, so
   # a version renumbered before merge would leave this pointing at a different
   # migration entirely. Delete the gate once the core floor is past it.
-  @anonymous_creator_version 167
+  @anonymous_creator_version 169
   @anonymous_creator_cache_key {__MODULE__, :anonymous_creator_supported?}
 
   # ONLY the positive answer is cached. A node that boots while the database is
-  # still pre-V167 — the ordinary case, since an app starts before its release
+  # still pre-V169 — the ordinary case, since an app starts before its release
   # task migrates — would otherwise cache `false` into a term with no TTL and no
   # invalidation, and keep attributing anonymous submissions to an administrator
   # until someone restarted the BEAM. Migrations do not run backwards, so a

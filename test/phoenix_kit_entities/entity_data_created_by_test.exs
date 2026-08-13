@@ -38,13 +38,13 @@ defmodule PhoenixKitEntities.EntityDataCreatedByTest do
     {:ok, entity: entity, admin: admin}
   end
 
-  # Which side of the V167 gate this install is on. The behaviour under test
-  # differs by design: before V167 the column is NOT NULL and an explicit nil
-  # must be auto-filled to avoid a 23502; from V167 on it means "no author" and
+  # Which side of the V169 gate this install is on. The behaviour under test
+  # differs by design: before V169 the column is NOT NULL and an explicit nil
+  # must be auto-filled to avoid a 23502; from V169 on it means "no author" and
   # is stored. Asserting one of those unconditionally makes the suite red on the
   # other core, which is how a suite gets ignored.
   defp anonymous_creator_supported? do
-    PhoenixKit.Migrations.Postgres.migrated_version_runtime([]) >= 167
+    PhoenixKit.Migrations.Postgres.migrated_version_runtime([]) >= 169
   rescue
     _ -> false
   end
@@ -231,8 +231,8 @@ defmodule PhoenixKitEntities.EntityDataCreatedByWithoutUsersTest do
                "created_by_uuid" => nil
              })
 
-    if PhoenixKit.Migrations.Postgres.migrated_version_runtime([]) >= 167 do
-      # From V167 a missing creator is legal, so the made-up entity is what
+    if PhoenixKit.Migrations.Postgres.migrated_version_runtime([]) >= 169 do
+      # From V169 a missing creator is legal, so the made-up entity is what
       # fails — the point being that neither case raises.
       assert Keyword.has_key?(changeset.errors, :entity_uuid)
     else
@@ -258,25 +258,25 @@ end
 
 defmodule PhoenixKitEntities.EntityDataAnonymousCreatorTest do
   @moduledoc """
-  The other side of the V167 gate: once core makes
+  The other side of the V169 gate: once core makes
   `phoenix_kit_entity_data.created_by_uuid` nullable, an explicit
   `created_by_uuid: nil` means "this submission has no author" and is stored as
   NULL instead of being replaced with the first administrator.
 
-  Excluded by default because this module pins core from Hex and V167 is not in
+  Excluded by default because this module pins core from Hex and V169 is not in
   a release yet — against the published pin the column is NOT NULL and the
   auto-fill is the correct behaviour, which the sibling test file covers.
 
-      PHOENIX_KIT_PATH=../phoenix_kit PGDATABASE=phoenix_kit_entities_v167_test \\
+      PHOENIX_KIT_PATH=../phoenix_kit PGDATABASE=phoenix_kit_entities_v169_test \\
         mix test --include needs_unreleased_core
 
   Use a SEPARATE database for that run: `ensure_current/2` migrates whatever it
   is pointed at, so running this against the normal test database would move it
-  to V167 and flip the default run's expectations. `anonymous_creator_supported?/0`
+  to V169 and flip the default run's expectations. `anonymous_creator_supported?/0`
   also caches in `:persistent_term`, so the two branches cannot be exercised in
   one run either way.
 
-  Delete this file's tag, and the gate it tests, once core's floor is past V167.
+  Delete this file's tag, and the gate it tests, once core's floor is past V169.
   """
   use PhoenixKitEntities.DataCase, async: false
 

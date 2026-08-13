@@ -177,14 +177,14 @@ end
 # They fail against Hex because the feature isn't there yet, so the default run
 # skips them:
 #
-#     PHOENIX_KIT_PATH=../phoenix_kit PGDATABASE=phoenix_kit_entities_v167_test \
+#     PHOENIX_KIT_PATH=../phoenix_kit PGDATABASE=phoenix_kit_entities_v169_test \
 #       mix test --include needs_unreleased_core
 #
-# Currently: core V167, which makes `phoenix_kit_entity_data.created_by_uuid`
+# Currently: core V169, which makes `phoenix_kit_entity_data.created_by_uuid`
 # nullable so an anonymous public submission stores NULL instead of being
 # attributed to the first admin. Point that run at its OWN database — the suite
 # migrates whatever it is given, so reusing the normal test database would move
-# it to V167 and flip the default run's expectations.
+# it to V169 and flip the default run's expectations.
 #
 # Delete each from the tests and this line once the pin catches up.
 exclude =

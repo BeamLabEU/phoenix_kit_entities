@@ -344,7 +344,7 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
     # exactly the flow the feature exists to serve. The key is passed EXPLICITLY
     # as nil in that case: `EntityData.create/2` reads an explicit nil as "this
     # submission has no author" and stores NULL, which is what the column means
-    # from core V167 on. Omitting the key would instead trigger the auto-fill and
+    # from core V169 on. Omitting the key would instead trigger the auto-fill and
     # attribute an anonymous submission to the first admin.
     current_user = conn.assigns[:current_user]
     title = generate_submission_title(entity, filtered_data)
