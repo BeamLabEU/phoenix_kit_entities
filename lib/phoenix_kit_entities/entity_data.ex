@@ -1322,11 +1322,18 @@ defmodule PhoenixKitEntities.EntityData do
       Map.has_key?(attrs, :created_by_uuid) or Map.has_key?(attrs, "created_by_uuid")
 
     cond do
-      not is_nil(supplied) -> attrs
+      # A blank string is what an untouched form field posts, and `cast/3` turns
+      # it into nil — so treating it as a supplied creator would skip the
+      # auto-fill and then insert nothing.
+      not blank?(supplied) -> attrs
       key_present? and anonymous_creator_supported?() -> attrs
       true -> fill_created_by(attrs)
     end
   end
+
+  defp blank?(nil), do: true
+  defp blank?(value) when is_binary(value), do: String.trim(value) == ""
+  defp blank?(_), do: false
 
   defp fill_created_by(attrs) do
     case Auth.get_first_admin_uuid() || Auth.get_first_user_uuid() do
@@ -1345,20 +1352,25 @@ defmodule PhoenixKitEntities.EntityData do
   @anonymous_creator_version 167
   @anonymous_creator_cache_key {__MODULE__, :anonymous_creator_supported?}
 
+  # ONLY the positive answer is cached. A node that boots while the database is
+  # still pre-V167 — the ordinary case, since an app starts before its release
+  # task migrates — would otherwise cache `false` into a term with no TTL and no
+  # invalidation, and keep attributing anonymous submissions to an administrator
+  # until someone restarted the BEAM. Migrations do not run backwards, so a
+  # `true` can be cached forever, while a `false` is only ever "not yet".
   defp anonymous_creator_supported? do
-    case :persistent_term.get(@anonymous_creator_cache_key, :unknown) do
-      :unknown ->
-        # `Migration.migrated_version/0` only works inside a migration runner;
-        # `migrated_version_runtime/1` is core's runtime accessor — the same one
-        # `phoenix_kit.status` uses.
-        supported? =
-          PostgresMigrations.migrated_version_runtime([]) >= @anonymous_creator_version
+    if :persistent_term.get(@anonymous_creator_cache_key, false) do
+      true
+    else
+      # `Migration.migrated_version/0` only works inside a migration runner;
+      # `migrated_version_runtime/1` is core's runtime accessor — the same one
+      # `phoenix_kit.status` uses. Pass the configured prefix: a `--prefix`
+      # install keeps its chain marker in that schema, not in `public`.
+      opts = [prefix: Application.get_env(:phoenix_kit, :prefix, "public")]
+      supported? = PostgresMigrations.migrated_version_runtime(opts) >= @anonymous_creator_version
 
-        :persistent_term.put(@anonymous_creator_cache_key, supported?)
-        supported?
-
-      cached ->
-        cached
+      if supported?, do: :persistent_term.put(@anonymous_creator_cache_key, true)
+      supported?
     end
   rescue
     # Cannot tell -> fill a creator. An attributed submission is a smaller
