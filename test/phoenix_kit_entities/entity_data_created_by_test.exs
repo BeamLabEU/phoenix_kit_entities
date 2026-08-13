@@ -38,6 +38,17 @@ defmodule PhoenixKitEntities.EntityDataCreatedByTest do
     {:ok, entity: entity, admin: admin}
   end
 
+  # Which side of the V167 gate this install is on. The behaviour under test
+  # differs by design: before V167 the column is NOT NULL and an explicit nil
+  # must be auto-filled to avoid a 23502; from V167 on it means "no author" and
+  # is stored. Asserting one of those unconditionally makes the suite red on the
+  # other core, which is how a suite gets ignored.
+  defp anonymous_creator_supported? do
+    PhoenixKit.Migrations.Postgres.migrated_version_runtime([]) >= 167
+  rescue
+    _ -> false
+  end
+
   defp params(entity, extra) do
     Map.merge(
       %{
@@ -52,11 +63,15 @@ defmodule PhoenixKitEntities.EntityDataCreatedByTest do
     )
   end
 
-  test "an explicit nil creator is auto-filled, not raised on", ctx do
+  test "an explicit nil creator is honoured or auto-filled, but never raises", ctx do
     assert {:ok, record} =
              EntityData.create(params(ctx.entity, %{"created_by_uuid" => nil}))
 
-    assert record.created_by_uuid == ctx.admin.uuid
+    if anonymous_creator_supported?() do
+      assert is_nil(record.created_by_uuid)
+    else
+      assert record.created_by_uuid == ctx.admin.uuid
+    end
   end
 
   test "omitting the creator entirely still auto-fills", ctx do
@@ -73,7 +88,7 @@ defmodule PhoenixKitEntities.EntityDataCreatedByTest do
     assert record.created_by_uuid == other.uuid
   end
 
-  test "an atom-keyed explicit nil is auto-filled too", ctx do
+  test "an atom-keyed explicit nil takes the same path", ctx do
     assert {:ok, record} =
              EntityData.create(%{
                entity_uuid: ctx.entity.uuid,
@@ -83,7 +98,11 @@ defmodule PhoenixKitEntities.EntityDataCreatedByTest do
                created_by_uuid: nil
              })
 
-    assert record.created_by_uuid == ctx.admin.uuid
+    if anonymous_creator_supported?() do
+      assert is_nil(record.created_by_uuid)
+    else
+      assert record.created_by_uuid == ctx.admin.uuid
+    end
   end
 
   test "an explicit nil position is auto-filled rather than stored as NULL", ctx do
@@ -168,8 +187,13 @@ defmodule PhoenixKitEntities.EntityDataCreatedByTest do
     assert is_integer(entity.position)
   end
 
-  test "entities themselves take the same treatment", ctx do
-    assert {:ok, entity} =
+  test "an entity keeps requiring an author", ctx do
+    _ = ctx
+
+    # `phoenix_kit_entities.created_by_uuid` stays NOT NULL — there is no
+    # anonymous path for creating an entity — so an explicit nil is reported
+    # rather than quietly replaced with an administrator.
+    assert {:error, %Ecto.Changeset{} = changeset} =
              Entities.create_entity(%{
                name: "explicit_nil_creator_#{System.unique_integer([:positive])}",
                display_name: "Explicit Nil",
@@ -177,7 +201,7 @@ defmodule PhoenixKitEntities.EntityDataCreatedByTest do
                created_by_uuid: nil
              })
 
-    assert entity.created_by_uuid == ctx.admin.uuid
+    assert Keyword.has_key?(changeset.errors, :created_by_uuid)
   end
 end
 
@@ -207,7 +231,13 @@ defmodule PhoenixKitEntities.EntityDataCreatedByWithoutUsersTest do
                "created_by_uuid" => nil
              })
 
-    assert Keyword.has_key?(changeset.errors, :created_by_uuid)
+    if PhoenixKit.Migrations.Postgres.migrated_version_runtime([]) >= 167 do
+      # From V167 a missing creator is legal, so the made-up entity is what
+      # fails — the point being that neither case raises.
+      assert Keyword.has_key?(changeset.errors, :entity_uuid)
+    else
+      assert Keyword.has_key?(changeset.errors, :created_by_uuid)
+    end
   end
 
   test "a userless installation cannot define an entity either" do
@@ -223,5 +253,75 @@ defmodule PhoenixKitEntities.EntityDataCreatedByWithoutUsersTest do
              })
 
     assert Keyword.has_key?(changeset.errors, :created_by_uuid)
+  end
+end
+
+defmodule PhoenixKitEntities.EntityDataAnonymousCreatorTest do
+  @moduledoc """
+  The other side of the V167 gate: once core makes
+  `phoenix_kit_entity_data.created_by_uuid` nullable, an explicit
+  `created_by_uuid: nil` means "this submission has no author" and is stored as
+  NULL instead of being replaced with the first administrator.
+
+  Excluded by default because this module pins core from Hex and V167 is not in
+  a release yet — against the published pin the column is NOT NULL and the
+  auto-fill is the correct behaviour, which the sibling test file covers.
+
+      PHOENIX_KIT_PATH=../phoenix_kit PGDATABASE=phoenix_kit_entities_v167_test \\
+        mix test --include needs_unreleased_core
+
+  Use a SEPARATE database for that run: `ensure_current/2` migrates whatever it
+  is pointed at, so running this against the normal test database would move it
+  to V167 and flip the default run's expectations. `anonymous_creator_supported?/0`
+  also caches in `:persistent_term`, so the two branches cannot be exercised in
+  one run either way.
+
+  Delete this file's tag, and the gate it tests, once core's floor is past V167.
+  """
+  use PhoenixKitEntities.DataCase, async: false
+
+  @moduletag :needs_unreleased_core
+
+  alias PhoenixKitEntities, as: Entities
+  alias PhoenixKitEntities.EntityData
+
+  setup do
+    admin = PhoenixKit.Test.Fixtures.admin_fixture()
+
+    {:ok, entity} =
+      Entities.create_entity(
+        %{
+          name: "anon_probe",
+          display_name: "Anon Probe",
+          display_name_plural: "Anon Probes",
+          created_by_uuid: admin.uuid
+        },
+        actor_uuid: admin.uuid
+      )
+
+    {:ok, entity: entity, admin: admin}
+  end
+
+  test "an explicit nil creator is stored as NULL, not attributed to an admin", ctx do
+    assert {:ok, record} =
+             EntityData.create(%{
+               "entity_uuid" => ctx.entity.uuid,
+               "title" => "anonymous submission",
+               "created_by_uuid" => nil,
+               "metadata" => %{"source" => "public_form"}
+             })
+
+    assert is_nil(record.created_by_uuid)
+    refute record.created_by_uuid == ctx.admin.uuid
+  end
+
+  test "omitting the key still auto-fills, so internal callers are unchanged", ctx do
+    assert {:ok, record} =
+             EntityData.create(%{
+               "entity_uuid" => ctx.entity.uuid,
+               "title" => "internal creation"
+             })
+
+    assert record.created_by_uuid == ctx.admin.uuid
   end
 end

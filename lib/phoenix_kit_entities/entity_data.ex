@@ -77,6 +77,7 @@ defmodule PhoenixKitEntities.EntityData do
   import Ecto.Query, warn: false
   require Logger
 
+  alias PhoenixKit.Migrations.Postgres, as: PostgresMigrations
   alias PhoenixKit.Modules.Languages.DialectMapper
   alias PhoenixKit.Users.Auth
   alias PhoenixKit.Users.Auth.User
@@ -346,10 +347,12 @@ defmodule PhoenixKitEntities.EntityData do
     do: cs
 
   defp validate_creator_reference(changeset) do
-    if is_nil(get_field(changeset, :created_by_uuid)) do
-      add_error(changeset, :created_by_uuid, gettext("created_by_uuid must be present"))
-    else
-      changeset
+    cond do
+      not is_nil(get_field(changeset, :created_by_uuid)) -> changeset
+      # From V167 a missing creator is a supported value, not an error: that is
+      # what an anonymous public submission looks like.
+      anonymous_creator_supported?() -> changeset
+      true -> add_error(changeset, :created_by_uuid, gettext("created_by_uuid must be present"))
     end
   end
 
@@ -1300,29 +1303,67 @@ defmodule PhoenixKitEntities.EntityData do
     |> notify_data_event(:created, opts)
   end
 
-  # Auto-fill created_by_uuid with first admin if not provided.
+  # Auto-fill created_by_uuid with the first admin when the caller did not name
+  # one — with one deliberate exception.
   #
-  # "Provided" is about the VALUE, not the key. The public entity form is
-  # deliberately unauthenticated, so `entity_form_controller` builds
-  # `created_by_uuid = if current_user, do: current_user.uuid, else: nil` and
-  # passes it either way — a key-presence test (`Map.has_key?/2`) reads that
-  # explicit nil as "the caller supplied a creator", skips the auto-fill, and
-  # the insert dies on the column's NOT NULL constraint. That is a raw
-  # Postgrex 23502 raised out of the controller, not a changeset error.
+  # An explicit `created_by_uuid: nil` is not "I forgot", it is "this row has no
+  # author": the public entity form is unauthenticated by design and passes
+  # exactly that. Honouring it stores NULL, which is what the column means from
+  # core V167 on. Before V167 the column is NOT NULL and honouring it raises a
+  # Postgrex 23502 out of an unauthenticated controller
+  # (BeamLabEU/phoenix_kit#706), so on those installs the auto-fill still runs —
+  # a submission attributed to the first admin beats one that cannot be saved.
+  #
+  # A key that is absent entirely keeps the documented convenience either way.
   defp maybe_add_created_by(attrs) when is_map(attrs) do
-    has_created_by_uuid =
-      not is_nil(Map.get(attrs, :created_by_uuid) || Map.get(attrs, "created_by_uuid"))
+    supplied = Map.get(attrs, :created_by_uuid) || Map.get(attrs, "created_by_uuid")
 
-    creator_uuid =
-      if has_created_by_uuid,
-        do: nil,
-        else: Auth.get_first_admin_uuid() || Auth.get_first_user_uuid()
+    key_present? =
+      Map.has_key?(attrs, :created_by_uuid) or Map.has_key?(attrs, "created_by_uuid")
 
-    if creator_uuid do
-      Map.put(attrs, created_by_key(attrs), creator_uuid)
-    else
-      attrs
+    cond do
+      not is_nil(supplied) -> attrs
+      key_present? and anonymous_creator_supported?() -> attrs
+      true -> fill_created_by(attrs)
     end
+  end
+
+  defp fill_created_by(attrs) do
+    case Auth.get_first_admin_uuid() || Auth.get_first_user_uuid() do
+      nil -> attrs
+      creator_uuid -> Map.put(attrs, created_by_key(attrs), creator_uuid)
+    end
+  end
+
+  # Core V167 is what makes `phoenix_kit_entity_data.created_by_uuid` nullable.
+  # This module pins core from Hex, so it runs against installs on both sides of
+  # that line and has to ask the DATABASE, not the compiled dependency.
+  #
+  # The constant must track the real migration number: nothing reserves one, so
+  # a version renumbered before merge would leave this pointing at a different
+  # migration entirely. Delete the gate once the core floor is past it.
+  @anonymous_creator_version 167
+  @anonymous_creator_cache_key {__MODULE__, :anonymous_creator_supported?}
+
+  defp anonymous_creator_supported? do
+    case :persistent_term.get(@anonymous_creator_cache_key, :unknown) do
+      :unknown ->
+        # `Migration.migrated_version/0` only works inside a migration runner;
+        # `migrated_version_runtime/1` is core's runtime accessor — the same one
+        # `phoenix_kit.status` uses.
+        supported? =
+          PostgresMigrations.migrated_version_runtime([]) >= @anonymous_creator_version
+
+        :persistent_term.put(@anonymous_creator_cache_key, supported?)
+        supported?
+
+      cached ->
+        cached
+    end
+  rescue
+    # Cannot tell -> fill a creator. An attributed submission is a smaller
+    # failure than one that cannot be saved at all.
+    _ -> false
   end
 
   # Overwrite the caller's own key form when one is already there. Choosing by

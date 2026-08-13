@@ -341,11 +341,11 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
     # Build entity data params.
     #
     # This form is deliberately unauthenticated, so `current_user` is nil for
-    # exactly the flow the feature exists to serve. Omit the key entirely in that
-    # case rather than sending an explicit nil: `EntityData.create/2` auto-fills
-    # the creator only when none was supplied, and `created_by_uuid` is NOT NULL.
-    # The submission is still identifiable as public through metadata's
-    # `"source" => "public_form"`.
+    # exactly the flow the feature exists to serve. The key is passed EXPLICITLY
+    # as nil in that case: `EntityData.create/2` reads an explicit nil as "this
+    # submission has no author" and stores NULL, which is what the column means
+    # from core V167 on. Omitting the key would instead trigger the auto-fill and
+    # attribute an anonymous submission to the first admin.
     current_user = conn.assigns[:current_user]
     title = generate_submission_title(entity, filtered_data)
 
@@ -360,16 +360,15 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
     # Add security flags to metadata if any were triggered
     {metadata, status} = apply_security_flags(metadata, security_flags, Logger)
 
-    entity_data_params =
-      %{
-        "entity_uuid" => entity.uuid,
-        "title" => title,
-        "slug" => generate_slug(title),
-        "status" => status,
-        "data" => filtered_data,
-        "metadata" => metadata
-      }
-      |> maybe_put_creator(current_user)
+    entity_data_params = %{
+      "entity_uuid" => entity.uuid,
+      "title" => title,
+      "slug" => generate_slug(title),
+      "status" => status,
+      "data" => filtered_data,
+      "metadata" => metadata,
+      "created_by_uuid" => current_user && current_user.uuid
+    }
 
     # Pass the actor explicitly, nil included: an anonymous submission has no
     # actor, and the activity log's fallback would otherwise file it under the
@@ -419,12 +418,6 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
     # Form is only truly enabled if it's enabled AND has at least one field selected
     enabled && not Enum.empty?(fields)
   end
-
-  # Attribute the submission only when someone is actually signed in. Sending
-  # `"created_by_uuid" => nil` instead would satisfy `EntityData.create/2`'s
-  # "was a creator supplied?" check and defeat its auto-fill.
-  defp maybe_put_creator(params, nil), do: params
-  defp maybe_put_creator(params, user), do: Map.put(params, "created_by_uuid", user.uuid)
 
   # SECURITY: the candidate keys are ordinary field keys — nothing forces
   # their submitted values to be strings, and a nested param

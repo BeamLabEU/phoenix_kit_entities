@@ -173,11 +173,25 @@ end
 # ecommerce, projects and staff.
 {:ok, _pid} = PhoenixKit.Users.RateLimiter.Backend.start_link([])
 
-# Exclude integration tests when DB is not available
+# Tests for behaviour that exists in local core but not in the released pin.
+# They fail against Hex because the feature isn't there yet, so the default run
+# skips them:
+#
+#     PHOENIX_KIT_PATH=../phoenix_kit PGDATABASE=phoenix_kit_entities_v167_test \
+#       mix test --include needs_unreleased_core
+#
+# Currently: core V167, which makes `phoenix_kit_entity_data.created_by_uuid`
+# nullable so an anonymous public submission stores NULL instead of being
+# attributed to the first admin. Point that run at its OWN database — the suite
+# migrates whatever it is given, so reusing the normal test database would move
+# it to V167 and flip the default run's expectations.
+#
+# Delete each from the tests and this line once the pin catches up.
 exclude =
   [
     if(!repo_available, do: :integration),
-    if(!i18n_api_available, do: :requires_phoenix_kit_i18n_api)
+    if(!i18n_api_available, do: :requires_phoenix_kit_i18n_api),
+    :needs_unreleased_core
   ]
   |> Enum.filter(& &1)
 

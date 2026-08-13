@@ -632,14 +632,14 @@ defmodule PhoenixKitEntities do
   end
 
   # Auto-fill created_by_uuid with first admin if not provided
-  # As in `EntityData.maybe_add_created_by/1`: "provided" is about the value, not
-  # the key. A caller passing an explicit `created_by_uuid: nil` skipped the
-  # auto-fill here too — caught by `validate_creator_reference/1` as a changeset
-  # error rather than a NOT NULL raise, but it is the same defect, and a caller
-  # that means "I have no creator" should still get the default.
+  # Unlike `EntityData`, an entity always has an author: `phoenix_kit_entities`
+  # has no anonymous creation path and its `created_by_uuid` stays NOT NULL, so
+  # an explicit `created_by_uuid: nil` is honoured as "no creator" and reported
+  # by `validate_creator_reference/1` as a changeset error rather than being
+  # quietly replaced with an administrator.
   defp maybe_add_created_by(attrs) when is_map(attrs) do
     has_created_by_uuid =
-      not is_nil(Map.get(attrs, :created_by_uuid) || Map.get(attrs, "created_by_uuid"))
+      Map.has_key?(attrs, :created_by_uuid) or Map.has_key?(attrs, "created_by_uuid")
 
     if has_created_by_uuid do
       attrs
