@@ -1,3 +1,16 @@
+## 0.4.2 - 2026-08-14
+
+### Fixed
+
+- **`priv/entities/` really stops shipping now.** 0.4.1 untracked and gitignored
+  those 28 test droppings, but the published tarball still carried them — Hex
+  resolves `files:` against the **working directory**, not against git, so an
+  untracked-but-present file ships anyway. (0.4.1's tarball actually held *more*
+  of them than 0.4.0's, since the release run's own tests wrote new ones.)
+  `exclude_patterns: ["priv/entities/"]` is what actually keeps runtime export
+  output out of the package; verified against the built tarball rather than
+  assumed.
+
 ## 0.4.1 - 2026-08-14
 
 ### Fixed
@@ -28,13 +41,13 @@
 
 ### Removed
 
-- **`priv/entities/` no longer ships in the package.** It held 28 committed JSON
-  files, every one a test dropping (`imp_conflict_*`, `imp_sel_a_*`,
+- **`priv/entities/` untracked from the repo.** It held 28 committed JSON files,
+  every one a test dropping (`imp_conflict_*`, `imp_sel_a_*`,
   `imp_via_storage_*`, `ctx_draft`, `ef_test`, `*_widget`), and because `mix.exs`
   ships `priv` they were published to Hex and landed in consumers'
   `priv/entities/` — the directory `Storage.default_path/0` reads back.
-  Untracked and gitignored; `write_entity/2` creates the directory on demand, so
-  nothing depended on it existing.
+  `write_entity/2` creates the directory on demand, so nothing depended on it
+  existing. **This did not stop them shipping** — see 0.4.2.
 
 ## 0.4.0 - 2026-08-12
 

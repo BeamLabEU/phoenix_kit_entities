@@ -1,7 +1,7 @@
 defmodule PhoenixKitEntities.MixProject do
   use Mix.Project
 
-  @version "0.4.1"
+  @version "0.4.2"
   @source_url "https://github.com/BeamLabEU/phoenix_kit_entities"
 
   def project do
@@ -117,7 +117,14 @@ defmodule PhoenixKitEntities.MixProject do
     [
       licenses: ["MIT"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib priv .formatter.exs mix.exs README.md CHANGELOG.md LICENSE)
+      files: ~w(lib priv .formatter.exs mix.exs README.md CHANGELOG.md LICENSE),
+      # `priv/entities/` is RUNTIME OUTPUT — `Storage.write_entity/2` writes
+      # exports there, and every file the repo had accumulated came from the test
+      # suite. Gitignoring them is not enough: Hex globs `files:` off DISK, not
+      # out of git, so an untracked-but-present file still ships. Without this,
+      # consumers get a pile of bogus entity JSON in exactly the directory
+      # `Storage.default_path/0` reads back.
+      exclude_patterns: ["priv/entities/"]
     ]
   end
 
