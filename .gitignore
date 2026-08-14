@@ -20,3 +20,9 @@ erl_crash.dump
 phoenix_kit_entities-*.tar
 
 *.log
+
+# Entity mirror exports — Storage.write_entity/2 output, created on demand.
+# Everything here was a test dropping (imp_*, ctx_*, ef_test, *_widget all trace
+# to the suite), and because mix.exs ships `priv` every one was published to Hex
+# and landed in consumers' priv/entities/ — the directory default_path/0 reads.
+/priv/entities/

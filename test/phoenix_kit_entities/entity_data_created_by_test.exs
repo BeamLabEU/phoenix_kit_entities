@@ -16,11 +16,13 @@ defmodule PhoenixKitEntities.EntityDataCreatedByTest do
   """
   use PhoenixKitEntities.DataCase, async: false
 
+  alias PhoenixKit.Migrations.Postgres
+  alias PhoenixKit.Test.Fixtures
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.EntityData
 
   setup do
-    admin = PhoenixKit.Test.Fixtures.admin_fixture()
+    admin = Fixtures.admin_fixture()
 
     {:ok, entity} =
       Entities.create_entity(
@@ -44,7 +46,7 @@ defmodule PhoenixKitEntities.EntityDataCreatedByTest do
   # is stored. Asserting one of those unconditionally makes the suite red on the
   # other core, which is how a suite gets ignored.
   defp anonymous_creator_supported? do
-    PhoenixKit.Migrations.Postgres.migrated_version_runtime([]) >= 169
+    Postgres.migrated_version_runtime([]) >= 169
   rescue
     _ -> false
   end
@@ -80,7 +82,7 @@ defmodule PhoenixKitEntities.EntityDataCreatedByTest do
   end
 
   test "a supplied creator is never overwritten by the auto-fill", ctx do
-    other = PhoenixKit.Test.Fixtures.confirmed_user_fixture()
+    other = Fixtures.confirmed_user_fixture()
 
     assert {:ok, record} =
              EntityData.create(params(ctx.entity, %{"created_by_uuid" => other.uuid}))
@@ -126,7 +128,7 @@ defmodule PhoenixKitEntities.EntityDataCreatedByTest do
   end
 
   test "a signed-in submitter is still recorded as the actor", ctx do
-    user = PhoenixKit.Test.Fixtures.confirmed_user_fixture()
+    user = Fixtures.confirmed_user_fixture()
 
     assert {:ok, record} =
              EntityData.create(params(ctx.entity, %{"created_by_uuid" => user.uuid}),
@@ -216,6 +218,7 @@ defmodule PhoenixKitEntities.EntityDataCreatedByWithoutUsersTest do
   """
   use PhoenixKitEntities.DataCase, async: false
 
+  alias PhoenixKit.Migrations.Postgres
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.EntityData
 
@@ -231,7 +234,7 @@ defmodule PhoenixKitEntities.EntityDataCreatedByWithoutUsersTest do
                "created_by_uuid" => nil
              })
 
-    if PhoenixKit.Migrations.Postgres.migrated_version_runtime([]) >= 169 do
+    if Postgres.migrated_version_runtime([]) >= 169 do
       # From V169 a missing creator is legal, so the made-up entity is what
       # fails — the point being that neither case raises.
       assert Keyword.has_key?(changeset.errors, :entity_uuid)
@@ -282,11 +285,12 @@ defmodule PhoenixKitEntities.EntityDataAnonymousCreatorTest do
 
   @moduletag :needs_unreleased_core
 
+  alias PhoenixKit.Test.Fixtures
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.EntityData
 
   setup do
-    admin = PhoenixKit.Test.Fixtures.admin_fixture()
+    admin = Fixtures.admin_fixture()
 
     {:ok, entity} =
       Entities.create_entity(

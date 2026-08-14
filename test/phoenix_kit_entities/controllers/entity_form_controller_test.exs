@@ -12,6 +12,7 @@ defmodule PhoenixKitEntities.Controllers.EntityFormControllerTest do
   """
   use PhoenixKitEntities.DataCase, async: false
 
+  alias PhoenixKit.Test.Fixtures
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.Controllers.EntityFormController
   alias PhoenixKitEntities.EntityData
@@ -26,7 +27,7 @@ defmodule PhoenixKitEntities.Controllers.EntityFormControllerTest do
     # error on `created_by`. Every install that can serve a public form has an
     # admin (somebody configured the form), so a userless database is a fixture
     # artifact rather than a scenario to encode.
-    admin = PhoenixKit.Test.Fixtures.admin_fixture()
+    admin = Fixtures.admin_fixture()
     actor_uuid = admin.uuid
 
     {:ok, entity} =

@@ -1,3 +1,41 @@
+## 0.4.1 - 2026-08-14
+
+### Fixed
+
+- **Anonymous public submissions crashed with a `not_null_violation`.** The
+  public entity form is deliberately unauthenticated, so it passed
+  `created_by_uuid` as an explicit `nil` — but `create/2` decided "was a creator
+  provided?" with `Map.has_key?/2`, which reads an explicit nil as *provided*.
+  The auto-fill was skipped and the insert raised Postgrex 23502 out of an
+  unauthenticated controller.
+
+  An explicit `nil` now means "this submission has no author" and is stored as
+  NULL (from core 2.4.0's V169, where the column became nullable); a key that is
+  absent entirely still gets the documented auto-fill, so internal callers are
+  unchanged. Against an older core whose chain predates V169 the column is still
+  NOT NULL and a missing creator comes back as a changeset error rather than a
+  raise, so the module stays correct on both sides of the pin (#30,
+  BeamLabEU/phoenix_kit#706).
+
+  Auto-filling the first administrator was implemented first and rejected: it
+  puts a named person in front of every anonymous submission wherever a creator
+  is rendered, and files those submissions in that person's audit trail.
+
+- **The auto-fill could produce a map mixing atom and string keys**, which
+  `Ecto.Changeset.cast/3` refuses. Both `EntityData` and
+  `PhoenixKitEntities.maybe_add_created_by/1` now write the creator under the key
+  form the caller is already using.
+
+### Removed
+
+- **`priv/entities/` no longer ships in the package.** It held 28 committed JSON
+  files, every one a test dropping (`imp_conflict_*`, `imp_sel_a_*`,
+  `imp_via_storage_*`, `ctx_draft`, `ef_test`, `*_widget`), and because `mix.exs`
+  ships `priv` they were published to Hex and landed in consumers'
+  `priv/entities/` — the directory `Storage.default_path/0` reads back.
+  Untracked and gitignored; `write_entity/2` creates the directory on demand, so
+  nothing depended on it existing.
+
 ## 0.4.0 - 2026-08-12
 
 ### Added
