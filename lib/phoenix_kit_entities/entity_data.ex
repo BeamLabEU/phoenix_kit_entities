@@ -77,6 +77,7 @@ defmodule PhoenixKitEntities.EntityData do
   import Ecto.Query, warn: false
   require Logger
 
+  alias PhoenixKit.Migrations.Postgres, as: PostgresMigrations
   alias PhoenixKit.Modules.Languages.DialectMapper
   alias PhoenixKit.Users.Auth
   alias PhoenixKit.Users.Auth.User
@@ -181,6 +182,7 @@ defmodule PhoenixKitEntities.EntityData do
     ])
     |> validate_required([:title])
     |> validate_entity_reference()
+    |> validate_creator_reference()
     |> validate_length(:title, min: 1, max: 255)
     |> validate_length(:slug, max: 255)
     |> validate_inclusion(:status, @valid_statuses)
@@ -190,7 +192,22 @@ defmodule PhoenixKitEntities.EntityData do
     |> validate_parent_not_descendant()
     |> sanitize_rich_text_data()
     |> validate_data_against_entity()
+    # Core's v135 names this FK `fk_entity_data_entity_uuid`, not the
+    # `phoenix_kit_entity_data_entity_uuid_fkey` that `foreign_key_constraint/2`
+    # derives, so the bare declaration below matches a constraint that does not
+    # exist (measured on a freshly migrated test DB and on the max-dev install —
+    # both carry the `fk_` name).
+    #
+    # Hardening, not a live bug: `validate_data_against_entity/1` rejects a
+    # missing entity with "does not exist" while the changeset is still being
+    # built, so the FK never fires today and no insert reaches Postgres. This
+    # keeps the declaration true if that validation is ever reordered or a
+    # caller inserts a changeset directly. Both names are declared because the
+    # module pins core from Hex; Ecto matches by name, so the absent one is inert.
+    |> foreign_key_constraint(:entity_uuid, name: :fk_entity_data_entity_uuid)
     |> foreign_key_constraint(:entity_uuid)
+    # `parent_uuid` genuinely uses the Ecto default name
+    # (`phoenix_kit_entity_data_parent_uuid_fkey`), so this one is already right.
     |> foreign_key_constraint(:parent_uuid)
     |> maybe_set_timestamps()
   end
@@ -311,6 +328,31 @@ defmodule PhoenixKitEntities.EntityData do
       add_error(changeset, :entity_uuid, gettext("entity_uuid must be present"))
     else
       changeset
+    end
+  end
+
+  # `phoenix_kit_entity_data.created_by_uuid` is NOT NULL in core's chain, and
+  # `create/2` documents that a missing creator surfaces "a validation error on
+  # created_by" when no user exists to auto-fill from. Without this the insert
+  # reaches Postgres and raises 23502 instead — the same shape `Entity` already
+  # guards against with its own `validate_creator_reference/1`.
+  #
+  # INSERTS ONLY. `changeset/2` is shared with `update/3`, and installs that
+  # migrated before the constraint was enforced hold rows with a NULL creator
+  # (#706 measured 4 of 26 on a live database, where the column is still
+  # nullable because V164 declines to re-impose NOT NULL while NULLs exist).
+  # Validating those on update would reject an edit that never touched
+  # `created_by_uuid` — retitling a legacy public submission would fail.
+  defp validate_creator_reference(%Ecto.Changeset{data: %{__meta__: %{state: :loaded}}} = cs),
+    do: cs
+
+  defp validate_creator_reference(changeset) do
+    cond do
+      not is_nil(get_field(changeset, :created_by_uuid)) -> changeset
+      # From V169 a missing creator is a supported value, not an error: that is
+      # what an anonymous public submission looks like.
+      anonymous_creator_supported?() -> changeset
+      true -> add_error(changeset, :created_by_uuid, gettext("created_by_uuid must be present"))
     end
   end
 
@@ -789,7 +831,7 @@ defmodule PhoenixKitEntities.EntityData do
     PhoenixKitEntities.ActivityLog.log(%{
       action: action,
       mode: "manual",
-      actor_uuid: Keyword.get(opts, :actor_uuid) || entity_data.created_by_uuid,
+      actor_uuid: activity_actor(entity_data, opts),
       resource_type: "entity_data",
       resource_uuid: entity_data.uuid,
       metadata: %{
@@ -799,6 +841,19 @@ defmodule PhoenixKitEntities.EntityData do
         "status" => entity_data.status
       }
     })
+  end
+
+  # An explicitly passed `:actor_uuid` wins even when it is nil — the same
+  # explicit-nil-vs-absent distinction the creator auto-fill makes. An
+  # unauthenticated public submission has no actor, and falling back to
+  # `created_by_uuid` would file it in the audit trail under whoever the
+  # auto-fill picked (the first Owner), reading as if that person posted it.
+  # Callers that simply do not know the actor still get the old fallback.
+  defp activity_actor(%__MODULE__{} = entity_data, opts) do
+    case Keyword.fetch(opts, :actor_uuid) do
+      {:ok, actor_uuid} -> actor_uuid
+      :error -> entity_data.created_by_uuid
+    end
   end
 
   # Records a user-initiated data-record action even when the changeset
@@ -1248,27 +1303,107 @@ defmodule PhoenixKitEntities.EntityData do
     |> notify_data_event(:created, opts)
   end
 
-  # Auto-fill created_by_uuid with first admin if not provided
+  # Auto-fill created_by_uuid with the first admin when the caller did not name
+  # one — with one deliberate exception.
+  #
+  # An explicit `created_by_uuid: nil` is not "I forgot", it is "this row has no
+  # author": the public entity form is unauthenticated by design and passes
+  # exactly that. Honouring it stores NULL, which is what the column means from
+  # core V169 on. Before V169 the column is NOT NULL and honouring it raises a
+  # Postgrex 23502 out of an unauthenticated controller
+  # (BeamLabEU/phoenix_kit#706), so on those installs the auto-fill still runs —
+  # a submission attributed to the first admin beats one that cannot be saved.
+  #
+  # A key that is absent entirely keeps the documented convenience either way.
   defp maybe_add_created_by(attrs) when is_map(attrs) do
-    has_created_by_uuid =
+    supplied = Map.get(attrs, :created_by_uuid) || Map.get(attrs, "created_by_uuid")
+
+    key_present? =
       Map.has_key?(attrs, :created_by_uuid) or Map.has_key?(attrs, "created_by_uuid")
 
-    creator_uuid =
-      if has_created_by_uuid,
-        do: nil,
-        else: Auth.get_first_admin_uuid() || Auth.get_first_user_uuid()
+    cond do
+      # A blank string is what an untouched form field posts, and `cast/3` turns
+      # it into nil — so treating it as a supplied creator would skip the
+      # auto-fill and then insert nothing.
+      not blank?(supplied) -> attrs
+      key_present? and anonymous_creator_supported?() -> attrs
+      true -> fill_created_by(attrs)
+    end
+  end
 
-    if creator_uuid do
-      key = if Map.has_key?(attrs, :entity_uuid), do: :created_by_uuid, else: "created_by_uuid"
-      Map.put(attrs, key, creator_uuid)
+  defp blank?(nil), do: true
+  defp blank?(value) when is_binary(value), do: String.trim(value) == ""
+  defp blank?(_), do: false
+
+  defp fill_created_by(attrs) do
+    case Auth.get_first_admin_uuid() || Auth.get_first_user_uuid() do
+      nil -> attrs
+      creator_uuid -> Map.put(attrs, created_by_key(attrs), creator_uuid)
+    end
+  end
+
+  # Core V169 is what makes `phoenix_kit_entity_data.created_by_uuid` nullable.
+  # This module pins core from Hex, so it runs against installs on both sides of
+  # that line and has to ask the DATABASE, not the compiled dependency.
+  #
+  # The constant must track the real migration number: nothing reserves one, so
+  # a version renumbered before merge would leave this pointing at a different
+  # migration entirely. Delete the gate once the core floor is past it.
+  @anonymous_creator_version 169
+  @anonymous_creator_cache_key {__MODULE__, :anonymous_creator_supported?}
+
+  # ONLY the positive answer is cached. A node that boots while the database is
+  # still pre-V169 — the ordinary case, since an app starts before its release
+  # task migrates — would otherwise cache `false` into a term with no TTL and no
+  # invalidation, and keep attributing anonymous submissions to an administrator
+  # until someone restarted the BEAM. Migrations do not run backwards, so a
+  # `true` can be cached forever, while a `false` is only ever "not yet".
+  defp anonymous_creator_supported? do
+    if :persistent_term.get(@anonymous_creator_cache_key, false) do
+      true
     else
-      attrs
+      # `Migration.migrated_version/0` only works inside a migration runner;
+      # `migrated_version_runtime/1` is core's runtime accessor — the same one
+      # `phoenix_kit.status` uses. Pass the configured prefix: a `--prefix`
+      # install keeps its chain marker in that schema, not in `public`.
+      opts = [prefix: Application.get_env(:phoenix_kit, :prefix, "public")]
+      supported? = PostgresMigrations.migrated_version_runtime(opts) >= @anonymous_creator_version
+
+      if supported?, do: :persistent_term.put(@anonymous_creator_cache_key, true)
+      supported?
+    end
+  rescue
+    # Cannot tell -> fill a creator. An attributed submission is a smaller
+    # failure than one that cannot be saved at all.
+    _ -> false
+  catch
+    # An unreachable database RAISES on an unowned checkout but EXITS on a dead
+    # pool, so rescue alone would let a public request crash here.
+    _, _ -> false
+  end
+
+  # Overwrite the caller's own key form when one is already there. Choosing by
+  # `:entity_uuid` alone would answer `"created_by_uuid"` for a map that holds an
+  # explicit `created_by_uuid: nil` under the atom key, leaving the nil in place
+  # beside a filled string key — and Ecto refuses a map mixing key types.
+  defp created_by_key(attrs), do: attr_key(attrs, :created_by_uuid, "created_by_uuid")
+
+  defp attr_key(attrs, atom_key, string_key) do
+    cond do
+      Map.has_key?(attrs, atom_key) -> atom_key
+      Map.has_key?(attrs, string_key) -> string_key
+      Enum.any?(Map.keys(attrs), &is_binary/1) -> string_key
+      true -> atom_key
     end
   end
 
   # Auto-fill position with next value for the entity if not provided
   defp maybe_add_position(attrs) when is_map(attrs) do
-    has_position = Map.has_key?(attrs, :position) or Map.has_key?(attrs, "position")
+    # Same explicit-nil-vs-absent distinction as `maybe_add_created_by/1` above:
+    # a caller passing `position: nil` means "I have no position", not "position
+    # is already decided". `position` is nullable, so this stored a NULL rather
+    # than raising — the row simply fell out of the entity's ordering instead.
+    has_position = not is_nil(Map.get(attrs, :position) || Map.get(attrs, "position"))
 
     entity_uuid = Map.get(attrs, :entity_uuid) || Map.get(attrs, "entity_uuid")
 
@@ -1276,8 +1411,7 @@ defmodule PhoenixKitEntities.EntityData do
       attrs
     else
       next_pos = next_position(entity_uuid)
-      key = if Map.has_key?(attrs, :entity_uuid), do: :position, else: "position"
-      Map.put(attrs, key, next_pos)
+      Map.put(attrs, attr_key(attrs, :position, "position"), next_pos)
     end
   end
 

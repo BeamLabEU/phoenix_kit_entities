@@ -338,10 +338,15 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
       |> Enum.filter(fn {key, _value} -> key in allowed_fields end)
       |> Enum.into(%{})
 
-    # Build entity data params
-    # For public submissions, use the current user if logged in, otherwise nil (system)
+    # Build entity data params.
+    #
+    # This form is deliberately unauthenticated, so `current_user` is nil for
+    # exactly the flow the feature exists to serve. The key is passed EXPLICITLY
+    # as nil in that case: `EntityData.create/2` reads an explicit nil as "this
+    # submission has no author" and stores NULL, which is what the column means
+    # from core V169 on. Omitting the key would instead trigger the auto-fill and
+    # attribute an anonymous submission to the first admin.
     current_user = conn.assigns[:current_user]
-    created_by_uuid = if current_user, do: current_user.uuid, else: nil
     title = generate_submission_title(entity, filtered_data)
 
     # Capture submission metadata if enabled (default is true)
@@ -362,10 +367,13 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
       "status" => status,
       "data" => filtered_data,
       "metadata" => metadata,
-      "created_by_uuid" => created_by_uuid
+      "created_by_uuid" => current_user && current_user.uuid
     }
 
-    case EntityData.create(entity_data_params) do
+    # Pass the actor explicitly, nil included: an anonymous submission has no
+    # actor, and the activity log's fallback would otherwise file it under the
+    # creator the auto-fill chose.
+    case EntityData.create(entity_data_params, actor_uuid: current_user && current_user.uuid) do
       {:ok, _data_record} ->
         # Track successful submission
         increment_form_stats(entity, :submitted, security_flags)
