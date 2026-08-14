@@ -264,11 +264,11 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
   # unhandled exception in `handle_event/3` crashes the whole LiveView
   # process, not just this component, taking down every other component
   # on the same page for that user. The `when is_map(data_params)` guard
-  # below makes a non-map `data_params` fall through to the very next
-  # clause instead (same one that already handles a payload with no
-  # `"phoenix_kit_entity_data"` key at all) — malformed and absent both
-  # resolve to the same safe "treat as an empty autosave" path, per this
-  # module's own contract for that clause.
+  # below makes a non-map `data_params` fall through to the dedicated
+  # malformed-payload clause instead, which does not write. Malformed is
+  # NOT folded into the absent-key path: absent means "every checkbox
+  # unticked" and must flow as an empty payload, while an empty payload
+  # built from garbage wipes checkbox data.
   @impl true
   def handle_event(
         "autosave",
@@ -276,7 +276,29 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
         %{assigns: %{mode: :edit}} = socket
       )
       when is_map(data_params) do
-    {:noreply, do_autosave(socket, extract_data_params(data_params))}
+    case extract_data_params(data_params) do
+      {:ok, data} ->
+        {:noreply, do_autosave(socket, data)}
+
+      :malformed ->
+        Logger.warning("LiveDataForm ignored autosave: \"data\" is not a map")
+        {:noreply, socket}
+    end
+  end
+
+  # Key PRESENT but not a map: a crafted push, not a browser form — no real
+  # form serializes its fields to a bare string. Distinct from the absent-key
+  # clause below on purpose: absent means "every checkbox unticked" and MUST
+  # flow as an empty payload, while malformed must not write at all —
+  # degrading it to the same empty payload wiped every checkbox field, which
+  # is exactly the data loss the integration tests forbid.
+  def handle_event(
+        "autosave",
+        %{"phoenix_kit_entity_data" => _malformed},
+        %{assigns: %{mode: :edit}} = socket
+      ) do
+    Logger.warning("LiveDataForm ignored autosave: payload is not a map")
+    {:noreply, socket}
   end
 
   # Mirrors the "submit" fallback clause below rather than no-op'ing: a
@@ -286,9 +308,8 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
   # payload to carry it. Treating that as "nothing changed" would silently
   # ignore exactly the case `normalize_absent_checkboxes/2` exists to
   # handle (unticking the last box). An empty map still flows through the
-  # same merge/coercion/persist path as any other autosave. This clause
-  # also catches the malformed-`data_params` case above (guard failure
-  # falls through to here, not to a crash).
+  # same merge/coercion/persist path as any other autosave. Malformed
+  # payloads do NOT land here — they have their own inert clause above.
   def handle_event("autosave", _params, %{assigns: %{mode: :edit}} = socket),
     do: {:noreply, do_autosave(socket, %{})}
 
@@ -303,16 +324,32 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
   # logs and does not notify the parent, since it must not treat
   # unpersisted data as agreed-upon.
   #
-  # Same `when is_map(data_params)` guard as "autosave" above, and for the
-  # same reason (m2) — a non-map `data_params` falls through to the
-  # fallback clause below instead of crashing inside `extract_data_params/1`.
+  # Same `when is_map(data_params)` guard and malformed-clause split as
+  # "autosave" above, for the same reasons (m2).
   def handle_event(
         "submit",
         %{"phoenix_kit_entity_data" => data_params},
         %{assigns: %{mode: :edit}} = socket
       )
       when is_map(data_params) do
-    {:noreply, do_submit(socket, extract_data_params(data_params))}
+    case extract_data_params(data_params) do
+      {:ok, data} ->
+        {:noreply, do_submit(socket, data)}
+
+      :malformed ->
+        Logger.warning("LiveDataForm ignored submit: \"data\" is not a map")
+        {:noreply, socket}
+    end
+  end
+
+  # Same malformed-vs-absent split as autosave, same reason.
+  def handle_event(
+        "submit",
+        %{"phoenix_kit_entity_data" => _malformed},
+        %{assigns: %{mode: :edit}} = socket
+      ) do
+    Logger.warning("LiveDataForm ignored submit: payload is not a map")
+    {:noreply, socket}
   end
 
   def handle_event("submit", _params, %{assigns: %{mode: :edit}} = socket),
@@ -352,9 +389,13 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
   # not part of this component's documented usage contract.
   @doc false
   def extract_data_params(data_params) do
-    case Map.get(data_params, "data") do
-      %{} = data -> data
-      _ -> %{}
+    case Map.fetch(data_params, "data") do
+      {:ok, %{} = data} -> {:ok, data}
+      # Absent is legitimate (a payload carrying only non-data params);
+      # present-but-wrong-shape (a list, a string, an explicit null) is a
+      # crafted push and must not become a write.
+      :error -> {:ok, %{}}
+      {:ok, _malformed} -> :malformed
     end
   end
 

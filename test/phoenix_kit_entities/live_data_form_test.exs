@@ -704,23 +704,27 @@ defmodule PhoenixKitEntities.LiveDataFormTest do
     # no crash, no write).
     test "a normal map payload's data is returned unchanged" do
       assert LiveDataForm.extract_data_params(%{"data" => %{"name" => "Jaan"}}) ==
-               %{"name" => "Jaan"}
+               {:ok, %{"name" => "Jaan"}}
     end
 
-    test "a missing \"data\" key normalizes to an empty map" do
-      assert LiveDataForm.extract_data_params(%{}) == %{}
+    test "a missing \"data\" key is a legitimate empty payload" do
+      assert LiveDataForm.extract_data_params(%{}) == {:ok, %{}}
     end
 
-    test "a list \"data\" value normalizes to an empty map instead of crashing" do
-      assert LiveDataForm.extract_data_params(%{"data" => ["a", "b"]}) == %{}
+    # Present-but-wrong-shape is :malformed, NOT an empty payload: an empty
+    # payload means "every checkbox unticked" to normalize_absent_checkboxes/2,
+    # so normalizing garbage down to %{} silently wiped stored checkbox values —
+    # the exact data loss the integration tests forbid.
+    test "a list \"data\" value is malformed, not an empty payload" do
+      assert LiveDataForm.extract_data_params(%{"data" => ["a", "b"]}) == :malformed
     end
 
-    test "a string \"data\" value normalizes to an empty map instead of crashing" do
-      assert LiveDataForm.extract_data_params(%{"data" => "not-a-map"}) == %{}
+    test "a string \"data\" value is malformed, not an empty payload" do
+      assert LiveDataForm.extract_data_params(%{"data" => "not-a-map"}) == :malformed
     end
 
-    test "an explicit nil \"data\" value normalizes to an empty map" do
-      assert LiveDataForm.extract_data_params(%{"data" => nil}) == %{}
+    test "an explicit nil \"data\" value is malformed, not an empty payload" do
+      assert LiveDataForm.extract_data_params(%{"data" => nil}) == :malformed
     end
   end
 end
