@@ -2000,7 +2000,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                     <% end %>
                   </div>
                   <.label class="label">
-                    <span class="label-text-alt">
+                    <span class="fieldset-label">
                       {gettext("Heroicon name or click Browse")}
                     </span>
                   </.label>
@@ -2028,7 +2028,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                     </select>
                   </label>
                   <.label class="label">
-                    <span class="label-text-alt">
+                    <span class="fieldset-label">
                       {gettext("Only published can be used")}
                     </span>
                   </.label>
@@ -2058,7 +2058,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                     </select>
                   </label>
                   <.label class="label">
-                    <span class="label-text-alt">
+                    <span class="fieldset-label">
                       {gettext("Manual mode enables drag-and-drop reordering of records")}
                     </span>
                   </.label>
@@ -2237,7 +2237,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
               </div>
 
               <%!-- Enable Public Form Toggle --%>
-              <div class="form-control">
+              <div class="fieldset">
                 <label class="label cursor-pointer justify-start gap-4">
                   <input
                     type="checkbox"
@@ -2248,7 +2248,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                     disabled={@readonly?}
                   />
                   <div>
-                    <span class="label-text font-semibold">
+                    <span class="fieldset-legend font-semibold">
                       {gettext("Enable Public Form")}
                     </span>
                     <p class="text-xs text-base-content/60 mt-1">
@@ -2271,7 +2271,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                       name="public_form_title"
                       value={get_in(@entity.settings, ["public_form_title"]) || @entity.display_name}
                       placeholder={@entity.display_name}
-                      class="input input-bordered w-full"
+                      class="input w-full"
                       phx-blur="update_public_form_setting"
                       phx-debounce="500"
                       disabled={@readonly?}
@@ -2284,7 +2284,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                     <textarea
                       name="public_form_description"
                       placeholder={gettext("Describe what this form is for...")}
-                      class="textarea textarea-bordered w-full"
+                      class="textarea w-full"
                       rows="2"
                       phx-blur="update_public_form_setting"
                       phx-debounce="500"
@@ -2302,7 +2302,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                         get_in(@entity.settings, ["public_form_submit_text"]) || gettext("Submit")
                       }
                       placeholder={gettext("Submit")}
-                      class="input input-bordered w-full"
+                      class="input w-full"
                       phx-blur="update_public_form_setting"
                       phx-debounce="500"
                       disabled={@readonly?}
@@ -2315,7 +2315,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                     <textarea
                       name="public_form_success_message"
                       placeholder={gettext("Thank you for your submission!")}
-                      class="textarea textarea-bordered w-full"
+                      class="textarea w-full"
                       rows="2"
                       phx-blur="update_public_form_setting"
                       phx-debounce="500"
@@ -2403,7 +2403,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
 
                     <div class="space-y-4">
                       <%!-- Collect Metadata Toggle --%>
-                      <div class="form-control">
+                      <div class="fieldset">
                         <label class="label cursor-pointer justify-start gap-4">
                           <input
                             type="checkbox"
@@ -2417,7 +2417,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                             disabled={@readonly?}
                           />
                           <div>
-                            <span class="label-text font-medium">
+                            <span class="fieldset-legend font-medium">
                               {gettext("Collect Submission Metadata")}
                             </span>
                             <p class="text-xs text-base-content/60 mt-1">
@@ -2430,7 +2430,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                       </div>
 
                       <%!-- Debug Mode Toggle --%>
-                      <div class="form-control">
+                      <div class="fieldset">
                         <label class="label cursor-pointer justify-start gap-4">
                           <input
                             type="checkbox"
@@ -2442,7 +2442,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                             disabled={@readonly?}
                           />
                           <div>
-                            <span class="label-text font-medium">
+                            <span class="fieldset-legend font-medium">
                               {gettext("Debug Mode")}
                             </span>
                             <p class="text-xs text-base-content/60 mt-1">
@@ -2467,7 +2467,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
 
                       <%!-- Honeypot Protection --%>
                       <div class="border border-base-300 rounded-lg p-4">
-                        <div class="form-control">
+                        <div class="fieldset">
                           <label class="label cursor-pointer justify-start gap-4">
                             <input
                               type="checkbox"
@@ -2479,7 +2479,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                               disabled={@readonly?}
                             />
                             <div>
-                              <span class="label-text font-medium">
+                              <span class="fieldset-legend font-medium">
                                 {gettext("Honeypot Protection")}
                               </span>
                               <p class="text-xs text-base-content/60 mt-1">
@@ -2544,7 +2544,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
 
                       <%!-- Time-based Validation --%>
                       <div class="border border-base-300 rounded-lg p-4">
-                        <div class="form-control">
+                        <div class="fieldset">
                           <label class="label cursor-pointer justify-start gap-4">
                             <input
                               type="checkbox"
@@ -2556,7 +2556,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                               disabled={@readonly?}
                             />
                             <div>
-                              <span class="label-text font-medium">
+                              <span class="fieldset-legend font-medium">
                                 {gettext("Time-based Validation")}
                               </span>
                               <p class="text-xs text-base-content/60 mt-1">
@@ -2625,7 +2625,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
 
                       <%!-- Rate Limiting --%>
                       <div class="border border-base-300 rounded-lg p-4">
-                        <div class="form-control">
+                        <div class="fieldset">
                           <label class="label cursor-pointer justify-start gap-4">
                             <input
                               type="checkbox"
@@ -2637,7 +2637,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                               disabled={@readonly?}
                             />
                             <div>
-                              <span class="label-text font-medium">
+                              <span class="fieldset-legend font-medium">
                                 {gettext("Rate Limiting")}
                               </span>
                               <p class="text-xs text-base-content/60 mt-1">
@@ -2836,7 +2836,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
               <%= if @entity.uuid do %>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <%!-- Definition Sync Toggle --%>
-                  <div class="form-control">
+                  <div class="fieldset">
                     <label class="label cursor-pointer justify-start gap-4">
                       <input
                         type="checkbox"
@@ -2846,7 +2846,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                         disabled={@readonly?}
                       />
                       <div>
-                        <span class="label-text font-semibold">
+                        <span class="fieldset-legend font-semibold">
                           {gettext("Sync Definition to File")}
                         </span>
                         <p class="text-xs text-base-content/60 mt-1">
@@ -2857,7 +2857,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                   </div>
 
                   <%!-- Records Sync Toggle --%>
-                  <div class={"form-control #{unless PhoenixKitEntities.mirror_definitions_enabled?(@entity), do: "opacity-50"}"}>
+                  <div class={"fieldset #{unless PhoenixKitEntities.mirror_definitions_enabled?(@entity), do: "opacity-50"}"}>
                     <label class="label cursor-pointer justify-start gap-4">
                       <input
                         type="checkbox"
@@ -2870,7 +2870,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                         }
                       />
                       <div>
-                        <span class="label-text font-semibold">
+                        <span class="fieldset-legend font-semibold">
                           {gettext("Sync Records to File")}
                         </span>
                         <p class="text-xs text-base-content/60 mt-1">
@@ -2997,14 +2997,14 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                     <input
                       type="text"
                       name="field[label]"
-                      class="input input-bordered w-full"
+                      class="input w-full"
                       placeholder={gettext("Field Name")}
                       value={@field_form["label"]}
                       phx-debounce="300"
                       required
                     />
                     <.label class="label">
-                      <span class="label-text-alt">{gettext("Display name for users")}</span>
+                      <span class="fieldset-label">{gettext("Display name for users")}</span>
                     </.label>
                   </div>
 
@@ -3023,14 +3023,14 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                     <input
                       type="text"
                       name="field[key]"
-                      class="input input-bordered w-full"
+                      class="input w-full"
                       placeholder={gettext("field_name")}
                       value={@field_form["key"]}
                       phx-debounce="300"
                       required
                     />
                     <.label class="label">
-                      <span class="label-text-alt">{gettext("snake_case identifier")}</span>
+                      <span class="fieldset-label">{gettext("snake_case identifier")}</span>
                     </.label>
                   </div>
                 </div>
@@ -3040,7 +3040,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <.label class="label cursor-pointer">
-                        <span class="label-text">{gettext("Required Field")}</span>
+                        <span class="fieldset-legend">{gettext("Required Field")}</span>
                         <input
                           type="checkbox"
                           name="field[required]"
@@ -3056,7 +3056,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                       <input
                         type="text"
                         name="field[default]"
-                        class="input input-bordered w-full"
+                        class="input w-full"
                         phx-debounce="300"
                         value={@field_form["default"]}
                       />
@@ -3072,7 +3072,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                     </div>
 
                     <%!-- Max Files --%>
-                    <div class="form-control">
+                    <div class="fieldset">
                       <.label>{gettext("Maximum Files")}</.label>
                       <input
                         type="number"
@@ -3080,19 +3080,19 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                         value={@field_form["max_entries"] || 5}
                         min="1"
                         max="20"
-                        class="input input-bordered"
+                        class="input"
                         placeholder="5"
                         phx-debounce="300"
                       />
                       <.label class="label">
-                        <span class="label-text-alt">
+                        <span class="fieldset-label">
                           {gettext("Max number of files users can upload (1-20)")}
                         </span>
                       </.label>
                     </div>
 
                     <%!-- Max File Size --%>
-                    <div class="form-control">
+                    <div class="fieldset">
                       <.label>{gettext("Max File Size (MB)")}</.label>
                       <input
                         type="number"
@@ -3101,29 +3101,29 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                         min="1"
                         max="100"
                         step="0.1"
-                        class="input input-bordered"
+                        class="input"
                         placeholder="15"
                         phx-debounce="300"
                       />
                       <.label class="label">
-                        <span class="label-text-alt">
+                        <span class="fieldset-label">
                           {gettext("Maximum size per file in megabytes (1-100 MB)")}
                         </span>
                       </.label>
                     </div>
 
                     <%!-- Accepted File Types --%>
-                    <div class="form-control">
+                    <div class="fieldset">
                       <.label>{gettext("Accepted File Types")}</.label>
                       <textarea
                         name="field[accept]"
                         rows="3"
-                        class="textarea textarea-bordered"
+                        class="textarea"
                         placeholder=".pdf, .jpg, .png"
                         phx-debounce="300"
                       ><%= format_accept_list(@field_form["accept"]) %></textarea>
                       <.label class="label">
-                        <span class="label-text-alt">
+                        <span class="fieldset-label">
                           {gettext(
                             "Comma-separated list of extensions (e.g., .pdf, .jpg, .png, .step, .dwg)"
                           )}
@@ -3154,7 +3154,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                             type="text"
                             name={"option[#{option_index}]"}
                             value={option}
-                            class="input input-bordered flex-1"
+                            class="input flex-1"
                             phx-change="update_option"
                             phx-value-index={option_index}
                             phx-debounce="300"
@@ -3187,7 +3187,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                         value="true"
                         checked={FieldTypes.allow_other?(@field_form)}
                       />
-                      <span class="label-text">{gettext("Allow a custom \"Other\" option")}</span>
+                      <span class="fieldset-legend">{gettext("Allow a custom \"Other\" option")}</span>
                     </.label>
                   </div>
                 <% end %>
@@ -3246,7 +3246,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                       name="search"
                       value={@icon_search}
                       placeholder={gettext("Search icons...")}
-                      class="input input-bordered join-item flex-1"
+                      class="input join-item flex-1"
                       phx-debounce="300"
                     />
                     <button type="submit" class="btn btn-primary join-item">

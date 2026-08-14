@@ -1548,7 +1548,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
                   <%!-- Entity Type (Read-only) --%>
                   <div>
                     <.label>{gettext("Entity Type")}</.label>
-                    <div class="input input-bordered w-full bg-base-200 flex items-center">
+                    <div class="input w-full bg-base-200 flex items-center">
                       <%= if @entity.icon do %>
                         <.icon name={@entity.icon} class="w-4 h-4 mr-2" />
                       <% end %>
@@ -1582,7 +1582,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
                       id="phoenix_kit_entity_data_title"
                       value={Ecto.Changeset.get_field(@changeset, :title) || ""}
                       placeholder={gettext("Enter a title for this record")}
-                      class="input input-bordered w-full"
+                      class="input w-full"
                       phx-debounce="300"
                       required
                       disabled={@readonly?}
@@ -1609,14 +1609,14 @@ defmodule PhoenixKitEntities.Web.DataForm do
                       id="phoenix_kit_entity_data_slug"
                       value={Ecto.Changeset.get_field(@changeset, :slug) || ""}
                       placeholder={gettext("auto-generated-slug")}
-                      class="input input-bordered w-full"
+                      class="input w-full"
                       pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
                       title={gettext("Use lowercase letters, numbers, and hyphens only.")}
                       phx-debounce="300"
                       disabled={@readonly?}
                     />
                     <.label class="label">
-                      <span class="label-text-alt">
+                      <span class="fieldset-label">
                         {gettext("Leave empty to auto-generate from title")}
                       </span>
                     </.label>
@@ -1684,7 +1684,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
                   <%!-- Entity Type (Read-only) --%>
                   <div>
                     <.label>{gettext("Entity Type")}</.label>
-                    <div class="input input-bordered w-full bg-base-200 flex items-center">
+                    <div class="input w-full bg-base-200 flex items-center">
                       <%= if @entity.icon do %>
                         <.icon name={@entity.icon} class="w-4 h-4 mr-2" />
                       <% end %>

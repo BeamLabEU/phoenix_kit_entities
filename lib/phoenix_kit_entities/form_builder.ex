@@ -447,14 +447,14 @@ defmodule PhoenixKitEntities.FormBuilder do
         name={"#{@changeset.data.__struct__.__schema__(:source)}[data][#{@field["key"]}]"}
         value={@value}
         placeholder={@placeholder}
-        class={["input input-bordered w-full", @opts[:input_class]]}
+        class={["input w-full", @opts[:input_class]]}
         maxlength={@field["max_length"]}
         required={@field["required"] && !@opts[:primary_placeholders]}
         disabled={@opts[:disabled]}
       />
       <%= if @field["description"] do %>
         <.label class="label">
-          <span class="label-text-alt">{@field["description"]}</span>
+          <span class="fieldset-label">{@field["description"]}</span>
         </.label>
       <% end %>
     </div>
@@ -482,7 +482,7 @@ defmodule PhoenixKitEntities.FormBuilder do
       <textarea
         name={"#{@changeset.data.__struct__.__schema__(:source)}[data][#{@field["key"]}]"}
         placeholder={@placeholder}
-        class={["textarea textarea-bordered w-full", @opts[:input_class]]}
+        class={["textarea w-full", @opts[:input_class]]}
         rows={@field["rows"] || 4}
         maxlength={@field["max_length"]}
         required={@field["required"] && !@opts[:primary_placeholders]}
@@ -490,7 +490,7 @@ defmodule PhoenixKitEntities.FormBuilder do
       >{@value}</textarea>
       <%= if @field["description"] do %>
         <.label class="label">
-          <span class="label-text-alt">{@field["description"]}</span>
+          <span class="fieldset-label">{@field["description"]}</span>
         </.label>
       <% end %>
     </div>
@@ -520,13 +520,13 @@ defmodule PhoenixKitEntities.FormBuilder do
         name={"#{@changeset.data.__struct__.__schema__(:source)}[data][#{@field["key"]}]"}
         value={@value}
         placeholder={@placeholder}
-        class={["input input-bordered w-full", @opts[:input_class]]}
+        class={["input w-full", @opts[:input_class]]}
         required={@field["required"] && !@opts[:primary_placeholders]}
         disabled={@opts[:disabled]}
       />
       <%= if @field["description"] do %>
         <.label class="label">
-          <span class="label-text-alt">{@field["description"]}</span>
+          <span class="fieldset-label">{@field["description"]}</span>
         </.label>
       <% end %>
     </div>
@@ -556,13 +556,13 @@ defmodule PhoenixKitEntities.FormBuilder do
         name={"#{@changeset.data.__struct__.__schema__(:source)}[data][#{@field["key"]}]"}
         value={@value}
         placeholder={@placeholder}
-        class={["input input-bordered w-full", @opts[:input_class]]}
+        class={["input w-full", @opts[:input_class]]}
         required={@field["required"] && !@opts[:primary_placeholders]}
         disabled={@opts[:disabled]}
       />
       <%= if @field["description"] do %>
         <.label class="label">
-          <span class="label-text-alt">{@field["description"]}</span>
+          <span class="fieldset-label">{@field["description"]}</span>
         </.label>
       <% end %>
     </div>
@@ -590,17 +590,17 @@ defmodule PhoenixKitEntities.FormBuilder do
       <textarea
         name={"#{@changeset.data.__struct__.__schema__(:source)}[data][#{@field["key"]}]"}
         placeholder={@placeholder}
-        class={["textarea textarea-bordered w-full h-32", @opts[:input_class]]}
+        class={["textarea w-full h-32", @opts[:input_class]]}
         rows="8"
         required={@field["required"] && !@opts[:primary_placeholders]}
         disabled={@opts[:disabled]}
       >{@value}</textarea>
       <.label class="label">
-        <span class="label-text-alt">{gettext("Rich text editor (HTML supported)")}</span>
+        <span class="fieldset-label">{gettext("Rich text editor (HTML supported)")}</span>
       </.label>
       <%= if @field["description"] do %>
         <.label class="label">
-          <span class="label-text-alt">{@field["description"]}</span>
+          <span class="fieldset-label">{@field["description"]}</span>
         </.label>
       <% end %>
     </div>
@@ -630,7 +630,7 @@ defmodule PhoenixKitEntities.FormBuilder do
         name={"#{@changeset.data.__struct__.__schema__(:source)}[data][#{@field["key"]}]"}
         value={@value}
         placeholder={@placeholder}
-        class={["input input-bordered w-full", @opts[:input_class]]}
+        class={["input w-full", @opts[:input_class]]}
         min={@field["min"]}
         max={@field["max"]}
         step={@field["step"] || 1}
@@ -639,7 +639,7 @@ defmodule PhoenixKitEntities.FormBuilder do
       />
       <%= if @field["description"] do %>
         <.label class="label">
-          <span class="label-text-alt">{@field["description"]}</span>
+          <span class="fieldset-label">{@field["description"]}</span>
         </.label>
       <% end %>
     </div>
@@ -658,7 +658,7 @@ defmodule PhoenixKitEntities.FormBuilder do
       <.label>
         {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
-      <div class="form-control">
+      <div class="fieldset">
         <label class="label cursor-pointer justify-start gap-4">
           <input
             type="hidden"
@@ -673,14 +673,14 @@ defmodule PhoenixKitEntities.FormBuilder do
             class={["toggle toggle-primary", @opts[:input_class]]}
             disabled={@opts[:disabled]}
           />
-          <span class="label-text">
+          <span class="fieldset-legend">
             {if @is_checked, do: gettext("Enabled"), else: gettext("Disabled")}
           </span>
         </label>
       </div>
       <%= if @field["description"] do %>
         <.label class="label">
-          <span class="label-text-alt">{@field["description"]}</span>
+          <span class="fieldset-label">{@field["description"]}</span>
         </.label>
       <% end %>
     </div>
@@ -700,13 +700,13 @@ defmodule PhoenixKitEntities.FormBuilder do
         type="date"
         name={"#{@changeset.data.__struct__.__schema__(:source)}[data][#{@field["key"]}]"}
         value={get_field_value(@changeset, @field["key"])}
-        class={["input input-bordered w-full", @opts[:input_class]]}
+        class={["input w-full", @opts[:input_class]]}
         required={@field["required"]}
         disabled={@opts[:disabled]}
       />
       <%= if @field["description"] do %>
         <.label class="label">
-          <span class="label-text-alt">{@field["description"]}</span>
+          <span class="fieldset-label">{@field["description"]}</span>
         </.label>
       <% end %>
     </div>
@@ -762,13 +762,13 @@ defmodule PhoenixKitEntities.FormBuilder do
           name={"#{@changeset.data.__struct__.__schema__(:source)}[data][#{@field["key"]}__other]"}
           value={@other_value}
           placeholder={gettext("Enter custom value")}
-          class={["input input-bordered w-full mt-2", @opts[:input_class]]}
+          class={["input w-full mt-2", @opts[:input_class]]}
           disabled={@opts[:disabled]}
         />
       <% end %>
       <%= if @field["description"] do %>
         <.label class="label">
-          <span class="label-text-alt">{@field["description"]}</span>
+          <span class="fieldset-label">{@field["description"]}</span>
         </.label>
       <% end %>
     </div>
@@ -806,7 +806,7 @@ defmodule PhoenixKitEntities.FormBuilder do
               required={@field["required"]}
               disabled={@opts[:disabled]}
             />
-            <span class="label-text">{translated_option_label(@field, option, @opts[:lang_code])}</span>
+            <span class="fieldset-legend">{translated_option_label(@field, option, @opts[:lang_code])}</span>
           </label>
         <% end %>
         <%= if @allow_other do %>
@@ -820,13 +820,13 @@ defmodule PhoenixKitEntities.FormBuilder do
               required={@field["required"]}
               disabled={@opts[:disabled]}
             />
-            <span class="label-text">{gettext("Other")}</span>
+            <span class="fieldset-legend">{gettext("Other")}</span>
             <input
               type="text"
               name={"#{@changeset.data.__struct__.__schema__(:source)}[data][#{@field["key"]}__other]"}
               value={@other_value}
               placeholder={gettext("Enter custom value")}
-              class={["input input-bordered input-sm flex-1", @opts[:input_class]]}
+              class={["input input-sm flex-1", @opts[:input_class]]}
               disabled={@opts[:disabled]}
             />
           </label>
@@ -834,7 +834,7 @@ defmodule PhoenixKitEntities.FormBuilder do
       </div>
       <%= if @field["description"] do %>
         <.label class="label">
-          <span class="label-text-alt">{@field["description"]}</span>
+          <span class="fieldset-label">{@field["description"]}</span>
         </.label>
       <% end %>
     </div>
@@ -871,7 +871,7 @@ defmodule PhoenixKitEntities.FormBuilder do
               checked={option in (get_field_value(@changeset, @field["key"]) || [])}
               disabled={@opts[:disabled]}
             />
-            <span class="label-text">{translated_option_label(@field, option, @opts[:lang_code])}</span>
+            <span class="fieldset-legend">{translated_option_label(@field, option, @opts[:lang_code])}</span>
           </label>
         <% end %>
         <%= if @allow_other do %>
@@ -884,13 +884,13 @@ defmodule PhoenixKitEntities.FormBuilder do
               checked={!!@other_value}
               disabled={@opts[:disabled]}
             />
-            <span class="label-text">{gettext("Other")}</span>
+            <span class="fieldset-legend">{gettext("Other")}</span>
             <input
               type="text"
               name={"#{@changeset.data.__struct__.__schema__(:source)}[data][#{@field["key"]}__other]"}
               value={@other_value}
               placeholder={gettext("Enter custom value")}
-              class={["input input-bordered input-sm flex-1", @opts[:input_class]]}
+              class={["input input-sm flex-1", @opts[:input_class]]}
               disabled={@opts[:disabled]}
             />
           </label>
@@ -898,7 +898,7 @@ defmodule PhoenixKitEntities.FormBuilder do
       </div>
       <%= if @field["description"] do %>
         <.label class="label">
-          <span class="label-text-alt">{@field["description"]}</span>
+          <span class="fieldset-label">{@field["description"]}</span>
         </.label>
       <% end %>
     </div>
@@ -925,7 +925,7 @@ defmodule PhoenixKitEntities.FormBuilder do
       </div>
       <%= if @field["description"] do %>
         <.label class="label">
-          <span class="label-text-alt">{@field["description"]}</span>
+          <span class="fieldset-label">{@field["description"]}</span>
         </.label>
       <% end %>
     </div>
@@ -1023,7 +1023,7 @@ defmodule PhoenixKitEntities.FormBuilder do
 
       <%= if @field["description"] do %>
         <.label class="label">
-          <span class="label-text-alt">{@field["description"]}</span>
+          <span class="fieldset-label">{@field["description"]}</span>
         </.label>
       <% end %>
     </div>
@@ -1050,7 +1050,7 @@ defmodule PhoenixKitEntities.FormBuilder do
       </div>
       <%= if @field["description"] do %>
         <.label class="label">
-          <span class="label-text-alt">{@field["description"]}</span>
+          <span class="fieldset-label">{@field["description"]}</span>
         </.label>
       <% end %>
     </div>

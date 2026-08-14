@@ -133,7 +133,7 @@ defmodule PhoenixKitEntities.Components.EntityForm do
                   wrapper_class: "mb-4"
                 )}
 
-                <div class="form-control mt-6">
+                <div class="fieldset mt-6">
                   <button type="submit" class="btn btn-primary">
                     {@form_submit_text}
                   </button>

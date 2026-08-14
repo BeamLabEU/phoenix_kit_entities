@@ -1121,7 +1121,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
               <%!-- Status Filter --%>
               <div>
                 <label class="label">
-                  <span class="label-text">{gettext("Filter by Status")}</span>
+                  <span class="fieldset-legend">{gettext("Filter by Status")}</span>
                 </label>
                 <.form for={%{}} phx-change="filter_by_status">
                   <label class="select w-full">
@@ -1151,7 +1151,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
               <%!-- Search --%>
               <div>
                 <label class="label">
-                  <span class="label-text">{gettext("Search Records")}</span>
+                  <span class="fieldset-legend">{gettext("Search Records")}</span>
                 </label>
                 <.form for={%{}} phx-change="search" phx-submit="search" class="join w-full">
                   <input
@@ -1159,7 +1159,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
                     name="search[term]"
                     value={@search_term}
                     placeholder={gettext("Search by title or slug...")}
-                    class="input input-bordered join-item flex-1"
+                    class="input join-item flex-1"
                   />
                   <button type="submit" class="btn btn-primary join-item">
                     <.icon name="hero-magnifying-glass" class="w-4 h-4" />

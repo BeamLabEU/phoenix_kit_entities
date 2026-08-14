@@ -1,0 +1,29 @@
+{
+  "data": [
+    {
+      "data": {
+        "title": "Imported iota-1"
+      },
+      "metadata": {},
+      "slug": "iota-1",
+      "status": "published",
+      "title": "Imported iota-1"
+    }
+  ],
+  "definition": {
+    "description": "From import",
+    "display_name": "Importer Widget",
+    "display_name_plural": "Importer Widgets",
+    "fields_definition": [
+      {
+        "key": "title",
+        "label": "Title",
+        "type": "text"
+      }
+    ],
+    "icon": "hero-puzzle-piece",
+    "name": "imp_via_storage_28805",
+    "settings": {},
+    "status": "published"
+  }
+}

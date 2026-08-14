@@ -1,0 +1,29 @@
+{
+  "data": [
+    {
+      "data": {
+        "title": "Imported lambda-1"
+      },
+      "metadata": {},
+      "slug": "lambda-1",
+      "status": "published",
+      "title": "Imported lambda-1"
+    }
+  ],
+  "definition": {
+    "description": "From import",
+    "display_name": "Different",
+    "display_name_plural": "Importer Widgets",
+    "fields_definition": [
+      {
+        "key": "title",
+        "label": "Title",
+        "type": "text"
+      }
+    ],
+    "icon": "hero-puzzle-piece",
+    "name": "imp_conflict_2310",
+    "settings": {},
+    "status": "published"
+  }
+}

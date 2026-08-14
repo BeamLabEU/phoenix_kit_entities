@@ -1183,7 +1183,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
 
                 <%!-- Entity Tabs --%>
                 <%= if length(@import_preview.entities) > 0 do %>
-                  <div role="tablist" class="tabs tabs-bordered mb-4">
+                  <div role="tablist" class="tabs tabs-border mb-4">
                     <%= for entity <- @import_preview.entities do %>
                       <button
                         role="tab"

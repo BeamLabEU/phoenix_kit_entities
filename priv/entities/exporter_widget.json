@@ -1,0 +1,35 @@
+{
+  "data": [
+    {
+      "data": {
+        "title": "Acme"
+      },
+      "date_created": "2026-08-14T00:16:49Z",
+      "date_updated": "2026-08-14T00:16:49Z",
+      "metadata": null,
+      "slug": "acme",
+      "status": "published",
+      "title": "Acme"
+    }
+  ],
+  "definition": {
+    "date_created": "2026-08-14T00:16:49Z",
+    "date_updated": "2026-08-14T00:16:49Z",
+    "description": "Test fixture",
+    "display_name": "Exporter Widget",
+    "display_name_plural": "Exporter Widgets",
+    "fields_definition": [
+      {
+        "key": "title",
+        "label": "Title",
+        "type": "text"
+      }
+    ],
+    "icon": null,
+    "name": "exporter_widget",
+    "settings": null,
+    "status": "published"
+  },
+  "export_version": "1.0",
+  "exported_at": "2026-08-14T00:16:49Z"
+}
