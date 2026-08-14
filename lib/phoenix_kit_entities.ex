@@ -189,7 +189,13 @@ defmodule PhoenixKitEntities do
     )
     |> validate_name_uniqueness()
     |> validate_fields_definition()
-    |> unique_constraint(:name)
+    # Core's chain names this index `phoenix_kit_entities_name_uidx`, not the
+    # `phoenix_kit_entities_name_index` Ecto derives — without the explicit
+    # name the declaration can never fire. `validate_name_uniqueness/1` above
+    # catches the common case at changeset time; this constraint is the
+    # race-window backstop for two concurrent creates, which is exactly when a
+    # raw Ecto.ConstraintError raise is least acceptable.
+    |> unique_constraint(:name, name: :phoenix_kit_entities_name_uidx)
     |> maybe_set_timestamps()
   end
 
