@@ -923,7 +923,7 @@ defmodule PhoenixKitEntities.FormBuilder do
         {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
       <div class="border border-base-300 rounded-lg p-4 bg-base-200/50 flex items-center gap-3">
-        <%= if is_binary(@current) and @current != "" do %>
+        <%= if is_binary(@current) and match?({:ok, _}, Ecto.UUID.cast(@current)) do %>
           <img
             :if={@type == "image"}
             src={PhoenixKit.Modules.Storage.URLSigner.signed_url(@current, "thumbnail")}
@@ -1350,7 +1350,7 @@ defmodule PhoenixKitEntities.FormBuilder do
   def cast_field(field, raw_value) do
     value =
       case {field["type"], raw_value} do
-        {"checkbox", empty} when empty in [nil, ""] -> []
+        {"checkbox", raw} -> normalize_checkbox(raw)
         {_type, ""} -> nil
         {_type, other} -> other
       end
@@ -1363,6 +1363,11 @@ defmodule PhoenixKitEntities.FormBuilder do
       validate_type(field, value)
     end
   end
+
+  # A checkbox group submitted through FieldInput's hidden fallback
+  # arrives as a list that may carry the hidden "" entry — strip it
+  # before membership validation.
+  defp normalize_checkbox(value), do: value |> List.wrap() |> Enum.reject(&(&1 == ""))
 
   defp validate_required(%{"required" => true}, value) when value in [nil, "", []] do
     {:error, [gettext("is required")]}

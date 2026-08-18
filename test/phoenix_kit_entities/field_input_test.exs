@@ -68,10 +68,12 @@ defmodule PhoenixKitEntities.Components.FieldInputTest do
       assert html =~ ~s(<option value="Matte">)
     end
 
-    test "checkbox group keeps the key present via hidden input" do
+    test "checkbox group keeps the key present via a same-name hidden input" do
       field = %{"type" => "checkbox", "key" => "tags", "label" => "T", "options" => ["a", "b"]}
       html = render_input(field, value: ["b"])
-      assert html =~ ~s(type="hidden" name="extras[tags]" value="")
+      # The hidden fallback shares the []-name — mixing a scalar and a
+      # list name under one key is parser-undefined (panel finding).
+      assert html =~ ~s(type="hidden" name="extras[tags][]" value="")
       assert html =~ ~s(name="extras[tags][]")
       assert html =~ "checked"
     end
@@ -101,6 +103,11 @@ defmodule PhoenixKitEntities.Components.FieldInputTest do
       refute empty =~ "<img"
       assert empty =~ "Choose"
       refute empty =~ ~s(phx-click="clear_media")
+
+      # Junk value → degrades to Choose, never reaches URLSigner.
+      junk = render_input(field, value: "not-a-uuid", on_pick: "pick_media")
+      refute junk =~ "<img"
+      assert junk =~ "Choose"
     end
 
     test "heading renders nothing; unknown types degrade to a note" do
@@ -126,6 +133,9 @@ defmodule PhoenixKitEntities.Components.FieldInputTest do
 
       checkbox = %{"type" => "checkbox", "key" => "c", "options" => ["a", "b"]}
       assert {:ok, ["a"]} = FormBuilder.cast_field(checkbox, ["a"])
+      # The hidden fallback's "" entry is stripped before membership.
+      assert {:ok, ["a"]} = FormBuilder.cast_field(checkbox, ["", "a"])
+      assert {:ok, []} = FormBuilder.cast_field(checkbox, [""])
       assert {:ok, []} = FormBuilder.cast_field(checkbox, "")
 
       assert {:error, _} =

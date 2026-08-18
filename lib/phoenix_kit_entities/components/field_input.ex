@@ -236,7 +236,7 @@ defmodule PhoenixKitEntities.Components.FieldInput do
 
     ~H"""
     <span class="inline-flex flex-wrap items-center gap-2">
-      <input type="hidden" name={@name} value="" />
+      <input type="hidden" name={@name <> "[]"} value="" />
       <label
         :for={option <- @field["options"] || []}
         class="inline-flex items-center gap-1 cursor-pointer text-sm"
@@ -258,7 +258,7 @@ defmodule PhoenixKitEntities.Components.FieldInput do
   defp render_input(%{type: t} = assigns) when t in ["image", "video"] do
     ~H"""
     <span class="inline-flex items-center gap-2">
-      <%= if is_binary(@value) and @value != "" do %>
+      <%= if valid_media_ref?(@value) do %>
         <img
           :if={@type == "image"}
           src={URLSigner.signed_url(@value, "thumbnail")}
@@ -280,12 +280,12 @@ defmodule PhoenixKitEntities.Components.FieldInput do
           name={if @type == "image", do: "hero-photo", else: "hero-video-camera"}
           class="w-3.5 h-3.5"
         />
-        {if is_binary(@value) and @value != "",
+        {if valid_media_ref?(@value),
           do: gettext("Change"),
           else: gettext("Choose")}
       </button>
       <button
-        :if={@on_clear && is_binary(@value) && @value != ""}
+        :if={@on_clear && valid_media_ref?(@value)}
         type="button"
         phx-click={@on_clear}
         phx-value-field={@field["key"]}
@@ -312,6 +312,12 @@ defmodule PhoenixKitEntities.Components.FieldInput do
     </span>
     """
   end
+
+  # Render-time guard: the value normally passed the write-path gates,
+  # but this component renders whatever the host hands it — a junk
+  # binary must degrade to "Choose", never reach URLSigner.
+  defp valid_media_ref?(value) when is_binary(value), do: match?({:ok, _}, Ecto.UUID.cast(value))
+  defp valid_media_ref?(_), do: false
 
   defp pick_attrs(%{pick_params: params}) when is_map(params) do
     Map.new(params, fn {k, v} -> {"phx-value-#{k}", v} end)
