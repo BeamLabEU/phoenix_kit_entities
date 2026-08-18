@@ -69,8 +69,29 @@ defmodule PhoenixKitEntities.Managed do
       not managed?(entity) -> :ok
       Keyword.get(opts, :on_behalf_of) == owner(entity) -> :ok
       renames_identity?(entity, attrs) -> {:error, :managed_blueprint}
+      tampers_with_markers?(entity, attrs) -> {:error, :managed_blueprint}
       touches_locked_keys?(entity, attrs) -> {:error, :locked_key}
       true -> :ok
+    end
+  end
+
+  @doc """
+  Validates CREATING an entity with `attrs`: a blueprint claiming a
+  `managed_by` owner can only be provisioned by that owner
+  (`on_behalf_of` matching). Without this, any generic caller could
+  create a blueprint that masquerades as module-owned — hidden from
+  the generic admin yet picked up by the owning module's listings
+  (panel finding, 2026-08-18 review).
+  """
+  @spec validate_creation(map(), keyword()) :: :ok | {:error, :managed_blueprint}
+  def validate_creation(attrs, opts \\ []) do
+    settings = attrs[:settings] || attrs["settings"]
+    claimed = is_map(settings) && settings["managed_by"]
+
+    if is_binary(claimed) and Keyword.get(opts, :on_behalf_of) != claimed do
+      {:error, :managed_blueprint}
+    else
+      :ok
     end
   end
 
@@ -91,9 +112,24 @@ defmodule PhoenixKitEntities.Managed do
       true ->
         case delete_guard(owner(entity)) do
           nil -> {:error, :no_delete_guard}
-          fun -> fun.(entity)
+          fun -> run_delete_guard(fun, entity)
         end
     end
+  end
+
+  # A guard that raises must FAIL CLOSED, not propagate: the classic
+  # cause is a stale local-fun capture in :persistent_term after the
+  # registering module was purged (code reload / hot upgrade) — owners
+  # must register EXTERNAL captures (`&Mod.fun/1`), but a blueprint
+  # delete must never crash the caller either way.
+  defp run_delete_guard(fun, entity) do
+    case fun.(entity) do
+      :ok -> :ok
+      {:error, reason} -> {:error, reason}
+      other -> {:error, {:invalid_guard_result, other}}
+    end
+  rescue
+    _ -> {:error, :delete_guard_error}
   end
 
   @doc "Registers (replaces) the owner's delete-approval callback."
@@ -114,6 +150,24 @@ defmodule PhoenixKitEntities.Managed do
 
     (is_binary(new_name) and new_name != entity.name) or
       (is_binary(new_status) and new_status != entity.status)
+  end
+
+  # The marker keys ARE the protection — a generic settings write that
+  # rewrites or drops "managed_by"/"locked_keys" would un-manage the
+  # blueprint (or unlock everything) and then walk straight past every
+  # other guard (panel finding, 2026-08-18 review). Only settings-bearing
+  # updates are checked: an update without :settings can't touch them.
+  defp tampers_with_markers?(entity, attrs) do
+    new_settings = attrs[:settings] || attrs["settings"]
+
+    if is_map(new_settings) do
+      old_settings = entity.settings || %{}
+
+      new_settings["managed_by"] != old_settings["managed_by"] or
+        new_settings["locked_keys"] != old_settings["locked_keys"]
+    else
+      false
+    end
   end
 
   # Locked keys live under settings["<owner>"] — reject any update whose

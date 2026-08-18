@@ -98,12 +98,12 @@ defmodule PhoenixKitEntities do
   alias PhoenixKit.Users.Auth
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKit.Utils.Date, as: UtilsDate
-  alias PhoenixKitEntities.Managed
   alias PhoenixKit.Utils.Multilang
   alias PhoenixKit.Utils.UUID, as: UUIDUtils
   alias PhoenixKitEntities.EntityData
   alias PhoenixKitEntities.Events
   alias PhoenixKitEntities.FieldTypes
+  alias PhoenixKitEntities.Managed
   alias PhoenixKitEntities.Mirror.Exporter
   alias PhoenixKitEntities.Mirror.Storage
   @type t :: %__MODULE__{}
@@ -616,17 +616,20 @@ defmodule PhoenixKitEntities do
   but only if at least one user exists in the system. If no users exist, the changeset
   will fail with a validation error on `created_by`.
   """
-  @spec create_entity(map(), keyword()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
+  @spec create_entity(map(), keyword()) ::
+          {:ok, t()} | {:error, Ecto.Changeset.t() | :managed_blueprint}
   def create_entity(attrs \\ %{}, opts \\ []) do
-    attrs =
-      attrs
-      |> maybe_add_created_by()
-      |> maybe_add_entity_position()
+    with :ok <- Managed.validate_creation(attrs, opts) do
+      attrs =
+        attrs
+        |> maybe_add_created_by()
+        |> maybe_add_entity_position()
 
-    %__MODULE__{}
-    |> changeset(attrs)
-    |> repo().insert()
-    |> notify_entity_event(:created, opts)
+      %__MODULE__{}
+      |> changeset(attrs)
+      |> repo().insert()
+      |> notify_entity_event(:created, opts)
+    end
   end
 
   # Auto-assign a position when the caller hasn't specified one — places

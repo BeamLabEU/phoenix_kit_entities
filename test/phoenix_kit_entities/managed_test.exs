@@ -70,6 +70,41 @@ defmodule PhoenixKitEntities.ManagedTest do
       assert :ok =
                Managed.validate_mutation(e, %{"name" => "renamed"}, on_behalf_of: "catalogue")
     end
+
+    test "generic writes cannot rewrite or drop the marker keys themselves" do
+      e = managed_entity()
+
+      # Dropping managed_by would un-manage the blueprint entirely.
+      assert {:error, :managed_blueprint} =
+               Managed.validate_mutation(e, %{
+                 "settings" => Map.delete(e.settings, "managed_by")
+               })
+
+      # Emptying locked_keys would unlock every contract key.
+      assert {:error, :managed_blueprint} =
+               Managed.validate_mutation(e, %{
+                 "settings" => Map.put(e.settings, "locked_keys", [])
+               })
+
+      # The owner may still restructure its own contract.
+      assert :ok =
+               Managed.validate_mutation(
+                 e,
+                 %{"settings" => Map.put(e.settings, "locked_keys", ["kind"])},
+                 on_behalf_of: "catalogue"
+               )
+    end
+  end
+
+  describe "validate_creation/2" do
+    test "generic creates cannot claim a managed_by owner" do
+      attrs = %{settings: %{"managed_by" => "catalogue"}, name: "catalogue_set_forged"}
+
+      assert {:error, :managed_blueprint} = Managed.validate_creation(attrs)
+      assert :ok = Managed.validate_creation(attrs, on_behalf_of: "catalogue")
+      assert :ok = Managed.validate_creation(%{name: "plain", settings: %{}})
+      assert :ok = Managed.validate_creation(%{name: "no_settings"})
+    end
   end
 
   describe "validate_delete/2" do
@@ -91,28 +126,46 @@ defmodule PhoenixKitEntities.ManagedTest do
       assert {:error, :set_in_use} =
                Managed.validate_delete(e, on_behalf_of: "managed_test_owner")
     end
+
+    test "a crashing or misbehaving guard fails closed, never propagates" do
+      e = managed_entity(%{settings: %{"managed_by" => "crashy_owner"}})
+
+      Managed.register_delete_guard("crashy_owner", fn _e -> raise "stale fun" end)
+
+      assert {:error, :delete_guard_error} =
+               Managed.validate_delete(e, on_behalf_of: "crashy_owner")
+
+      Managed.register_delete_guard("crashy_owner", fn _e -> :weird end)
+
+      assert {:error, {:invalid_guard_result, :weird}} =
+               Managed.validate_delete(e, on_behalf_of: "crashy_owner")
+    end
   end
 
   describe "DB integration" do
     test "update/delete paths enforce the guard; listing and cap exclude managed" do
       actor_uuid = Ecto.UUID.generate()
 
-      {:ok, managed} =
-        PhoenixKitEntities.create_entity(%{
-          name: "catalogue_set_test_colors",
-          display_name: "Test colors",
-          display_name_plural: "Test colors",
-          status: "published",
-          fields_definition: [],
-          created_by_uuid: actor_uuid,
-          settings: %{
-            "managed_by" => "catalogue",
-            "locked_keys" => ["kind"],
-            "catalogue" => %{"kind" => "multi"}
-          }
-        })
+      managed_attrs = %{
+        name: "catalogue_set_test_colors",
+        display_name: "Test colors",
+        display_name_plural: "Test colors",
+        status: "published",
+        fields_definition: [],
+        created_by_uuid: actor_uuid,
+        settings: %{
+          "managed_by" => "catalogue",
+          "locked_keys" => ["kind"],
+          "catalogue" => %{"kind" => "multi"}
+        }
+      }
 
-      {:ok, plain} =
+      # Creation guard live on the real create path: generic callers
+      # cannot claim an owner; the owner provisions via on_behalf_of.
+      assert {:error, :managed_blueprint} = PhoenixKitEntities.create_entity(managed_attrs)
+      {:ok, managed} = PhoenixKitEntities.create_entity(managed_attrs, on_behalf_of: "catalogue")
+
+      {:ok, _plain} =
         PhoenixKitEntities.create_entity(%{
           name: "plain_entity",
           display_name: "Plain",
