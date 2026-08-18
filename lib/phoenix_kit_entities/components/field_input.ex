@@ -9,9 +9,14 @@ defmodule PhoenixKitEntities.Components.FieldInput do
 
   ## The save contract
 
-  The host wraps its inputs in a `<form phx-change="...">` it owns
-  (include hidden inputs for row identity — a record uuid — and read
-  `_target` to know which field changed):
+  The host wraps its inputs in a `<form phx-change="..." phx-submit="...">`
+  it owns (include hidden inputs for row identity — a record uuid — and
+  read `_target` to know which field changed). **`phx-submit` is
+  load-bearing even when the change event does all the saving**: a form
+  with `phx-change` but no `phx-submit` is treated as external by
+  LiveView, so Enter in a typed input native-submits and navigates away,
+  killing the socket. Point it anywhere harmless — a clause that no-ops
+  on payloads without `_target` works.
 
     * **Typed inputs** (text, textarea, email, url, rich_text, number,
       date) carry `phx-debounce="blur"`, so the form's change event
@@ -37,7 +42,11 @@ defmodule PhoenixKitEntities.Components.FieldInput do
 
   ## Example
 
-      <form id={"row-\#{value.uuid}"} phx-change="extras_changed">
+      <form
+        id={"row-\#{value.uuid}"}
+        phx-change="extras_changed"
+        phx-submit="extras_changed"
+      >
         <input type="hidden" name="uuid" value={value.uuid} />
         <.field_input
           :for={field <- @entity.fields_definition}
