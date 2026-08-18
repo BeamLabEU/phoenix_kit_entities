@@ -46,7 +46,7 @@ defmodule PhoenixKitEntities.Web.Entities do
     socket =
       socket
       |> assign(:view_mode, view_mode)
-      |> assign(:entities, Entities.list_entities(lang: locale))
+      |> assign(:entities, Entities.list_entities(lang: locale, include_managed: false))
 
     {:noreply, socket}
   end
@@ -68,7 +68,7 @@ defmodule PhoenixKitEntities.Web.Entities do
         {:ok, _entity} ->
           socket =
             socket
-            |> assign(:entities, Entities.list_entities(lang: locale))
+            |> assign(:entities, Entities.list_entities(lang: locale, include_managed: false))
             |> put_flash(
               :info,
               gettext("Entity '%{name}' archived successfully", name: entity.display_name)
@@ -93,7 +93,7 @@ defmodule PhoenixKitEntities.Web.Entities do
         {:ok, _entity} ->
           socket =
             socket
-            |> assign(:entities, Entities.list_entities(lang: locale))
+            |> assign(:entities, Entities.list_entities(lang: locale, include_managed: false))
             |> put_flash(
               :info,
               gettext("Entity '%{name}' restored successfully", name: entity.display_name)

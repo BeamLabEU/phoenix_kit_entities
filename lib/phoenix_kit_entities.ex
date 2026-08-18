@@ -98,6 +98,7 @@ defmodule PhoenixKitEntities do
   alias PhoenixKit.Users.Auth
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKit.Utils.Date, as: UtilsDate
+  alias PhoenixKitEntities.Managed
   alias PhoenixKit.Utils.Multilang
   alias PhoenixKit.Utils.UUID, as: UUIDUtils
   alias PhoenixKitEntities.EntityData
@@ -400,7 +401,18 @@ defmodule PhoenixKitEntities do
     |> order_by([e], asc: e.position, desc: e.date_created)
     |> preload([:creator])
     |> repo().all()
+    |> maybe_reject_managed(opts)
     |> maybe_resolve_langs(opts)
+  end
+
+  # `include_managed: false` hides blueprints owned by other modules
+  # (catalogue attribute sets etc.) — they have their own admin UI.
+  defp maybe_reject_managed(entities, opts) do
+    if Keyword.get(opts, :include_managed, true) do
+      entities
+    else
+      Enum.reject(entities, &Managed.managed?/1)
+    end
   end
 
   @doc """
@@ -680,10 +692,19 @@ defmodule PhoenixKitEntities do
   """
   @spec update_entity(t(), map(), keyword()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
   def update_entity(%__MODULE__{} = entity, attrs, opts \\ []) do
-    entity
-    |> changeset(attrs)
-    |> repo().update()
-    |> notify_entity_event(:updated, opts)
+    # Managed blueprints (another module's contract riding entities —
+    # e.g. catalogue attribute sets): the write path itself refuses
+    # identity renames and locked-key changes from anyone but the owner.
+    case Managed.validate_mutation(entity, attrs, opts) do
+      :ok ->
+        entity
+        |> changeset(attrs)
+        |> repo().update()
+        |> notify_entity_event(:updated, opts)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   @doc """
@@ -702,8 +723,14 @@ defmodule PhoenixKitEntities do
   """
   @spec delete_entity(t(), keyword()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
   def delete_entity(%__MODULE__{} = entity, opts \\ []) do
-    repo().delete(entity)
-    |> notify_entity_event(:deleted, opts)
+    case Managed.validate_delete(entity, opts) do
+      :ok ->
+        repo().delete(entity)
+        |> notify_entity_event(:deleted, opts)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   @doc """
@@ -898,7 +925,14 @@ defmodule PhoenixKitEntities do
   """
   @spec count_user_entities(String.t()) :: non_neg_integer()
   def count_user_entities(user_uuid) when is_binary(user_uuid) do
-    from(e in __MODULE__, where: e.created_by_uuid == ^user_uuid, select: count(e.uuid))
+    # Managed blueprints (owned by other modules, provisioned
+    # programmatically) don't count against the per-user cap — an admin
+    # creating catalogue attribute sets isn't "creating entities".
+    from(e in __MODULE__,
+      where: e.created_by_uuid == ^user_uuid,
+      where: fragment("COALESCE(? ->> 'managed_by', '') = ''", e.settings),
+      select: count(e.uuid)
+    )
     |> repo().one()
   end
 
