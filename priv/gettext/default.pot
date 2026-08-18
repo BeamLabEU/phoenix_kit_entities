@@ -2744,3 +2744,9 @@ msgstr ""
 
 msgid "Unsupported field type: %{type}"
 msgstr ""
+
+msgid "Kinnitan"
+msgstr ""
+
+msgid "created_by_uuid must be present"
+msgstr ""

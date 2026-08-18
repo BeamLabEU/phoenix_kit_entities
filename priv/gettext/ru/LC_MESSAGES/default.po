@@ -2751,3 +2751,9 @@ msgstr "Выбрать"
 
 msgid "Unsupported field type: %{type}"
 msgstr "Неподдерживаемый тип поля: %{type}"
+
+msgid "Kinnitan"
+msgstr "Подтверждаю"
+
+msgid "created_by_uuid must be present"
+msgstr "created_by_uuid должен быть указан"

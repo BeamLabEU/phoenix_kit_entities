@@ -2744,3 +2744,9 @@ msgstr "Vali"
 
 msgid "Unsupported field type: %{type}"
 msgstr "Toetamata väljatüüp: %{type}"
+
+msgid "Kinnitan"
+msgstr "Kinnitan"
+
+msgid "created_by_uuid must be present"
+msgstr "created_by_uuid peab olema määratud"
