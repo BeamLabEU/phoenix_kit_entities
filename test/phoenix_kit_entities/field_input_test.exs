@@ -36,7 +36,33 @@ defmodule PhoenixKitEntities.Components.FieldInputTest do
     )
   end
 
+  defp render_input_with_form(field) do
+    render_component(
+      fn assigns ->
+        ~H"""
+        <PhoenixKitEntities.Components.FieldInput.field_input
+          field={@field}
+          name="extras[k]"
+          value={nil}
+          form="owner-form"
+        />
+        """
+      end,
+      %{field: field}
+    )
+  end
+
   describe "field_input/1 rendering" do
+    test "form attribute forwards onto controls and hidden fallbacks" do
+      text = %{"type" => "text", "key" => "k", "label" => "K"}
+      assert render_input_with_form(text) =~ ~s(form="owner-form")
+
+      boolean = %{"type" => "boolean", "key" => "b", "label" => "B"}
+      html = render_input_with_form(boolean)
+      # BOTH the toggle and its hidden false carry the association.
+      assert length(String.split(html, ~s(form="owner-form"))) == 3
+    end
+
     test "typed inputs debounce on blur" do
       for type <- ~w(text email url number date) do
         html = render_input(%{"type" => type, "key" => "k", "label" => "K"}, value: nil)

@@ -79,6 +79,16 @@ defmodule PhoenixKitEntities.Components.FieldInput do
   attr(:size, :string, default: "sm", values: ~w(xs sm md))
   attr(:disabled, :boolean, default: false)
 
+  attr(:form, :string,
+    default: nil,
+    doc: """
+    id of the owning <form> when the control renders OUTSIDE it (the
+    HTML form attribute) — e.g. table layouts, where a <form> inside
+    <tr> gets foster-parented out by the HTML parser. Applied to every
+    native control including the hidden fallbacks.
+    """
+  )
+
   attr(:on_pick, :string,
     default: nil,
     doc: "event pushed by the image/video Choose button (required for those types)"
@@ -113,6 +123,7 @@ defmodule PhoenixKitEntities.Components.FieldInput do
       id={@input_id}
       name={@name}
       value={@value}
+      form={@form}
       placeholder={@field["placeholder"]}
       disabled={@disabled}
       phx-debounce="blur"
@@ -126,6 +137,7 @@ defmodule PhoenixKitEntities.Components.FieldInput do
     <textarea
       id={@input_id}
       name={@name}
+      form={@form}
       placeholder={@field["placeholder"]}
       disabled={@disabled}
       rows="2"
@@ -142,6 +154,7 @@ defmodule PhoenixKitEntities.Components.FieldInput do
       id={@input_id}
       name={@name}
       value={@value}
+      form={@form}
       min={@field["min"]}
       max={@field["max"]}
       step={@field["step"] || "any"}
@@ -160,6 +173,7 @@ defmodule PhoenixKitEntities.Components.FieldInput do
       id={@input_id}
       name={@name}
       value={@value}
+      form={@form}
       disabled={@disabled}
       phx-debounce="blur"
       class={["input input-bordered bg-base-100", size_class("input", @size)]}
@@ -173,12 +187,13 @@ defmodule PhoenixKitEntities.Components.FieldInput do
   defp render_input(%{type: "boolean"} = assigns) do
     ~H"""
     <span class="inline-flex items-center">
-      <input type="hidden" name={@name} value="false" />
+      <input type="hidden" name={@name} value="false" form={@form} />
       <input
         type="checkbox"
         id={@input_id}
         name={@name}
         value="true"
+        form={@form}
         checked={@value in [true, "true"]}
         disabled={@disabled}
         class={["toggle", size_class("toggle", @size)]}
@@ -192,6 +207,7 @@ defmodule PhoenixKitEntities.Components.FieldInput do
     <select
       id={@input_id}
       name={@name}
+      form={@form}
       disabled={@disabled}
       class={["select select-bordered bg-base-100", size_class("select", @size)]}
     >
@@ -212,7 +228,7 @@ defmodule PhoenixKitEntities.Components.FieldInput do
   defp render_input(%{type: "radio"} = assigns) do
     ~H"""
     <span class="inline-flex flex-wrap items-center gap-2">
-      <input type="hidden" name={@name} value="" />
+      <input type="hidden" name={@name} value="" form={@form} />
       <label
         :for={option <- @field["options"] || []}
         class="inline-flex items-center gap-1 cursor-pointer text-sm"
@@ -221,6 +237,7 @@ defmodule PhoenixKitEntities.Components.FieldInput do
           type="radio"
           name={@name}
           value={option}
+          form={@form}
           checked={to_string(@value) == to_string(option)}
           disabled={@disabled}
           class={["radio", size_class("radio", @size)]}
@@ -236,7 +253,7 @@ defmodule PhoenixKitEntities.Components.FieldInput do
 
     ~H"""
     <span class="inline-flex flex-wrap items-center gap-2">
-      <input type="hidden" name={@name <> "[]"} value="" />
+      <input type="hidden" name={@name <> "[]"} value="" form={@form} />
       <label
         :for={option <- @field["options"] || []}
         class="inline-flex items-center gap-1 cursor-pointer text-sm"
@@ -245,6 +262,7 @@ defmodule PhoenixKitEntities.Components.FieldInput do
           type="checkbox"
           name={@name <> "[]"}
           value={option}
+          form={@form}
           checked={option in @selected}
           disabled={@disabled}
           class={["checkbox", size_class("checkbox", @size)]}
