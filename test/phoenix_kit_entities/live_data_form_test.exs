@@ -654,20 +654,34 @@ defmodule PhoenixKitEntities.LiveDataFormTest do
       assert LiveDataForm.sanitize_values(%{"color" => %{"evil" => "map"}}, fields) == %{}
     end
 
-    test "any value submitted under a file/image/relation field's key is dropped" do
-      # These three render a placeholder, never a submittable input, so a
+    test "any value submitted under a file/relation field's key is dropped" do
+      # These two render a placeholder, never a submittable input, so a
       # value arriving under their key can only be crafted. `file` in
       # particular used to fall through the catch-all into `record.data`,
       # where both render surfaces index or stringify it —
       # `FormBuilder.build_field/3`'s `file["filename"]` and this module's
       # `readonly_value/1` — which is the same stored-DoS the scalar types
       # above are protected from.
-      for type <- ~w(file image relation) do
+      for type <- ~w(file relation) do
         fields = [%{"type" => type, "key" => "attachment", "label" => "Attachment"}]
 
         assert LiveDataForm.sanitize_values(%{"attachment" => ["a.pdf"]}, fields) == %{}
         assert LiveDataForm.sanitize_values(%{"attachment" => %{"evil" => "map"}}, fields) == %{}
         assert LiveDataForm.sanitize_values(%{"attachment" => "a.pdf"}, fields) == %{}
+      end
+    end
+
+    test "image/video values ride the scalar path: strings pass, shapes drop" do
+      # Real field types since 2026-08-18 — the value is a storage file
+      # uuid string; content validity is EntityData.validate_media_field's
+      # job, this gate only rejects render-crashing shapes.
+      for type <- ~w(image video) do
+        fields = [%{"type" => type, "key" => "media", "label" => "Media"}]
+
+        uuid = Ecto.UUID.generate()
+        assert LiveDataForm.sanitize_values(%{"media" => uuid}, fields) == %{"media" => uuid}
+        assert LiveDataForm.sanitize_values(%{"media" => %{"evil" => "map"}}, fields) == %{}
+        assert LiveDataForm.sanitize_values(%{"media" => ["list"]}, fields) == %{}
       end
     end
 

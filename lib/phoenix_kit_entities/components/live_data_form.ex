@@ -189,7 +189,9 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
   # respectively — see their own `sanitize_field_value/2` clauses), so
   # they're kept out of this group rather than widening it to "whatever
   # the loosest member tolerates".
-  @scalar_value_types ~w(text textarea email url rich_text date select radio)
+  # image/video ride the scalar path: their value is a storage file
+  # uuid string (EntityData.validate_media_field is the shape gate).
+  @scalar_value_types ~w(text textarea email url rich_text date select radio image video)
 
   @impl true
   def update(assigns, socket) do

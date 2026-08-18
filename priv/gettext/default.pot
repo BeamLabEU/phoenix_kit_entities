@@ -2723,3 +2723,24 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Allow a custom \"Other\" option"
 msgstr ""
+
+msgid "must be a media file reference"
+msgstr ""
+
+msgid "field '%{label}' must be a media file reference"
+msgstr ""
+
+msgid "Media file"
+msgstr ""
+
+msgid "No media selected — set through the owning app's editor."
+msgstr ""
+
+msgid "Change"
+msgstr ""
+
+msgid "Choose"
+msgstr ""
+
+msgid "Unsupported field type: %{type}"
+msgstr ""

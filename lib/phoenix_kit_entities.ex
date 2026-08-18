@@ -275,7 +275,9 @@ defmodule PhoenixKitEntities do
   # this allowlist and `FieldTypes.list_types/0` are meant to be the same
   # set of types).
   defp validate_field_type(changeset, field) do
-    valid_types = FieldTypes.list_types() ++ ~w(image relation)
+    # image/video graduated into the FieldTypes registry (2026-08-18);
+    # relation remains the lone placeholder appended by hand.
+    valid_types = FieldTypes.list_types() ++ ~w(relation)
 
     if field["type"] in valid_types do
       changeset

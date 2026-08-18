@@ -562,14 +562,46 @@ defmodule PhoenixKitEntities.EntityData do
       "date" ->
         validate_date_field(changeset, field_def, value)
 
+      _ ->
+        dispatch_choice_or_media_validation(changeset, type, field_def, value)
+    end
+  end
+
+  # Second half of the dispatch — split only to keep each function's
+  # cyclomatic complexity under `credo --strict`'s threshold.
+  defp dispatch_choice_or_media_validation(changeset, type, field_def, value) do
+    case type do
       type when type in ["select", "radio"] ->
         validate_choice_field(changeset, field_def, value)
 
       "checkbox" ->
         validate_checkbox_field(changeset, field_def, value)
 
+      type when type in ["image", "video"] ->
+        validate_media_field(changeset, field_def, value)
+
       _ ->
         changeset
+    end
+  end
+
+  # Media references store a storage file uuid; this is the module's
+  # final gate (same doctrine as the text-like shape check above), so a
+  # crafted write cannot land a shape that crashes uuid-resolving
+  # renderers downstream.
+  defp validate_media_field(changeset, field_def, value) do
+    with true <- is_binary(value),
+         {:ok, _} <- Ecto.UUID.cast(value) do
+      changeset
+    else
+      _ ->
+        add_error(
+          changeset,
+          :data,
+          gettext("field '%{label}' must be a media file reference",
+            label: field_def["label"]
+          )
+        )
     end
   end
 

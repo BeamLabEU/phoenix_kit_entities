@@ -191,6 +191,32 @@ defmodule PhoenixKitEntities.FieldTypes do
         "accept" => [".pdf", ".jpg", ".jpeg", ".png"]
       }
     },
+    # Media references (picker + uuid model): the VALUE is a storage
+    # file uuid chosen through the host's media picker (e.g. core's
+    # MediaSelectorModal) — never a raw upload owned by this module.
+    # Raw uploads here would grow a second file store next to core
+    # Storage (no dedup/trash/variants/signed URLs); a reference keeps
+    # Storage canonical. Rendered inline by
+    # `PhoenixKitEntities.Components.FieldInput`; the admin DataForm
+    # shows the stored value read-only until it gains picker wiring.
+    "image" => %{
+      name: "image",
+      label: "Image",
+      description: "One image from the media library (stores a file reference)",
+      category: :advanced,
+      icon: "hero-photo",
+      requires_options: false,
+      default_props: %{}
+    },
+    "video" => %{
+      name: "video",
+      label: "Video",
+      description: "One video from the media library (stores a file reference)",
+      category: :advanced,
+      icon: "hero-video-camera",
+      requires_options: false,
+      default_props: %{}
+    },
     "heading" => %{
       name: "heading",
       label: "Section Heading",

@@ -2730,3 +2730,24 @@ msgstr "entity_uuid должен быть указан"
 #, elixir-autogen, elixir-format
 msgid "Allow a custom \"Other\" option"
 msgstr "Разрешить пользовательский вариант \"Другое\""
+
+msgid "must be a media file reference"
+msgstr "должно быть ссылкой на медиафайл"
+
+msgid "field '%{label}' must be a media file reference"
+msgstr "поле '%{label}' должно быть ссылкой на медиафайл"
+
+msgid "Media file"
+msgstr "Медиафайл"
+
+msgid "No media selected — set through the owning app's editor."
+msgstr "Медиа не выбрано — задаётся в редакторе приложения-владельца."
+
+msgid "Change"
+msgstr "Изменить"
+
+msgid "Choose"
+msgstr "Выбрать"
+
+msgid "Unsupported field type: %{type}"
+msgstr "Неподдерживаемый тип поля: %{type}"
