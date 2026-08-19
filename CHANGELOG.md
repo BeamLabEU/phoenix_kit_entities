@@ -1,3 +1,38 @@
+## 0.4.3 - 2026-08-19
+
+### Added
+
+- **Managed blueprints** (`PhoenixKitEntities.Managed`) — write-path protection for
+  entities owned by another module (the catalogue's attribute sets are the first
+  consumer). Managed blueprints are hidden from the generic admin
+  (`include_managed: false`) and protected against generic callers renaming
+  identity/status, touching locked settings keys, or tampering with/acquiring the
+  `managed_by`/`locked_keys` markers; owning modules bypass via `on_behalf_of`.
+  Deletion consults an owner-registered guard held in `:persistent_term` and fails
+  closed if the guard raises or exits.
+- **`PhoenixKitEntities.Components.FieldInput`** — a control-only per-field renderer
+  for hosts that own their own layout (table cells, chips, inline editors), covering
+  every field type with correct firing discipline (typed inputs debounce on blur,
+  discrete inputs fire immediately). `FormBuilder.cast_field/2` is the new public
+  per-field cast for hosts with their own save events.
+- **Real `image`/`video` field types** — the stored value is a storage-file UUID
+  selected through the host's media picker, validated with `Ecto.UUID.cast/1` at the
+  cast, changeset, and render layers.
+
+### Fixed
+
+- **Managed blueprints could reappear in the generic admin list** after a
+  drag-and-drop reorder or any entity-lifecycle PubSub broadcast (create/update/
+  delete anywhere in the app) — two of `web/entities.ex`'s five `list_entities/1`
+  call sites feeding the admin list were missing `include_managed: false`. Found and
+  fixed in post-merge review of #31, pinned with regression tests.
+- **`EntityData.bulk_delete/2` crashed instead of returning
+  `:referenced_by_external`** when the referencing FK used an explicit
+  `ON DELETE RESTRICT` (SQLSTATE `23001`) rather than the default `NO ACTION`
+  (`23503`) — `bulk_delete/2`'s FK-violation classifier only recognized the
+  latter. Pre-existing (issue #12), unrelated to #31; caught by the release gate's
+  `mix test` run.
+
 ## 0.4.2 - 2026-08-14
 
 ### Fixed
