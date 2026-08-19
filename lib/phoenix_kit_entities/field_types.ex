@@ -375,6 +375,12 @@ defmodule PhoenixKitEntities.FieldTypes do
   def description_for("file"),
     do: gettext("File upload field with configurable constraints")
 
+  def description_for("image"),
+    do: gettext("One image from the media library (stores a file reference)")
+
+  def description_for("video"),
+    do: gettext("One video from the media library (stores a file reference)")
+
   def description_for("heading"),
     do: gettext("Display-only section heading (no data)")
 
@@ -407,6 +413,8 @@ defmodule PhoenixKitEntities.FieldTypes do
   def label_for("radio"), do: gettext("Radio Buttons")
   def label_for("checkbox"), do: gettext("Checkboxes")
   def label_for("file"), do: gettext("File Upload")
+  def label_for("image"), do: gettext("Image")
+  def label_for("video"), do: gettext("Video")
   def label_for("heading"), do: gettext("Section Heading")
 
   def label_for(type_name) when is_binary(type_name) do

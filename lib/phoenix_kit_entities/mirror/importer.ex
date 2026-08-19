@@ -129,7 +129,12 @@ defmodule PhoenixKitEntities.Mirror.Importer do
 
     case Entities.create_entity(attrs) do
       {:ok, entity} -> {:ok, :created, entity}
-      {:error, changeset} -> {:error, {:validation_failed, changeset}}
+      # Managed refusals are atoms, not changesets — a definition whose
+      # settings claim "managed_by" belongs to the owning module's own
+      # provisioning path. Keep the atom labelled as what it is instead
+      # of wrapping it as a "changeset".
+      {:error, %Ecto.Changeset{} = changeset} -> {:error, {:validation_failed, changeset}}
+      {:error, reason} -> {:error, {:refused, reason}}
     end
   end
 
@@ -150,7 +155,8 @@ defmodule PhoenixKitEntities.Mirror.Importer do
 
     case Entities.update_entity(existing_entity, attrs) do
       {:ok, entity} -> {:ok, :updated, entity}
-      {:error, changeset} -> {:error, {:validation_failed, changeset}}
+      {:error, %Ecto.Changeset{} = changeset} -> {:error, {:validation_failed, changeset}}
+      {:error, reason} -> {:error, {:refused, reason}}
     end
   end
 
@@ -159,7 +165,8 @@ defmodule PhoenixKitEntities.Mirror.Importer do
 
     case Entities.update_entity(existing_entity, attrs) do
       {:ok, entity} -> {:ok, :updated, entity}
-      {:error, changeset} -> {:error, {:validation_failed, changeset}}
+      {:error, %Ecto.Changeset{} = changeset} -> {:error, {:validation_failed, changeset}}
+      {:error, reason} -> {:error, {:refused, reason}}
     end
   end
 

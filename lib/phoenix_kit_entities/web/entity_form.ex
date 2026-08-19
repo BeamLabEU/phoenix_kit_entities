@@ -1022,6 +1022,17 @@ defmodule PhoenixKitEntities.Web.EntityForm do
 
         {:error, %Ecto.Changeset{} = changeset} ->
           reply_with_broadcast(assign(socket, :changeset, changeset))
+
+        # Managed-blueprint refusals arrive as atoms, not changesets —
+        # without this branch they fell into the rescue below and read
+        # as an unexplained crash (panel finding, 2026-08-19 review).
+        {:error, reason} when reason in [:managed_blueprint, :locked_key] ->
+          {:noreply,
+           put_flash(
+             socket,
+             :error,
+             gettext("This blueprint is managed by another module — edit it there.")
+           )}
       end
     rescue
       e ->

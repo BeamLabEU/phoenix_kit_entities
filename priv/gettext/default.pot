@@ -2745,8 +2745,20 @@ msgstr ""
 msgid "Unsupported field type: %{type}"
 msgstr ""
 
-msgid "Kinnitan"
+msgid "created_by_uuid must be present"
 msgstr ""
 
-msgid "created_by_uuid must be present"
+msgid "Image"
+msgstr ""
+
+msgid "Video"
+msgstr ""
+
+msgid "One image from the media library (stores a file reference)"
+msgstr ""
+
+msgid "One video from the media library (stores a file reference)"
+msgstr ""
+
+msgid "This blueprint is managed by another module — edit it there."
 msgstr ""

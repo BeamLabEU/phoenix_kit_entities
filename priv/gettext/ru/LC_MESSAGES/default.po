@@ -2752,8 +2752,20 @@ msgstr "Выбрать"
 msgid "Unsupported field type: %{type}"
 msgstr "Неподдерживаемый тип поля: %{type}"
 
-msgid "Kinnitan"
-msgstr "Подтверждаю"
-
 msgid "created_by_uuid must be present"
 msgstr "created_by_uuid должен быть указан"
+
+msgid "Image"
+msgstr "Изображение"
+
+msgid "Video"
+msgstr "Видео"
+
+msgid "One image from the media library (stores a file reference)"
+msgstr "Одно изображение из медиатеки (сохраняет ссылку на файл)"
+
+msgid "One video from the media library (stores a file reference)"
+msgstr "Одно видео из медиатеки (сохраняет ссылку на файл)"
+
+msgid "This blueprint is managed by another module — edit it there."
+msgstr "Эта сущность управляется другим модулем — редактируйте её там."

@@ -2745,8 +2745,20 @@ msgstr "Vali"
 msgid "Unsupported field type: %{type}"
 msgstr "Toetamata väljatüüp: %{type}"
 
-msgid "Kinnitan"
-msgstr "Kinnitan"
-
 msgid "created_by_uuid must be present"
 msgstr "created_by_uuid peab olema määratud"
+
+msgid "Image"
+msgstr "Pilt"
+
+msgid "Video"
+msgstr "Video"
+
+msgid "One image from the media library (stores a file reference)"
+msgstr "Üks pilt meediateegist (salvestab failiviite)"
+
+msgid "One video from the media library (stores a file reference)"
+msgstr "Üks video meediateegist (salvestab failiviite)"
+
+msgid "This blueprint is managed by another module — edit it there."
+msgstr "Seda üksust haldab teine moodul — muutke seda seal."

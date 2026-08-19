@@ -695,7 +695,8 @@ defmodule PhoenixKitEntities do
       iex> PhoenixKitEntities.update_entity(entity, %{name: ""})
       {:error, %Ecto.Changeset{}}
   """
-  @spec update_entity(t(), map(), keyword()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
+  @spec update_entity(t(), map(), keyword()) ::
+          {:ok, t()} | {:error, Ecto.Changeset.t() | :managed_blueprint | :locked_key}
   def update_entity(%__MODULE__{} = entity, attrs, opts \\ []) do
     # Managed blueprints (another module's contract riding entities —
     # e.g. catalogue attribute sets): the write path itself refuses
@@ -726,7 +727,8 @@ defmodule PhoenixKitEntities do
       iex> PhoenixKitEntities.delete_entity(entity)
       {:error, %Ecto.Changeset{}}
   """
-  @spec delete_entity(t(), keyword()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
+  @spec delete_entity(t(), keyword()) ::
+          {:ok, t()} | {:error, Ecto.Changeset.t() | term()}
   def delete_entity(%__MODULE__{} = entity, opts \\ []) do
     case Managed.validate_delete(entity, opts) do
       :ok ->

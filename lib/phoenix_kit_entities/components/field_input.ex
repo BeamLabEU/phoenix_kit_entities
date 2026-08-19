@@ -25,6 +25,9 @@ defmodule PhoenixKitEntities.Components.FieldInput do
       group) fire immediately. Booleans pair the checkbox with a hidden
       `"false"` input and checkbox groups a hidden `""`, so the change
       payload always carries the key even when everything is unticked.
+      Checkbox groups submit under `name[]` (not the bare `name`), so
+      the host reads a **list** at that key — `cast_field/2` normalizes
+      it, dropping the hidden `""` entry.
     * **Media references** (image, video) are not form inputs at all:
       they render the current file (thumbnail for images) plus
       Choose/Clear buttons that push the host's `on_pick`/`on_clear`
@@ -72,8 +75,16 @@ defmodule PhoenixKitEntities.Components.FieldInput do
   Renders the control for one field definition. See the moduledoc for
   the save contract per field-type family.
   """
-  attr(:field, :map, required: true, doc: "one fields_definition entry")
-  attr(:name, :string, required: true, doc: "form input name, e.g. extras[price]")
+  attr(:field, :map, required: true, doc: "one fields_definition entry (string keys)")
+
+  attr(:name, :string,
+    required: true,
+    doc: """
+    form input name, e.g. extras[price]. Checkbox groups append `[]`
+    (real options and the hidden `""` fallback both submit under
+    `name[]`), so the host reads a list at that key.
+    """
+  )
   attr(:value, :any, default: nil)
   attr(:id, :string, default: nil, doc: "derived from name when absent")
   attr(:size, :string, default: "sm", values: ~w(xs sm md))
@@ -101,7 +112,11 @@ defmodule PhoenixKitEntities.Components.FieldInput do
 
   attr(:pick_params, :map,
     default: %{},
-    doc: "extra phx-value-* params on the pick/clear buttons (row identity)"
+    doc: """
+    extra phx-value-* params on the pick/clear buttons (row identity).
+    `"field"` is reserved — the buttons always send the field key under
+    it, so a `pick_params` entry named `field` is dropped.
+    """
   )
 
   def field_input(%{field: %{"type" => type}} = assigns) do
@@ -114,6 +129,19 @@ defmodule PhoenixKitEntities.Components.FieldInput do
       |> assign(:pick_attrs, pick_attrs(assigns))
 
     render_input(assigns)
+  end
+
+  # fields_definition entries are string-keyed; anything else (atom keys,
+  # missing "type") degrades to the unsupported-type note instead of
+  # raising a FunctionClauseError out of the host's render.
+  def field_input(assigns) do
+    assigns = assign(assigns, :type, malformed_type(assigns.field))
+
+    ~H"""
+    <span id={@id} class="text-xs text-base-content/40 italic">
+      {gettext("Unsupported field type: %{type}", type: @type)}
+    </span>
+    """
   end
 
   defp render_input(%{type: t} = assigns) when t in ["text", "email", "url"] do
@@ -187,7 +215,7 @@ defmodule PhoenixKitEntities.Components.FieldInput do
   defp render_input(%{type: "boolean"} = assigns) do
     ~H"""
     <span class="inline-flex items-center">
-      <input type="hidden" name={@name} value="false" form={@form} />
+      <input type="hidden" name={@name} value="false" form={@form} disabled={@disabled} />
       <input
         type="checkbox"
         id={@input_id}
@@ -224,11 +252,14 @@ defmodule PhoenixKitEntities.Components.FieldInput do
   end
 
   # Radios submit nothing when none is picked — the hidden "" keeps the
-  # key present, same trick as boolean above.
+  # key present, same trick as boolean above. The hidden fallbacks share
+  # the control's disabled state: a disabled group must submit NOTHING,
+  # or the fallback alone would post "" and silently clear the stored
+  # value on the host's next change event.
   defp render_input(%{type: "radio"} = assigns) do
     ~H"""
-    <span class="inline-flex flex-wrap items-center gap-2">
-      <input type="hidden" name={@name} value="" form={@form} />
+    <span id={@input_id} class="inline-flex flex-wrap items-center gap-2">
+      <input type="hidden" name={@name} value="" form={@form} disabled={@disabled} />
       <label
         :for={option <- @field["options"] || []}
         class="inline-flex items-center gap-1 cursor-pointer text-sm"
@@ -252,8 +283,8 @@ defmodule PhoenixKitEntities.Components.FieldInput do
     assigns = assign(assigns, :selected, List.wrap(assigns.value))
 
     ~H"""
-    <span class="inline-flex flex-wrap items-center gap-2">
-      <input type="hidden" name={@name <> "[]"} value="" form={@form} />
+    <span id={@input_id} class="inline-flex flex-wrap items-center gap-2">
+      <input type="hidden" name={@name <> "[]"} value="" form={@form} disabled={@disabled} />
       <label
         :for={option <- @field["options"] || []}
         class="inline-flex items-center gap-1 cursor-pointer text-sm"
@@ -275,7 +306,7 @@ defmodule PhoenixKitEntities.Components.FieldInput do
 
   defp render_input(%{type: t} = assigns) when t in ["image", "video"] do
     ~H"""
-    <span class="inline-flex items-center gap-2">
+    <span id={@input_id} class="inline-flex items-center gap-2">
       <%= if valid_media_ref?(@value) do %>
         <img
           :if={@type == "image"}
@@ -290,6 +321,7 @@ defmodule PhoenixKitEntities.Components.FieldInput do
         type="button"
         phx-click={@on_pick}
         phx-value-field={@field["key"]}
+        phx-disable-with={gettext("…")}
         disabled={@disabled}
         class={["btn btn-outline", size_class("btn", @size)]}
         {@pick_attrs}
@@ -307,6 +339,7 @@ defmodule PhoenixKitEntities.Components.FieldInput do
         type="button"
         phx-click={@on_clear}
         phx-value-field={@field["key"]}
+        phx-disable-with={gettext("…")}
         disabled={@disabled}
         class={["btn btn-ghost px-1", size_class("btn", @size)]}
         title={gettext("Clear")}
@@ -325,11 +358,15 @@ defmodule PhoenixKitEntities.Components.FieldInput do
 
   defp render_input(assigns) do
     ~H"""
-    <span class="text-xs text-base-content/40 italic">
+    <span id={@input_id} class="text-xs text-base-content/40 italic">
       {gettext("Unsupported field type: %{type}", type: @type)}
     </span>
     """
   end
+
+  # Best-effort type name for the malformed-field degradation note.
+  defp malformed_type(%{type: t}) when is_binary(t), do: t
+  defp malformed_type(_), do: "unknown"
 
   # Render-time guard: the value normally passed the write-path gates,
   # but this component renders whatever the host hands it — a junk
@@ -338,7 +375,12 @@ defmodule PhoenixKitEntities.Components.FieldInput do
   defp valid_media_ref?(_), do: false
 
   defp pick_attrs(%{pick_params: params}) when is_map(params) do
-    Map.new(params, fn {k, v} -> {"phx-value-#{k}", v} end)
+    # "field" is reserved: the buttons render phx-value-field={field key}
+    # explicitly, and a same-named pick_params entry would silently
+    # override it (attribute spreads win over earlier literal attrs).
+    params
+    |> Map.drop(["field", :field])
+    |> Map.new(fn {k, v} -> {"phx-value-#{k}", v} end)
   end
 
   defp pick_attrs(_), do: %{}

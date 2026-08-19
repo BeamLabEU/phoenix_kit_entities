@@ -2725,28 +2725,40 @@ msgid "Allow a custom \"Other\" option"
 msgstr "Allow a custom \"Other\" option"
 
 msgid "must be a media file reference"
-msgstr ""
+msgstr "must be a media file reference"
 
 msgid "field '%{label}' must be a media file reference"
-msgstr ""
+msgstr "field '%{label}' must be a media file reference"
 
 msgid "Media file"
-msgstr ""
+msgstr "Media file"
 
 msgid "No media selected — set through the owning app's editor."
-msgstr ""
+msgstr "No media selected — set through the owning app's editor."
 
 msgid "Change"
-msgstr ""
+msgstr "Change"
 
 msgid "Choose"
-msgstr ""
+msgstr "Choose"
 
 msgid "Unsupported field type: %{type}"
-msgstr ""
-
-msgid "Kinnitan"
-msgstr ""
+msgstr "Unsupported field type: %{type}"
 
 msgid "created_by_uuid must be present"
-msgstr ""
+msgstr "created_by_uuid must be present"
+
+msgid "Image"
+msgstr "Image"
+
+msgid "Video"
+msgstr "Video"
+
+msgid "One image from the media library (stores a file reference)"
+msgstr "One image from the media library (stores a file reference)"
+
+msgid "One video from the media library (stores a file reference)"
+msgstr "One video from the media library (stores a file reference)"
+
+msgid "This blueprint is managed by another module — edit it there."
+msgstr "This blueprint is managed by another module — edit it there."

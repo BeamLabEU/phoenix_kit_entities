@@ -1329,8 +1329,6 @@ defmodule PhoenixKitEntities.FormBuilder do
     end
   end
 
-  # Private Functions
-
   @doc """
   Casts ONE raw (form-submitted) value against its field definition —
   the per-field core of `validate_data/2`, public for hosts that own
@@ -1357,6 +1355,8 @@ defmodule PhoenixKitEntities.FormBuilder do
 
     validate_field_value(field, value)
   end
+
+  # Private Functions
 
   defp validate_field_value(field, value) do
     with {:ok, value} <- validate_required(field, value) do
