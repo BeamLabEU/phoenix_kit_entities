@@ -25,7 +25,9 @@ defmodule PhoenixKitEntities.Components.FieldInputTest do
           field={@field}
           name={@name}
           value={@value}
+          id={assigns[:id]}
           size={assigns[:size] || "sm"}
+          disabled={assigns[:disabled] || false}
           on_pick={assigns[:on_pick]}
           on_clear={assigns[:on_clear]}
           pick_params={assigns[:pick_params] || %{}}
@@ -142,6 +144,75 @@ defmodule PhoenixKitEntities.Components.FieldInputTest do
       html = render_input(%{"type" => "relation", "key" => "r", "label" => "R"})
       assert html =~ "Unsupported field type"
     end
+
+    test "radio group keeps the key present via a hidden empty input" do
+      field = %{"type" => "radio", "key" => "fit", "label" => "F", "options" => ["L", "R"]}
+      html = render_input(field, value: "R")
+      assert html =~ ~s(type="hidden" name="extras[fit]" value="")
+      assert html =~ ~s(type="radio")
+      assert html =~ "checked"
+    end
+
+    test "disabled reaches the hidden fallbacks too" do
+      # A disabled control is omitted from submission — if the hidden
+      # fallback stayed enabled it would post alone and silently clear
+      # the stored value (panel finding, 2026-08-19 review).
+      for field <- [
+            %{"type" => "boolean", "key" => "k", "label" => "K"},
+            %{"type" => "radio", "key" => "k", "label" => "K", "options" => ["a"]},
+            %{"type" => "checkbox", "key" => "k", "label" => "K", "options" => ["a"]}
+          ] do
+        html = render_input(field, disabled: true)
+        [hidden] = Regex.run(~r/<input type="hidden"[^>]*>/, html)
+        assert hidden =~ "disabled", "hidden fallback not disabled for #{field["type"]}"
+      end
+    end
+
+    test "the id lands in every branch, including groups and media" do
+      for field <- [
+            %{"type" => "radio", "key" => "k", "label" => "K", "options" => ["a"]},
+            %{"type" => "checkbox", "key" => "k", "label" => "K", "options" => ["a"]},
+            %{"type" => "image", "key" => "k", "label" => "K"},
+            %{"type" => "mystery", "key" => "k", "label" => "K"}
+          ] do
+        html = render_input(field, id: "host-given-id")
+        assert html =~ ~s(id="host-given-id"), "id dropped for #{field["type"]}"
+      end
+    end
+
+    test "malformed field maps degrade instead of raising" do
+      # Atom keys / missing "type" are outside the contract but must
+      # not FunctionClauseError out of the host's render.
+      html = render_input_raw(%{type: "text", key: "k"})
+      assert html =~ "Unsupported field type"
+
+      assert render_input_raw(%{"key" => "k"}) =~ "Unsupported field type"
+    end
+
+    test "pick_params cannot override the reserved field key" do
+      field = %{"type" => "image", "key" => "swatch", "label" => "S"}
+
+      html =
+        render_input(field, on_pick: "pick", pick_params: %{"field" => "evil", "uuid" => "r1"})
+
+      assert html =~ ~s(phx-value-field="swatch")
+      refute html =~ "evil"
+      assert html =~ ~s(phx-value-uuid="r1")
+    end
+  end
+
+  defp render_input_raw(field) do
+    render_component(
+      fn assigns ->
+        ~H"""
+        <PhoenixKitEntities.Components.FieldInput.field_input
+          field={@field}
+          name="extras[k]"
+        />
+        """
+      end,
+      %{field: field}
+    )
   end
 
   describe "FormBuilder.cast_field/2" do

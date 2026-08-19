@@ -124,6 +124,38 @@ defmodule PhoenixKitEntities.Web.EntityFormLiveTest do
       # And the save actually persisted.
       assert Entities.get_entity!(ctx.entity.uuid).display_name == "Stay Put"
     end
+
+    test "renaming a managed blueprint flashes the ownership message, not a crash",
+         %{conn: conn} = ctx do
+      # Managed blueprints are uuid-addressable in the generic form even
+      # though listings hide them. The Managed refusal is an ATOM error
+      # — without its own branch it fell into the rescue and read as an
+      # unexplained "Something went wrong" (panel finding, 2026-08-19).
+      {:ok, managed} =
+        Entities.create_entity(
+          %{
+            name: "catalogue_set_guarded",
+            display_name: "Guarded",
+            display_name_plural: "Guarded",
+            settings: %{"managed_by" => "catalogue", "locked_keys" => ["kind"]},
+            status: "published",
+            created_by_uuid: ctx.actor_uuid
+          },
+          actor_uuid: ctx.actor_uuid,
+          on_behalf_of: "catalogue"
+        )
+
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, "/en/admin/entities/#{managed.uuid}/edit")
+
+      html =
+        view
+        |> form("form[phx-change='validate']", %{"entities" => %{"name" => "renamed_slug"}})
+        |> render_submit()
+
+      assert html =~ "managed by another module"
+      assert Entities.get_entity!(managed.uuid).name == "catalogue_set_guarded"
+    end
   end
 
   describe "switch_language event" do

@@ -105,6 +105,34 @@ defmodule PhoenixKitEntities.ManagedTest do
       assert :ok = Managed.validate_creation(%{name: "plain", settings: %{}})
       assert :ok = Managed.validate_creation(%{name: "no_settings"})
     end
+
+    test "atom-keyed settings cannot slip a claim past the guard" do
+      # Ecto's :map stores atom-keyed maps as given and JSONB-encodes
+      # them to string keys — a string-only lookup fails OPEN here
+      # (panel finding, 2026-08-19 review).
+      attrs = %{settings: %{managed_by: "catalogue"}, name: "catalogue_set_forged"}
+
+      assert {:error, :managed_blueprint} = Managed.validate_creation(attrs)
+      assert :ok = Managed.validate_creation(attrs, on_behalf_of: "catalogue")
+    end
+  end
+
+  describe "marker acquisition via update (create-then-update masquerade)" do
+    test "an unmanaged blueprint cannot acquire managed_by generically" do
+      unmanaged = %{name: "plain", status: "published", settings: %{}}
+      claim = %{settings: %{"managed_by" => "catalogue", "locked_keys" => ["kind"]}}
+
+      assert {:error, :managed_blueprint} = Managed.validate_mutation(unmanaged, claim)
+      # Atom-keyed claim is caught the same way.
+      assert {:error, :managed_blueprint} =
+               Managed.validate_mutation(unmanaged, %{settings: %{managed_by: "catalogue"}})
+
+      # The claimed owner itself may stamp its own markers.
+      assert :ok = Managed.validate_mutation(unmanaged, claim, on_behalf_of: "catalogue")
+
+      # Settings writes without a claim stay untouched.
+      assert :ok = Managed.validate_mutation(unmanaged, %{settings: %{"sort_mode" => "manual"}})
+    end
   end
 
   describe "validate_delete/2" do
@@ -138,6 +166,13 @@ defmodule PhoenixKitEntities.ManagedTest do
       Managed.register_delete_guard("crashy_owner", fn _e -> :weird end)
 
       assert {:error, {:invalid_guard_result, :weird}} =
+               Managed.validate_delete(e, on_behalf_of: "crashy_owner")
+
+      # An EXIT (e.g. the guard's DB connection owner died) fails
+      # closed the same way a raise does.
+      Managed.register_delete_guard("crashy_owner", fn _e -> exit(:connection_died) end)
+
+      assert {:error, :delete_guard_error} =
                Managed.validate_delete(e, on_behalf_of: "crashy_owner")
     end
   end
