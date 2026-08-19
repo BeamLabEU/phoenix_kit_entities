@@ -85,6 +85,7 @@ defmodule PhoenixKitEntities.Components.FieldInput do
     `name[]`), so the host reads a list at that key.
     """
   )
+
   attr(:value, :any, default: nil)
   attr(:id, :string, default: nil, doc: "derived from name when absent")
   attr(:size, :string, default: "sm", values: ~w(xs sm md))

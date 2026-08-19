@@ -130,6 +130,35 @@ defmodule PhoenixKitEntities.Web.EntitiesLiveTest do
       )
     end
 
+    test "managed blueprints stay hidden from the list after a reorder refresh",
+         %{conn: conn} = ctx do
+      {:ok, managed} =
+        Entities.create_entity(
+          %{
+            name: "catalogue_set_reorder_hidden",
+            display_name: "Catalogue Set Reorder Hidden",
+            display_name_plural: "Catalogue Sets",
+            fields_definition: [],
+            status: "published",
+            created_by_uuid: ctx.actor_uuid,
+            settings: %{"managed_by" => "catalogue", "locked_keys" => []}
+          },
+          on_behalf_of: "catalogue"
+        )
+
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, html} = live(conn, "/en/admin/entities")
+      refute html =~ managed.display_name
+
+      render_hook(view, "reorder_entities", %{
+        "ordered_ids" => [ctx.archived.uuid, ctx.published.uuid]
+      })
+
+      # The reorder success path re-fetches :entities — must keep excluding
+      # managed blueprints, not just the initial handle_params load.
+      refute render(view) =~ managed.display_name
+    end
+
     test "malformed payload (no ordered_ids key) flashes error without crashing",
          %{conn: conn} = ctx do
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
@@ -170,6 +199,32 @@ defmodule PhoenixKitEntities.Web.EntitiesLiveTest do
 
       send(view.pid, {:unrelated_message, :payload})
       assert render(view) =~ ctx.published.display_name
+    end
+
+    test "entity_updated refresh keeps managed blueprints hidden from the list",
+         %{conn: conn} = ctx do
+      {:ok, managed} =
+        Entities.create_entity(
+          %{
+            name: "catalogue_set_pubsub_hidden",
+            display_name: "Catalogue Set PubSub Hidden",
+            display_name_plural: "Catalogue Sets",
+            fields_definition: [],
+            status: "published",
+            created_by_uuid: ctx.actor_uuid,
+            settings: %{"managed_by" => "catalogue", "locked_keys" => []}
+          },
+          on_behalf_of: "catalogue"
+        )
+
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, html} = live(conn, "/en/admin/entities")
+      refute html =~ managed.display_name
+
+      # Any entity lifecycle event anywhere re-fetches :entities via this
+      # handle_info clause — it must keep excluding managed blueprints too.
+      send(view.pid, {:entity_updated, ctx.published.uuid})
+      refute render(view) =~ managed.display_name
     end
 
     test "logs at :debug level so unexpected messages stay visible in dev",

@@ -102,7 +102,9 @@ defmodule PhoenixKitEntities.Managed do
   @spec validate_creation(map(), keyword()) :: :ok | {:error, :managed_blueprint}
   def validate_creation(attrs, opts \\ []) do
     case claimed_owner(attrs) do
-      nil -> :ok
+      nil ->
+        :ok
+
       claimed when is_binary(claimed) ->
         if Keyword.get(opts, :on_behalf_of) == claimed,
           do: :ok,

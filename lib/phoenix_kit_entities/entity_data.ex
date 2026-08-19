@@ -1969,14 +1969,16 @@ defmodule PhoenixKitEntities.EntityData do
 
   # Match Postgres FK / NOT NULL violations raised when a parent-app row
   # still references this record. SQLSTATE codes are stable: `23503` =
-  # foreign_key_violation, `23502` = not_null_violation. Any other error
-  # is re-raised so real bugs still surface.
+  # foreign_key_violation (default NO ACTION), `23502` = not_null_violation,
+  # `23001` = restrict_violation (explicit `ON DELETE RESTRICT`, which
+  # Postgres reports under its own code rather than 23503). Any other
+  # error is re-raised so real bugs still surface.
   defp foreign_key_or_not_null_violation?(%Postgrex.Error{postgres: %{code: code}})
-       when code in [:foreign_key_violation, :not_null_violation],
+       when code in [:foreign_key_violation, :not_null_violation, :restrict_violation],
        do: true
 
   defp foreign_key_or_not_null_violation?(%Postgrex.Error{postgres: %{code: code}})
-       when is_binary(code) and code in ["23503", "23502"],
+       when is_binary(code) and code in ["23503", "23502", "23001"],
        do: true
 
   defp foreign_key_or_not_null_violation?(_), do: false

@@ -124,7 +124,7 @@ defmodule PhoenixKitEntities.Web.Entities do
            socket
            |> assign(
              :entities,
-             Entities.list_entities(lang: socket.assigns[:current_locale])
+             Entities.list_entities(lang: socket.assigns[:current_locale], include_managed: false)
            )
            |> push_event("sortable:flash", %{uuid: moved_id, status: "ok"})}
 
@@ -157,7 +157,11 @@ defmodule PhoenixKitEntities.Web.Entities do
   def handle_info({event, _entity_uuid}, socket)
       when event in [:entity_created, :entity_updated, :entity_deleted] do
     {:noreply,
-     assign(socket, :entities, Entities.list_entities(lang: socket.assigns[:current_locale]))}
+     assign(
+       socket,
+       :entities,
+       Entities.list_entities(lang: socket.assigns[:current_locale], include_managed: false)
+     )}
   end
 
   # Catch-all — log at :debug rather than crashing the socket so unexpected
