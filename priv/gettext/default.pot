@@ -2723,3 +2723,42 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Allow a custom \"Other\" option"
 msgstr ""
+
+msgid "must be a media file reference"
+msgstr ""
+
+msgid "field '%{label}' must be a media file reference"
+msgstr ""
+
+msgid "Media file"
+msgstr ""
+
+msgid "No media selected — set through the owning app's editor."
+msgstr ""
+
+msgid "Change"
+msgstr ""
+
+msgid "Choose"
+msgstr ""
+
+msgid "Unsupported field type: %{type}"
+msgstr ""
+
+msgid "created_by_uuid must be present"
+msgstr ""
+
+msgid "Image"
+msgstr ""
+
+msgid "Video"
+msgstr ""
+
+msgid "One image from the media library (stores a file reference)"
+msgstr ""
+
+msgid "One video from the media library (stores a file reference)"
+msgstr ""
+
+msgid "This blueprint is managed by another module — edit it there."
+msgstr ""

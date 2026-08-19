@@ -145,10 +145,16 @@ defmodule PhoenixKitEntities.FormBuilderRenderTest do
       assert html =~ "checkbox" or html =~ "type=\"checkbox\""
     end
 
-    test "image" do
+    test "image renders the read-only media display (no upload control)" do
       html = render_field("image")
-      assert is_binary(html)
-      refute html == ""
+      assert html =~ "No media selected"
+      refute html =~ "type=\"file\""
+    end
+
+    test "video renders the read-only media display" do
+      html = render_field("video")
+      assert html =~ "No media selected"
+      refute html =~ "type=\"file\""
     end
 
     test "file" do

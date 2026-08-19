@@ -103,6 +103,7 @@ defmodule PhoenixKitEntities do
   alias PhoenixKitEntities.EntityData
   alias PhoenixKitEntities.Events
   alias PhoenixKitEntities.FieldTypes
+  alias PhoenixKitEntities.Managed
   alias PhoenixKitEntities.Mirror.Exporter
   alias PhoenixKitEntities.Mirror.Storage
   @type t :: %__MODULE__{}
@@ -189,7 +190,13 @@ defmodule PhoenixKitEntities do
     )
     |> validate_name_uniqueness()
     |> validate_fields_definition()
-    |> unique_constraint(:name)
+    # Core's chain names this index `phoenix_kit_entities_name_uidx`, not the
+    # `phoenix_kit_entities_name_index` Ecto derives — without the explicit
+    # name the declaration can never fire. `validate_name_uniqueness/1` above
+    # catches the common case at changeset time; this constraint is the
+    # race-window backstop for two concurrent creates, which is exactly when a
+    # raw Ecto.ConstraintError raise is least acceptable.
+    |> unique_constraint(:name, name: :phoenix_kit_entities_name_uidx)
     |> maybe_set_timestamps()
   end
 
@@ -268,7 +275,9 @@ defmodule PhoenixKitEntities do
   # this allowlist and `FieldTypes.list_types/0` are meant to be the same
   # set of types).
   defp validate_field_type(changeset, field) do
-    valid_types = FieldTypes.list_types() ++ ~w(image relation)
+    # image/video graduated into the FieldTypes registry (2026-08-18);
+    # relation remains the lone placeholder appended by hand.
+    valid_types = FieldTypes.list_types() ++ ~w(relation)
 
     if field["type"] in valid_types do
       changeset
@@ -394,7 +403,18 @@ defmodule PhoenixKitEntities do
     |> order_by([e], asc: e.position, desc: e.date_created)
     |> preload([:creator])
     |> repo().all()
+    |> maybe_reject_managed(opts)
     |> maybe_resolve_langs(opts)
+  end
+
+  # `include_managed: false` hides blueprints owned by other modules
+  # (catalogue attribute sets etc.) — they have their own admin UI.
+  defp maybe_reject_managed(entities, opts) do
+    if Keyword.get(opts, :include_managed, true) do
+      entities
+    else
+      Enum.reject(entities, &Managed.managed?/1)
+    end
   end
 
   @doc """
@@ -598,17 +618,20 @@ defmodule PhoenixKitEntities do
   but only if at least one user exists in the system. If no users exist, the changeset
   will fail with a validation error on `created_by`.
   """
-  @spec create_entity(map(), keyword()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
+  @spec create_entity(map(), keyword()) ::
+          {:ok, t()} | {:error, Ecto.Changeset.t() | :managed_blueprint}
   def create_entity(attrs \\ %{}, opts \\ []) do
-    attrs =
-      attrs
-      |> maybe_add_created_by()
-      |> maybe_add_entity_position()
+    with :ok <- Managed.validate_creation(attrs, opts) do
+      attrs =
+        attrs
+        |> maybe_add_created_by()
+        |> maybe_add_entity_position()
 
-    %__MODULE__{}
-    |> changeset(attrs)
-    |> repo().insert()
-    |> notify_entity_event(:created, opts)
+      %__MODULE__{}
+      |> changeset(attrs)
+      |> repo().insert()
+      |> notify_entity_event(:created, opts)
+    end
   end
 
   # Auto-assign a position when the caller hasn't specified one — places
@@ -672,12 +695,22 @@ defmodule PhoenixKitEntities do
       iex> PhoenixKitEntities.update_entity(entity, %{name: ""})
       {:error, %Ecto.Changeset{}}
   """
-  @spec update_entity(t(), map(), keyword()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
+  @spec update_entity(t(), map(), keyword()) ::
+          {:ok, t()} | {:error, Ecto.Changeset.t() | :managed_blueprint | :locked_key}
   def update_entity(%__MODULE__{} = entity, attrs, opts \\ []) do
-    entity
-    |> changeset(attrs)
-    |> repo().update()
-    |> notify_entity_event(:updated, opts)
+    # Managed blueprints (another module's contract riding entities —
+    # e.g. catalogue attribute sets): the write path itself refuses
+    # identity renames and locked-key changes from anyone but the owner.
+    case Managed.validate_mutation(entity, attrs, opts) do
+      :ok ->
+        entity
+        |> changeset(attrs)
+        |> repo().update()
+        |> notify_entity_event(:updated, opts)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   @doc """
@@ -694,10 +727,17 @@ defmodule PhoenixKitEntities do
       iex> PhoenixKitEntities.delete_entity(entity)
       {:error, %Ecto.Changeset{}}
   """
-  @spec delete_entity(t(), keyword()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
+  @spec delete_entity(t(), keyword()) ::
+          {:ok, t()} | {:error, Ecto.Changeset.t() | term()}
   def delete_entity(%__MODULE__{} = entity, opts \\ []) do
-    repo().delete(entity)
-    |> notify_entity_event(:deleted, opts)
+    case Managed.validate_delete(entity, opts) do
+      :ok ->
+        repo().delete(entity)
+        |> notify_entity_event(:deleted, opts)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   @doc """
@@ -892,7 +932,14 @@ defmodule PhoenixKitEntities do
   """
   @spec count_user_entities(String.t()) :: non_neg_integer()
   def count_user_entities(user_uuid) when is_binary(user_uuid) do
-    from(e in __MODULE__, where: e.created_by_uuid == ^user_uuid, select: count(e.uuid))
+    # Managed blueprints (owned by other modules, provisioned
+    # programmatically) don't count against the per-user cap — an admin
+    # creating catalogue attribute sets isn't "creating entities".
+    from(e in __MODULE__,
+      where: e.created_by_uuid == ^user_uuid,
+      where: fragment("COALESCE(? ->> 'managed_by', '') = ''", e.settings),
+      select: count(e.uuid)
+    )
     |> repo().one()
   end
 

@@ -329,3 +329,59 @@ defmodule PhoenixKitEntities.EntityDataAnonymousCreatorTest do
     assert record.created_by_uuid == ctx.admin.uuid
   end
 end
+
+defmodule PhoenixKitEntities.ConstraintDeclarationTest do
+  @moduledoc """
+  Every constraint the two schemas declare must exist in the database under
+  that exact name — Ecto matches by name, and a declaration naming a
+  constraint the chain never created can never fire, so the violation raises
+  instead of returning the changeset error the caller handles. The
+  `unique_constraint(:name)` on entities pointed at Ecto's derived
+  `..._name_index` while the real index is `..._name_uidx`.
+  """
+  use PhoenixKitEntities.DataCase, async: true
+
+  test "declared constraints exist under their declared names" do
+    {:ok, %{rows: constraint_rows}} =
+      Repo.query(
+        """
+        SELECT t.relname, c.conname
+        FROM pg_constraint c
+        JOIN pg_class t ON t.oid = c.conrelid
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+        WHERE n.nspname = 'public'
+        """,
+        []
+      )
+
+    {:ok, %{rows: index_rows}} =
+      Repo.query(
+        """
+        SELECT tablename, indexname FROM pg_indexes
+        WHERE schemaname = 'public' AND indexdef LIKE 'CREATE UNIQUE INDEX%'
+        """,
+        []
+      )
+
+    existing = MapSet.new(constraint_rows ++ index_rows, fn [t, n] -> {t, n} end)
+
+    checked = [
+      {PhoenixKitEntities, PhoenixKitEntities.changeset(%PhoenixKitEntities{}, %{})},
+      {PhoenixKitEntities.EntityData,
+       PhoenixKitEntities.EntityData.changeset(%PhoenixKitEntities.EntityData{}, %{})}
+    ]
+
+    missing =
+      for {mod, changeset} <- checked,
+          table = mod.__schema__(:source),
+          # Grouped per field: entity_uuid deliberately declares both the name
+          # core creates and Ecto's default (install age decides which exists);
+          # the group passes when ANY declared name is real.
+          {{field, type}, names} <-
+            Enum.group_by(changeset.constraints, &{&1.field, &1.type}, & &1.constraint),
+          not Enum.any?(names, &MapSet.member?(existing, {table, &1})),
+          do: "#{inspect(mod)}: #{type} on #{table}.#{field} declared as #{inspect(names)}"
+
+    assert missing == [], Enum.join(missing, "\n")
+  end
+end

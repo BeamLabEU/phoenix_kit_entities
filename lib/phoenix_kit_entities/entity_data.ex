@@ -562,14 +562,46 @@ defmodule PhoenixKitEntities.EntityData do
       "date" ->
         validate_date_field(changeset, field_def, value)
 
+      _ ->
+        dispatch_choice_or_media_validation(changeset, type, field_def, value)
+    end
+  end
+
+  # Second half of the dispatch — split only to keep each function's
+  # cyclomatic complexity under `credo --strict`'s threshold.
+  defp dispatch_choice_or_media_validation(changeset, type, field_def, value) do
+    case type do
       type when type in ["select", "radio"] ->
         validate_choice_field(changeset, field_def, value)
 
       "checkbox" ->
         validate_checkbox_field(changeset, field_def, value)
 
+      type when type in ["image", "video"] ->
+        validate_media_field(changeset, field_def, value)
+
       _ ->
         changeset
+    end
+  end
+
+  # Media references store a storage file uuid; this is the module's
+  # final gate (same doctrine as the text-like shape check above), so a
+  # crafted write cannot land a shape that crashes uuid-resolving
+  # renderers downstream.
+  defp validate_media_field(changeset, field_def, value) do
+    with true <- is_binary(value),
+         {:ok, _} <- Ecto.UUID.cast(value) do
+      changeset
+    else
+      _ ->
+        add_error(
+          changeset,
+          :data,
+          gettext("field '%{label}' must be a media file reference",
+            label: field_def["label"]
+          )
+        )
     end
   end
 
@@ -752,7 +784,7 @@ defmodule PhoenixKitEntities.EntityData do
   defp notify_data_event({:ok, %__MODULE__{} = entity_data}, :created, opts) do
     Events.broadcast_data_created(entity_data.entity_uuid, entity_data.uuid)
     maybe_mirror_data(entity_data)
-    log_data_activity(entity_data, "entity_data.created", opts)
+    maybe_log_data_activity(entity_data, "entity_data.created", opts)
     {:ok, entity_data}
   end
 
@@ -766,7 +798,7 @@ defmodule PhoenixKitEntities.EntityData do
   defp notify_data_event({:ok, %__MODULE__{} = entity_data}, :deleted, opts) do
     Events.broadcast_data_deleted(entity_data.entity_uuid, entity_data.uuid)
     maybe_delete_mirrored_data(entity_data)
-    log_data_activity(entity_data, "entity_data.deleted", opts)
+    maybe_log_data_activity(entity_data, "entity_data.deleted", opts)
     {:ok, entity_data}
   end
 
@@ -811,9 +843,10 @@ defmodule PhoenixKitEntities.EntityData do
   # untouched — those still need to fire so live views/mirrors stay in
   # sync. Used by high-frequency callers (`LiveDataForm` autosave) so a
   # client that's still typing doesn't produce one activity row per
-  # debounced keystroke. Only wired into the `:updated` path — the other
-  # lifecycle events (create/delete/trash/restore) are one-shot actions
-  # that should always log.
+  # debounced keystroke, and by owning modules that write their own
+  # richer domain row instead (e.g. the catalogue's
+  # `attribute_set.value_deleted`) — an explicit `activity_log: false`
+  # is honored on every lifecycle event, matching the error path above.
   defp maybe_log_data_activity(entity_data, action, opts) do
     if Keyword.get(opts, :activity_log, true) do
       log_data_activity(entity_data, action, opts)

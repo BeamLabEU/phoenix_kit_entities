@@ -304,6 +304,20 @@ defmodule PhoenixKitEntities.FieldTypesTest do
     test "returns empty string for unknown type" do
       assert FieldTypes.description_for("nonexistent") == ""
     end
+
+    test "image/video labels and descriptions route through literal gettext clauses" do
+      # These graduated into @field_types with the media rework but fell
+      # through to the raw-map catch-alls, bypassing translation (panel
+      # finding, 2026-08-19 review). Pin the literal-clause path.
+      assert FieldTypes.label_for("image") == "Image"
+      assert FieldTypes.label_for("video") == "Video"
+
+      assert FieldTypes.description_for("image") ==
+               "One image from the media library (stores a file reference)"
+
+      assert FieldTypes.description_for("video") ==
+               "One video from the media library (stores a file reference)"
+    end
   end
 
   # --- validate_field/1 ---

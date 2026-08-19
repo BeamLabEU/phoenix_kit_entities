@@ -906,22 +906,48 @@ defmodule PhoenixKitEntities.FormBuilder do
   end
 
   # Image Upload (placeholder - not yet implemented)
-  def build_field(%{"type" => "image"} = field, changeset, opts) do
-    assigns = %{field: field, changeset: changeset, opts: opts}
+  # Media references (image/video) store a storage file uuid picked
+  # through the host's media picker (see the FieldTypes entries). The
+  # admin DataForm has no picker wiring yet, so this surface shows the
+  # stored value read-only; editing happens where
+  # `PhoenixKitEntities.Components.FieldInput` is embedded with a
+  # picker (e.g. the catalogue's attribute-set editor).
+  def build_field(%{"type" => type} = field, changeset, opts) when type in ["image", "video"] do
+    current = get_field_value(changeset, field["key"])
+
+    assigns = %{field: field, opts: opts, current: current, type: type}
 
     ~H"""
     <div>
       <.label>
         {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
-      <div class="border-2 border-dashed border-base-300 rounded-lg p-6 text-center bg-base-200/50">
-        <.icon name="hero-photo" class="w-12 h-12 mx-auto text-base-content/40 mb-3" />
-        <p class="text-base-content/60 text-sm mb-2">
-          {gettext("Image upload coming soon")}
-        </p>
-        <p class="text-base-content/40 text-xs">
-          {gettext("This feature is not yet available")}
-        </p>
+      <div class="border border-base-300 rounded-lg p-4 bg-base-200/50 flex items-center gap-3">
+        <%= if is_binary(@current) and match?({:ok, _}, Ecto.UUID.cast(@current)) do %>
+          <img
+            :if={@type == "image"}
+            src={PhoenixKit.Modules.Storage.URLSigner.signed_url(@current, "thumbnail")}
+            alt={@field["label"]}
+            class="w-16 h-16 object-cover rounded"
+          />
+          <.icon
+            :if={@type == "video"}
+            name="hero-video-camera"
+            class="w-10 h-10 text-base-content/40"
+          />
+          <div class="text-sm text-base-content/70 min-w-0">
+            <p class="font-medium">{gettext("Media file")}</p>
+            <p class="text-xs text-base-content/50 truncate">{@current}</p>
+          </div>
+        <% else %>
+          <.icon
+            name={if @type == "image", do: "hero-photo", else: "hero-video-camera"}
+            class="w-10 h-10 text-base-content/40"
+          />
+          <p class="text-sm text-base-content/60">
+            {gettext("No media selected — set through the owning app's editor.")}
+          </p>
+        <% end %>
       </div>
       <%= if @field["description"] do %>
         <.label class="label">
@@ -1303,6 +1329,33 @@ defmodule PhoenixKitEntities.FormBuilder do
     end
   end
 
+  @doc """
+  Casts ONE raw (form-submitted) value against its field definition —
+  the per-field core of `validate_data/2`, public for hosts that own
+  their own save events (inline row editors embedding
+  `PhoenixKitEntities.Components.FieldInput`).
+
+  Returns `{:ok, coerced}` (numbers parsed, booleans normalized, choice
+  membership enforced, media references uuid-checked…) or
+  `{:error, messages}`.
+
+  Normalizations for bare-control submissions: `""` casts to `nil`
+  (blur-clearing an input clears the stored key — required fields still
+  error), and a `checkbox` group's hidden-input `""`/`nil` casts to
+  `[]`.
+  """
+  @spec cast_field(map(), term()) :: {:ok, term()} | {:error, [String.t()]}
+  def cast_field(field, raw_value) do
+    value =
+      case {field["type"], raw_value} do
+        {"checkbox", raw} -> normalize_checkbox(raw)
+        {_type, ""} -> nil
+        {_type, other} -> other
+      end
+
+    validate_field_value(field, value)
+  end
+
   # Private Functions
 
   defp validate_field_value(field, value) do
@@ -1310,6 +1363,11 @@ defmodule PhoenixKitEntities.FormBuilder do
       validate_type(field, value)
     end
   end
+
+  # A checkbox group submitted through FieldInput's hidden fallback
+  # arrives as a list that may carry the hidden "" entry — strip it
+  # before membership validation.
+  defp normalize_checkbox(value), do: value |> List.wrap() |> Enum.reject(&(&1 == ""))
 
   defp validate_required(%{"required" => true}, value) when value in [nil, "", []] do
     {:error, [gettext("is required")]}
@@ -1401,6 +1459,22 @@ defmodule PhoenixKitEntities.FormBuilder do
            )
          ]}
     end
+  end
+
+  # Media references: the stored value is a storage file uuid (or
+  # empty). Anything else would crash every renderer that resolves the
+  # uuid to a thumbnail/URL.
+  defp validate_type(%{"type" => type}, value)
+       when type in ["image", "video"] and is_binary(value) and value != "" do
+    case Ecto.UUID.cast(value) do
+      {:ok, _} -> {:ok, value}
+      :error -> {:error, [gettext("must be a media file reference")]}
+    end
+  end
+
+  defp validate_type(%{"type" => type}, value)
+       when type in ["image", "video"] and not is_nil(value) and value != "" do
+    {:error, [gettext("must be a media file reference")]}
   end
 
   defp validate_type(_field, value), do: {:ok, value}
