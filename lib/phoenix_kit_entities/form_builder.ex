@@ -646,6 +646,44 @@ defmodule PhoenixKitEntities.FormBuilder do
     """
   end
 
+  # Decimal — same control as number, but `step` follows the declared
+  # scale so the browser's own validation does not reject the extra
+  # places this type exists to preserve.
+  def build_field(%{"type" => "decimal"} = field, changeset, opts) do
+    assigns = %{
+      field: field,
+      changeset: changeset,
+      opts: opts,
+      placeholder: get_effective_placeholder(field, opts),
+      value: decimal_input_value(get_effective_text_value(changeset, field["key"], opts))
+    }
+
+    ~H"""
+    <div>
+      <.label for={@field["key"]}>
+        {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
+      </.label>
+      <input
+        type="number"
+        name={"#{@changeset.data.__struct__.__schema__(:source)}[data][#{@field["key"]}]"}
+        value={@value}
+        placeholder={@placeholder}
+        class={["input w-full", @opts[:input_class]]}
+        min={@field["min"]}
+        max={@field["max"]}
+        step={decimal_step(@field)}
+        required={@field["required"] && !@opts[:primary_placeholders]}
+        disabled={@opts[:disabled]}
+      />
+      <%= if @field["description"] do %>
+        <.label class="label">
+          <span class="fieldset-label">{@field["description"]}</span>
+        </.label>
+      <% end %>
+    </div>
+    """
+  end
+
   # Boolean Toggle
   def build_field(%{"type" => "boolean"} = field, changeset, opts) do
     field_value = get_field_value(changeset, field["key"])
@@ -1401,6 +1439,32 @@ defmodule PhoenixKitEntities.FormBuilder do
     end
   end
 
+  # Exact numeric. `Decimal.parse/1` is used rather than `Float.parse/1`
+  # precisely so the value never round-trips through a float — that is the
+  # whole reason this type exists. A `%Decimal{}` arriving already cast
+  # (a re-validate of an unchanged form) passes straight through.
+  defp validate_type(%{"type" => "decimal"} = field, %Decimal{} = value),
+    do: apply_decimal_bounds(field, value)
+
+  defp validate_type(%{"type" => "decimal"} = field, value)
+       when is_binary(value) and value != "" do
+    # Comma decimal separators are the norm in et/ru locales and a plain
+    # Decimal.parse would reject them outright.
+    case value |> String.trim() |> String.replace(",", ".") |> Decimal.parse() do
+      {decimal, ""} -> apply_decimal_bounds(field, decimal)
+      _ -> {:error, [gettext("must be a valid number")]}
+    end
+  end
+
+  defp validate_type(%{"type" => "decimal"}, value) when is_integer(value),
+    do: {:ok, Decimal.new(value)}
+
+  # A float can only arrive from data written before this type existed —
+  # accept it rather than failing the form, via the string form so the
+  # binary representation is not carried into the Decimal.
+  defp validate_type(%{"type" => "decimal"}, value) when is_float(value),
+    do: {:ok, value |> Float.to_string() |> Decimal.new()}
+
   defp validate_type(%{"type" => "boolean"}, value) do
     cond do
       value in [true, "true", "1", 1] -> {:ok, true}
@@ -1478,6 +1542,36 @@ defmodule PhoenixKitEntities.FormBuilder do
   end
 
   defp validate_type(_field, value), do: {:ok, value}
+
+  # `min`/`max` are advisory on `number` (stored, never enforced). They
+  # ARE enforced here: the first consumer is money, where a negative
+  # slipping through is a real defect rather than a cosmetic one.
+  defp apply_decimal_bounds(field, %Decimal{} = value) do
+    cond do
+      below?(value, field["min"]) ->
+        {:error, [gettext("must be at least %{min}", min: field["min"])]}
+
+      above?(value, field["max"]) ->
+        {:error, [gettext("must be at most %{max}", max: field["max"])]}
+
+      true ->
+        {:ok, value}
+    end
+  end
+
+  defp below?(_value, nil), do: false
+  defp below?(value, min), do: Decimal.compare(value, to_decimal(min)) == :lt
+
+  defp above?(_value, nil), do: false
+  defp above?(value, max), do: Decimal.compare(value, to_decimal(max)) == :gt
+
+  defp to_decimal(%Decimal{} = value), do: value
+  defp to_decimal(value) when is_integer(value), do: Decimal.new(value)
+  defp to_decimal(value) when is_float(value), do: value |> Float.to_string() |> Decimal.new()
+  defp to_decimal(value) when is_binary(value), do: Decimal.new(value)
+
+  defp decimal_input_value(value), do: FieldTypes.decimal_input_value(value)
+  defp decimal_step(field), do: FieldTypes.decimal_step(field)
 
   # `invalid_values` (used by the checkbox clause above) can now
   # legitimately contain a non-binary term (a crafted map, for one — see

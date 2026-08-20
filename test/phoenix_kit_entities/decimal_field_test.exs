@@ -1,0 +1,220 @@
+defmodule PhoenixKitEntities.DecimalFieldTest do
+  @moduledoc """
+  The `decimal` field type — exact numeric, added because `number` casts
+  through `Float.parse/1` and silently rounds money. These pin the whole
+  round trip: cast, storage shape, and render.
+  """
+  use ExUnit.Case, async: true
+
+  import Phoenix.Component
+  import Phoenix.LiveViewTest
+
+  alias PhoenixKitEntities.FieldTypes
+  alias PhoenixKitEntities.FormBuilder
+
+  defp field(extra \\ %{}) do
+    Map.merge(%{"type" => "decimal", "key" => "unit_cost", "label" => "Unit cost"}, extra)
+  end
+
+  defp entity(fields), do: %PhoenixKitEntities{fields_definition: fields}
+
+  describe "registration" do
+    test "is a registered numeric type with a 4-place default scale" do
+      assert "decimal" in FieldTypes.list_types()
+
+      definition = FieldTypes.new_field("decimal", "unit_cost", "Unit cost")
+      assert definition["type"] == "decimal"
+      assert definition["scale"] == 4
+      refute FieldTypes.requires_options?("decimal")
+    end
+
+    test "decimal_field/3 builds the same definition" do
+      assert %{"type" => "decimal", "key" => "unit_cost", "label" => "Unit cost"} =
+               FieldTypes.decimal_field("unit_cost", "Unit cost")
+    end
+  end
+
+  describe "casting" do
+    test "returns a Decimal, not a float" do
+      assert {:ok, %Decimal{} = value} = FormBuilder.cast_field(field(), "5.1000")
+      assert Decimal.equal?(value, Decimal.new("5.1000"))
+    end
+
+    # The reason this type exists: 0.1 + 0.2 through floats is 0.30000000000000004.
+    test "preserves a value a float round trip would corrupt" do
+      {:ok, a} = FormBuilder.cast_field(field(), "0.1")
+      {:ok, b} = FormBuilder.cast_field(field(), "0.2")
+
+      assert Decimal.equal?(Decimal.add(a, b), Decimal.new("0.3"))
+    end
+
+    test "keeps trailing zeros — 5.10 is a different price from 5.1 on an invoice" do
+      {:ok, value} = FormBuilder.cast_field(field(), "5.1000")
+      assert Decimal.to_string(value, :normal) == "5.1000"
+    end
+
+    test "accepts a comma decimal separator" do
+      assert {:ok, value} = FormBuilder.cast_field(field(), "12,50")
+      assert Decimal.equal?(value, Decimal.new("12.50"))
+    end
+
+    test "accepts an integer and an already-cast Decimal" do
+      assert {:ok, from_int} = FormBuilder.cast_field(field(), 12)
+      assert Decimal.equal?(from_int, Decimal.new(12))
+
+      assert {:ok, same} = FormBuilder.cast_field(field(), Decimal.new("3.25"))
+      assert Decimal.equal?(same, Decimal.new("3.25"))
+    end
+
+    test "rejects text" do
+      assert {:error, _} = FormBuilder.cast_field(field(), "abc")
+      assert {:error, _} = FormBuilder.cast_field(field(), "12.5kg")
+    end
+
+    test "an empty string clears the value" do
+      assert {:ok, nil} = FormBuilder.cast_field(field(), "")
+    end
+
+    # `min`/`max` are stored-but-ignored on `number`. On decimal they are
+    # enforced, because the first consumer is money.
+    test "enforces min and max" do
+      bounded = field(%{"min" => 0, "max" => "100.00"})
+
+      assert {:error, _} = FormBuilder.cast_field(bounded, "-1")
+      assert {:error, _} = FormBuilder.cast_field(bounded, "100.01")
+      assert {:ok, _} = FormBuilder.cast_field(bounded, "0")
+      assert {:ok, _} = FormBuilder.cast_field(bounded, "100.00")
+    end
+
+    test "validate_data casts a decimal field on a whole entity" do
+      assert {:ok, %{"unit_cost" => %Decimal{} = value}} =
+               FormBuilder.validate_data(entity([field()]), %{"unit_cost" => "5.1000"})
+
+      assert Decimal.equal?(value, Decimal.new("5.1000"))
+    end
+  end
+
+  describe "storage shape" do
+    # Jason encodes a Decimal as a QUOTED STRING, so the JSONB round trip
+    # is lossless and reads hand back a binary. Both shapes must pass the
+    # changeset guard or a saved record could not be re-saved.
+    test "a Decimal survives JSON encoding as a string, not a float" do
+      assert Jason.encode!(%{"unit_cost" => Decimal.new("5.1000")}) == ~s({"unit_cost":"5.1000"})
+      assert %{"unit_cost" => "5.1000"} = Jason.decode!(~s({"unit_cost":"5.1000"}))
+    end
+  end
+
+  describe "rendering" do
+    defp render_decimal(f, value) do
+      render_component(
+        fn assigns ->
+          ~H"""
+          <PhoenixKitEntities.Components.FieldInput.field_input
+            field={@field}
+            name="supplier_info[unit_cost]"
+            value={@value}
+          />
+          """
+        end,
+        %{field: f, value: value}
+      )
+    end
+
+    # Without a scale-derived step the browser's own validation rejects
+    # the extra places the type exists to preserve.
+    test "step follows the declared scale" do
+      assert render_decimal(field(%{"scale" => 4}), nil) =~ ~s(step="0.0001")
+      # A hand-written definition with no scale stays permissive.
+      assert render_decimal(field(), nil) =~ ~s(step="any")
+
+      assert render_decimal(field(%{"scale" => 2}), nil) =~ ~s(step="0.01")
+    end
+
+    test "renders both a Decimal and the stored string without exponent notation" do
+      assert render_decimal(field(), Decimal.new("5.1000")) =~ ~s(value="5.1000")
+      assert render_decimal(field(), "5.1000") =~ ~s(value="5.1000")
+
+      # Decimal.to_string/1 defaults to :scientific for small magnitudes;
+      # an <input type="number"> will not accept that.
+      html = render_decimal(field(), Decimal.new("0.0001"))
+      assert html =~ ~s(value="0.0001")
+      refute html =~ "E"
+    end
+
+    test "carries min and max through to the control" do
+      html = render_decimal(field(%{"min" => 0, "max" => 100}), nil)
+      assert html =~ ~s(min="0")
+      assert html =~ ~s(max="100")
+    end
+  end
+end
+
+defmodule PhoenixKitEntities.DecimalFieldStorageTest do
+  @moduledoc """
+  The changeset guard for `decimal` values, which needs a persisted
+  blueprint to resolve the field definition.
+
+  Jason encodes a `Decimal` as a QUOTED STRING, so the JSONB round trip is
+  lossless and reads hand back a binary. Both shapes must pass or a saved
+  record could not be re-saved.
+  """
+  use PhoenixKitEntities.DataCase, async: true
+
+  alias PhoenixKitEntities, as: Entities
+  alias PhoenixKitEntities.EntityData
+
+  setup do
+    actor_uuid = Ecto.UUID.generate()
+
+    {:ok, entity} =
+      Entities.create_entity(
+        %{
+          name: "decimal_storage_test",
+          display_name: "Decimal Storage",
+          display_name_plural: "Decimal Storage",
+          fields_definition: [
+            %{"type" => "decimal", "key" => "unit_cost", "label" => "Unit cost", "scale" => 4}
+          ],
+          created_by_uuid: actor_uuid
+        },
+        actor_uuid: actor_uuid
+      )
+
+    {:ok, entity: entity, actor_uuid: actor_uuid}
+  end
+
+  defp changeset(ctx, value) do
+    EntityData.changeset(%EntityData{}, %{
+      entity_uuid: ctx.entity.uuid,
+      title: "Row",
+      created_by_uuid: ctx.actor_uuid,
+      data: %{"unit_cost" => value}
+    })
+  end
+
+  test "accepts a Decimal, the string it round-trips to, and plain numbers", ctx do
+    for value <- [Decimal.new("5.1000"), "5.1000", 5, 5.1] do
+      refute errors_on(changeset(ctx, value))[:data],
+             "expected #{inspect(value)} to be accepted"
+    end
+  end
+
+  test "rejects text", ctx do
+    assert errors_on(changeset(ctx, "abc"))[:data]
+  end
+
+  test "a stored Decimal comes back out as its exact string", ctx do
+    {:ok, record} =
+      EntityData.create(%{
+        entity_uuid: ctx.entity.uuid,
+        title: "Row",
+        created_by_uuid: ctx.actor_uuid,
+        data: %{"unit_cost" => Decimal.new("5.1000")}
+      })
+
+    reloaded = EntityData.get!(record.uuid)
+
+    assert reloaded.data["unit_cost"] == "5.1000"
+    assert Decimal.equal?(Decimal.new(reloaded.data["unit_cost"]), Decimal.new("5.1000"))
+  end
+end

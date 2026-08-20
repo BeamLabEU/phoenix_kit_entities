@@ -124,6 +124,27 @@ defmodule PhoenixKitEntities.FieldTypes do
         "step" => 1
       }
     },
+    # Exact numeric. `number` casts through Float.parse/1, which is fine
+    # for counts and measurements but silently rounds money — 0.1 + 0.2
+    # is the classic. This type carries the value as a Decimal end to
+    # end: cast returns %Decimal{}, storage is the canonical string form
+    # (JSON has no decimal, and a float round-trip would undo the point),
+    # and reads hand back a Decimal again.
+    "decimal" => %{
+      name: "decimal",
+      label: "Decimal",
+      description: "Exact decimal number — money, rates, anything that must not round",
+      category: :numeric,
+      icon: "hero-banknotes",
+      requires_options: false,
+      default_props: %{
+        "min" => nil,
+        "max" => nil,
+        # 4 places matches phoenix_kit_cat_item_supplier_info.unit_cost
+        # NUMERIC(14,4), the first consumer.
+        "scale" => 4
+      }
+    },
     "boolean" => %{
       name: "boolean",
       label: "Boolean",
@@ -731,6 +752,48 @@ defmodule PhoenixKitEntities.FieldTypes do
   def number_field(key, label, opts \\ []) do
     new_field("number", key, label, opts)
   end
+
+  @doc """
+  Helper to create a decimal field — exact numeric, for money and
+  anything else that must not round.
+
+  ## Examples
+
+      iex> PhoenixKitEntities.FieldTypes.decimal_field("unit_cost", "Unit cost")
+      %{"type" => "decimal", "key" => "unit_cost", "label" => "Unit cost", ...}
+  """
+  def decimal_field(key, label, opts \\ []) do
+    new_field("decimal", key, label, opts)
+  end
+
+  @doc """
+  The `step` for a decimal field's numeric input, derived from its
+  declared `scale`. Without this the browser rejects the extra decimal
+  places the type exists to preserve, because `<input type="number">`
+  defaults to `step="1"`.
+  """
+  @spec decimal_step(map()) :: String.t()
+  def decimal_step(field) do
+    case field["scale"] do
+      scale when is_integer(scale) and scale > 0 ->
+        "0." <> String.duplicate("0", scale - 1) <> "1"
+
+      _ ->
+        "any"
+    end
+  end
+
+  @doc """
+  Renders a stored decimal for an input's `value`. Values arrive as a
+  `%Decimal{}` (freshly cast) or the canonical string (round-tripped
+  through JSONB); both must render without exponent notation, which an
+  `<input type="number">` will not accept.
+  """
+  @spec decimal_input_value(term()) :: String.t() | nil
+  def decimal_input_value(%Decimal{} = value), do: Decimal.to_string(value, :normal)
+  def decimal_input_value(value) when is_binary(value), do: value
+  def decimal_input_value(value) when is_number(value), do: to_string(value)
+  def decimal_input_value(_value), do: nil
 
   @doc """
   Helper to create a boolean field.
