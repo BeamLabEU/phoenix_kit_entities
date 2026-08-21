@@ -3269,7 +3269,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
 
               <%!-- Category Tabs --%>
               <div class="px-4 py-2 border-b border-base-300 overflow-x-auto">
-                <div class="tabs tabs-boxed inline-flex">
+                <div class="tabs tabs-box inline-flex">
                   <%= for category <- @icon_categories do %>
                     <button
                       type="button"
