@@ -1456,14 +1456,14 @@ defmodule PhoenixKitEntities.FormBuilder do
     end
   end
 
-  defp validate_type(%{"type" => "decimal"}, value) when is_integer(value),
-    do: {:ok, Decimal.new(value)}
+  defp validate_type(%{"type" => "decimal"} = field, value) when is_integer(value),
+    do: apply_decimal_bounds(field, Decimal.new(value))
 
   # A float can only arrive from data written before this type existed —
   # accept it rather than failing the form, via the string form so the
   # binary representation is not carried into the Decimal.
-  defp validate_type(%{"type" => "decimal"}, value) when is_float(value),
-    do: {:ok, value |> Float.to_string() |> Decimal.new()}
+  defp validate_type(%{"type" => "decimal"} = field, value) when is_float(value),
+    do: apply_decimal_bounds(field, value |> Float.to_string() |> Decimal.new())
 
   defp validate_type(%{"type" => "boolean"}, value) do
     cond do

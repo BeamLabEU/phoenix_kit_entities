@@ -1,3 +1,36 @@
+## 0.4.4 - 2026-08-21
+
+### Added
+
+- **`decimal` field type** — exact numeric storage (backed by `Decimal`) for
+  values `number`'s `Float.parse/1` cast would silently round, money being the
+  first consumer. Cast accepts a string (with a comma or period decimal
+  separator), an integer, a float (legacy data only), or an already-cast
+  `Decimal`; storage is the canonical `Decimal` string so the JSONB round trip
+  never touches a float. `min`/`max` are enforced (unlike on `number`, where
+  they're advisory). Rendered via `<input type="number">` with a `step` derived
+  from the field's declared `scale`, and via
+  `PhoenixKitEntities.Components.FieldInput` for inline editors.
+
+### Fixed
+
+- **Decimal `min`/`max` bounds were silently skipped for integer and float
+  input** — `FormBuilder.validate_type/2`'s integer/float clauses for `decimal`
+  returned success without checking bounds, unlike the string and `Decimal`
+  clauses; a raw numeric value (e.g. a JSON API body) could carry an
+  out-of-range value straight through. Found and fixed in post-merge review of
+  #32.
+- **Two decimal-bounds error messages never reached the translation
+  catalogues** — `"must be at least %{min}"` / `"must be at most %{max}"` were
+  new gettext calls with no matching `.po` entry in any locale (`et`/`ru` would
+  have shown raw English). Added with real translations. Found in the same
+  review.
+
+### Changed
+
+- Dependency bumps: `bandit` 1.12.5, `phoenix` 1.8.12, `phoenix_kit` 2.13.4,
+  `phoenix_live_view` 1.2.10, `tesla` 1.21.2.
+
 ## 0.4.3 - 2026-08-19
 
 ### Added

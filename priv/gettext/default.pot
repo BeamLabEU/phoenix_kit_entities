@@ -2549,6 +2549,16 @@ msgstr ""
 msgid "must be a valid number"
 msgstr ""
 
+#: lib/phoenix_kit_entities/form_builder.ex:1552
+#, elixir-autogen, elixir-format
+msgid "must be at least %{min}"
+msgstr ""
+
+#: lib/phoenix_kit_entities/form_builder.ex:1555
+#, elixir-autogen, elixir-format
+msgid "must be at most %{max}"
+msgstr ""
+
 #: lib/phoenix_kit_entities/form_builder.ex:1360
 #: lib/phoenix_kit_entities/form_builder.ex:1370
 #, elixir-autogen, elixir-format

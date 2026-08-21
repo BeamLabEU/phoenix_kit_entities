@@ -101,6 +101,20 @@ defmodule PhoenixKitEntities.DecimalFieldTest do
       assert {:ok, _} = FormBuilder.cast_field(bounded, "100.00")
     end
 
+    # The integer/float clauses skipped `apply_decimal_bounds` entirely —
+    # a raw numeric value (e.g. a JSON API body, which decodes numbers
+    # straight to Elixir integers/floats rather than strings) bypassed
+    # min/max, the exact "negative money slips through" defect this type
+    # exists to prevent.
+    test "enforces min and max for integer and float input, not just strings" do
+      bounded = field(%{"min" => 0, "max" => "100.00"})
+
+      assert {:error, _} = FormBuilder.cast_field(bounded, -1)
+      assert {:error, _} = FormBuilder.cast_field(bounded, 100.01)
+      assert {:ok, _} = FormBuilder.cast_field(bounded, 0)
+      assert {:ok, _} = FormBuilder.cast_field(bounded, 100.00)
+    end
+
     test "validate_data casts a decimal field on a whole entity" do
       assert {:ok, %{"unit_cost" => %Decimal{} = value}} =
                FormBuilder.validate_data(entity([field()]), %{"unit_cost" => "5.1000"})
