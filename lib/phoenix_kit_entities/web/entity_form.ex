@@ -397,7 +397,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
     reply_with_broadcast(socket)
   end
 
-  def handle_event("filter_by_category", %{"category" => category}, socket) do
+  def handle_event("filter_by_category", %{"tab" => category}, socket) do
     filtered_icons =
       if category == "All" do
         HeroIcons.list_all_icons()
@@ -3269,21 +3269,21 @@ defmodule PhoenixKitEntities.Web.EntityForm do
 
               <%!-- Category Tabs --%>
               <div class="px-4 py-2 border-b border-base-300 overflow-x-auto">
-                <div class="tabs tabs-boxed inline-flex">
-                  <%= for category <- @icon_categories do %>
-                    <button
-                      type="button"
-                      phx-click="filter_by_category"
-                      phx-value-category={category}
-                      class={[
-                        "tab",
-                        @selected_category == category && "tab-active"
-                      ]}
-                    >
-                      {icon_category_label(category)}
-                    </button>
-                  <% end %>
-                </div>
+                <%!-- Core's <.nav_tabs>, not hand-rolled markup: this strip
+                     was one of the sites a daisyUI class rename had to touch
+                     precisely because it restated the classes itself. The
+                     payload key moves from `category` to the component's
+                     standard `tab`. --%>
+                <.nav_tabs
+                  active_tab={@selected_category}
+                  on_change="filter_by_category"
+                  class="inline-flex"
+                  tabs={
+                    Enum.map(@icon_categories, fn category ->
+                      %{id: category, label: icon_category_label(category)}
+                    end)
+                  }
+                />
               </div>
 
               <%!-- Icon Grid --%>
