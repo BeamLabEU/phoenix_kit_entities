@@ -550,6 +550,9 @@ defmodule PhoenixKitEntities.EntityData do
       "number" ->
         validate_number_field(changeset, field_def, value)
 
+      "decimal" ->
+        validate_decimal_field(changeset, field_def, value)
+
       "boolean" ->
         validate_boolean_field(changeset, field_def, value)
 
@@ -616,6 +619,34 @@ defmodule PhoenixKitEntities.EntityData do
       )
     end
   end
+
+  # The shape guard for exact numerics. A `%Decimal{}` is what a fresh
+  # cast produces; a canonical string is what comes back out of JSONB,
+  # since JSON has no decimal and serialising through a float would undo
+  # the whole point of the type.
+  defp validate_decimal_field(changeset, field_def, value) do
+    if decimal_shaped?(value) do
+      changeset
+    else
+      add_error(
+        changeset,
+        :data,
+        gettext("field '%{label}' must be a number", label: field_def["label"])
+      )
+    end
+  end
+
+  defp decimal_shaped?(%Decimal{}), do: true
+  defp decimal_shaped?(value) when is_number(value), do: true
+
+  # Trimmed before parsing, to match what `FormBuilder.cast_field/2` accepts.
+  # Without this a hand-written `" 5.1 "` casts fine on the way in and is then
+  # refused by this guard on re-save.
+  defp decimal_shaped?(value) when is_binary(value) do
+    match?({_decimal, ""}, value |> String.trim() |> Decimal.parse())
+  end
+
+  defp decimal_shaped?(_value), do: false
 
   defp validate_boolean_field(changeset, field_def, value) do
     if is_boolean(value) do

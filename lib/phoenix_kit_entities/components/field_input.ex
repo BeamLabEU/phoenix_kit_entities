@@ -69,6 +69,8 @@ defmodule PhoenixKitEntities.Components.FieldInput do
 
   import PhoenixKitWeb.Components.Core.Icon, only: [icon: 1]
 
+  alias PhoenixKitEntities.FieldTypes
+
   alias PhoenixKit.Modules.Storage.URLSigner
 
   @doc """
@@ -90,6 +92,13 @@ defmodule PhoenixKitEntities.Components.FieldInput do
   attr(:id, :string, default: nil, doc: "derived from name when absent")
   attr(:size, :string, default: "sm", values: ~w(xs sm md))
   attr(:disabled, :boolean, default: false)
+
+  attr(:class, :string,
+    default: nil,
+    doc:
+      "extra classes merged onto the styled control — for daisyUI modifiers or " <>
+        "layout the host owns, e.g. `join-item` when the field sits inside a joined group"
+  )
 
   attr(:form, :string,
     default: nil,
@@ -156,7 +165,7 @@ defmodule PhoenixKitEntities.Components.FieldInput do
       placeholder={@field["placeholder"]}
       disabled={@disabled}
       phx-debounce="blur"
-      class={["input input-bordered bg-base-100", size_class("input", @size)]}
+      class={["input input-bordered bg-base-100", size_class("input", @size), @class]}
     />
     """
   end
@@ -171,7 +180,7 @@ defmodule PhoenixKitEntities.Components.FieldInput do
       disabled={@disabled}
       rows="2"
       phx-debounce="blur"
-      class={["textarea textarea-bordered bg-base-100", size_class("textarea", @size)]}
+      class={["textarea textarea-bordered bg-base-100", size_class("textarea", @size), @class]}
     >{@value}</textarea>
     """
   end
@@ -190,7 +199,35 @@ defmodule PhoenixKitEntities.Components.FieldInput do
       placeholder={@field["placeholder"]}
       disabled={@disabled}
       phx-debounce="blur"
-      class={["input input-bordered bg-base-100", size_class("input", @size)]}
+      class={["input input-bordered bg-base-100", size_class("input", @size), @class]}
+    />
+    """
+  end
+
+  # Decimal — `step` follows the declared scale, or the browser rejects
+  # the extra places this type exists to preserve. The value renders
+  # through the shared helper because it arrives either as a %Decimal{}
+  # (just cast) or as the canonical string (back out of JSONB).
+  defp render_input(%{type: "decimal"} = assigns) do
+    assigns =
+      assigns
+      |> assign(:decimal_value, FieldTypes.decimal_input_value(assigns.value))
+      |> assign(:decimal_step, FieldTypes.decimal_step(assigns.field))
+
+    ~H"""
+    <input
+      type="number"
+      id={@input_id}
+      name={@name}
+      value={@decimal_value}
+      form={@form}
+      min={@field["min"]}
+      max={@field["max"]}
+      step={@decimal_step}
+      placeholder={@field["placeholder"]}
+      disabled={@disabled}
+      phx-debounce="blur"
+      class={["input input-bordered bg-base-100", size_class("input", @size), @class]}
     />
     """
   end
@@ -205,7 +242,7 @@ defmodule PhoenixKitEntities.Components.FieldInput do
       form={@form}
       disabled={@disabled}
       phx-debounce="blur"
-      class={["input input-bordered bg-base-100", size_class("input", @size)]}
+      class={["input input-bordered bg-base-100", size_class("input", @size), @class]}
     />
     """
   end
@@ -238,7 +275,7 @@ defmodule PhoenixKitEntities.Components.FieldInput do
       name={@name}
       form={@form}
       disabled={@disabled}
-      class={["select select-bordered bg-base-100", size_class("select", @size)]}
+      class={["select select-bordered bg-base-100", size_class("select", @size), @class]}
     >
       <option value="">{gettext("—")}</option>
       <option
