@@ -204,7 +204,7 @@ defmodule PhoenixKitEntities.Web.EntityFormLiveTest do
 
       render_hook(view, "open_icon_picker", %{})
       render_hook(view, "search_icons", %{"search" => "user"})
-      render_hook(view, "filter_by_category", %{"category" => "general"})
+      render_hook(view, "filter_by_category", %{"tab" => "general"})
       render_hook(view, "select_icon", %{"icon" => "hero-user"})
       render_hook(view, "clear_icon", %{})
       render_hook(view, "close_icon_picker", %{})
