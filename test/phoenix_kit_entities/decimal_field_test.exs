@@ -66,6 +66,21 @@ defmodule PhoenixKitEntities.DecimalFieldTest do
       assert Decimal.equal?(same, Decimal.new("3.25"))
     end
 
+    # Found by external review: cast trims, so the changeset guard must too,
+    # or a hand-written " 5.1 " casts fine on the way in and is refused on
+    # re-save.
+    test "accepts a value with surrounding whitespace, the same as storage does" do
+      assert {:ok, value} = FormBuilder.cast_field(field(), " 5.1 ")
+      assert Decimal.equal?(value, Decimal.new("5.1"))
+    end
+
+    # A bound is part of a field definition, which an admin can edit. A typo
+    # there must not turn every save of that field into a crash.
+    test "an unparseable min or max is ignored rather than raised on" do
+      assert {:ok, _} = FormBuilder.cast_field(field(%{"min" => "abc"}), "5")
+      assert {:ok, _} = FormBuilder.cast_field(field(%{"max" => "nonsense"}), "5")
+    end
+
     test "rejects text" do
       assert {:error, _} = FormBuilder.cast_field(field(), "abc")
       assert {:error, _} = FormBuilder.cast_field(field(), "12.5kg")
@@ -139,6 +154,17 @@ defmodule PhoenixKitEntities.DecimalFieldTest do
       html = render_decimal(field(), Decimal.new("0.0001"))
       assert html =~ ~s(value="0.0001")
       refute html =~ "E"
+    end
+
+    # Float values only come from data written before this type existed.
+    # `to_string/1` renders a small one as "1.0e-7", which the control rejects.
+    test "a stored float renders without scientific notation" do
+      html = render_decimal(field(), 0.0000001)
+
+      assert html =~ ~s(value="0.0000001")
+      # Scoped to the value attribute: the class list contains "bg-base-100",
+      # which a bare `=~ "e-"` matches.
+      refute html =~ ~r/value="[^"]*e-/
     end
 
     test "carries min and max through to the control" do

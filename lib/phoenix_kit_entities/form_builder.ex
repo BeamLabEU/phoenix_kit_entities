@@ -1559,16 +1559,33 @@ defmodule PhoenixKitEntities.FormBuilder do
     end
   end
 
-  defp below?(_value, nil), do: false
-  defp below?(value, min), do: Decimal.compare(value, to_decimal(min)) == :lt
+  defp below?(value, min), do: compare_bound(value, min) == :lt
+  defp above?(value, max), do: compare_bound(value, max) == :gt
 
-  defp above?(_value, nil), do: false
-  defp above?(value, max), do: Decimal.compare(value, to_decimal(max)) == :gt
+  # An unparseable bound is IGNORED rather than raised on. `min`/`max` come
+  # from a field definition, which an admin can edit; a typo there must not
+  # turn every save of that field into a crash.
+  defp compare_bound(_value, nil), do: :eq
+
+  defp compare_bound(value, bound) do
+    case to_decimal(bound) do
+      %Decimal{} = limit -> Decimal.compare(value, limit)
+      nil -> :eq
+    end
+  end
 
   defp to_decimal(%Decimal{} = value), do: value
   defp to_decimal(value) when is_integer(value), do: Decimal.new(value)
-  defp to_decimal(value) when is_float(value), do: value |> Float.to_string() |> Decimal.new()
-  defp to_decimal(value) when is_binary(value), do: Decimal.new(value)
+  defp to_decimal(value) when is_float(value), do: Decimal.from_float(value)
+
+  defp to_decimal(value) when is_binary(value) do
+    case value |> String.trim() |> Decimal.parse() do
+      {decimal, ""} -> decimal
+      _ -> nil
+    end
+  end
+
+  defp to_decimal(_value), do: nil
 
   defp decimal_input_value(value), do: FieldTypes.decimal_input_value(value)
   defp decimal_step(field), do: FieldTypes.decimal_step(field)

@@ -792,7 +792,13 @@ defmodule PhoenixKitEntities.FieldTypes do
   @spec decimal_input_value(term()) :: String.t() | nil
   def decimal_input_value(%Decimal{} = value), do: Decimal.to_string(value, :normal)
   def decimal_input_value(value) when is_binary(value), do: value
-  def decimal_input_value(value) when is_number(value), do: to_string(value)
+  # Via Decimal, not `to_string/1`: a small float stringifies as "1.0e-7",
+  # which an `<input type="number">` refuses. Floats only reach here from data
+  # written before this type existed.
+  def decimal_input_value(value) when is_float(value),
+    do: value |> Decimal.from_float() |> Decimal.to_string(:normal)
+
+  def decimal_input_value(value) when is_integer(value), do: Integer.to_string(value)
   def decimal_input_value(_value), do: nil
 
   @doc """

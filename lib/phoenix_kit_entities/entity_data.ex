@@ -639,8 +639,11 @@ defmodule PhoenixKitEntities.EntityData do
   defp decimal_shaped?(%Decimal{}), do: true
   defp decimal_shaped?(value) when is_number(value), do: true
 
+  # Trimmed before parsing, to match what `FormBuilder.cast_field/2` accepts.
+  # Without this a hand-written `" 5.1 "` casts fine on the way in and is then
+  # refused by this guard on re-save.
   defp decimal_shaped?(value) when is_binary(value) do
-    match?({_decimal, ""}, Decimal.parse(value))
+    match?({_decimal, ""}, value |> String.trim() |> Decimal.parse())
   end
 
   defp decimal_shaped?(_value), do: false
