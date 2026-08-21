@@ -1,3 +1,11 @@
+## 0.4.5 - 2026-08-21
+
+### Changed
+
+- **The icon-picker category strip uses core's `<.nav_tabs>`** instead of
+  hand-rolled `tabs-boxed` markup. The filter event payload key is now
+  `tab` rather than `category` (#33).
+
 ## 0.4.4 - 2026-08-21
 
 ### Added
