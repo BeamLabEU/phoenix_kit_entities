@@ -22,6 +22,17 @@ defmodule PhoenixKitEntities.EntityDataCreatedByTest do
   alias PhoenixKitEntities.EntityData
 
   setup do
+    # This suite's whole premise is "the fixture admin is THE first admin" —
+    # true on a pristine install, false on this container's shared
+    # migration_test_db, which is deliberately pre-seeded with one real Owner
+    # (seed-owner@phoenixkit.test, see /www/.tools/test-db.env) so other
+    # integration suites have someone to find. That row predates any fixture
+    # created here, so `Auth.get_first_admin_uuid/0` picked it every time
+    # instead of `admin` below. Clearing it is confined to this test's own
+    # sandboxed transaction (Ecto.Adapters.SQL.Sandbox rolls it back on
+    # exit) — the real seeded row is untouched once the test ends.
+    Repo.delete_all("phoenix_kit_users")
+
     admin = Fixtures.admin_fixture()
 
     {:ok, entity} =
@@ -221,6 +232,15 @@ defmodule PhoenixKitEntities.EntityDataCreatedByWithoutUsersTest do
   alias PhoenixKit.Migrations.Postgres
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.EntityData
+
+  setup do
+    # See the sibling module's setup for why: this container's shared
+    # migration_test_db carries one pre-seeded Owner, which defeats this
+    # module's entire premise of "no user at all". Confined to this test's
+    # sandboxed transaction, rolled back on exit.
+    Repo.delete_all("phoenix_kit_users")
+    :ok
+  end
 
   test "a creatorless submission is a changeset error, not a Postgrex raise" do
     # `create/2` documents this case as "a validation error on created_by".
