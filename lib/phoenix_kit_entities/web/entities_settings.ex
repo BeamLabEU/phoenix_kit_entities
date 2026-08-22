@@ -339,7 +339,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
     {:noreply, socket}
   end
 
-  def handle_event("set_import_tab", %{"entity" => entity_name}, socket) do
+  def handle_event("set_import_tab", %{"tab" => entity_name}, socket) do
     {:noreply, assign(socket, :import_active_tab, entity_name)}
   end
 
@@ -1183,21 +1183,19 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
 
                 <%!-- Entity Tabs --%>
                 <%= if length(@import_preview.entities) > 0 do %>
-                  <div role="tablist" class="tabs tabs-border mb-4">
-                    <%= for entity <- @import_preview.entities do %>
-                      <button
-                        role="tab"
-                        class={"tab #{if @import_active_tab == entity.name, do: "tab-active", else: ""}"}
-                        phx-click="set_import_tab"
-                        phx-value-entity={entity.name}
-                      >
-                        {entity.name}
-                        <span class={"badge badge-sm ml-2 #{if @import_active_tab == entity.name, do: "badge-primary", else: "badge-ghost"}"}>
-                          {length(entity.data)}
-                        </span>
-                      </button>
-                    <% end %>
-                  </div>
+                  <%!-- Core's <.nav_tabs>: the payload key moves from
+                       `entity` to the component's standard `tab`. --%>
+                  <.nav_tabs
+                    variant={:border}
+                    class="mb-4"
+                    active_tab={@import_active_tab}
+                    on_change="set_import_tab"
+                    tabs={
+                      Enum.map(@import_preview.entities, fn entity ->
+                        %{id: entity.name, label: entity.name, badge: length(entity.data)}
+                      end)
+                    }
+                  />
 
                   <%!-- Active Entity Content --%>
                   <%= for entity <- @import_preview.entities do %>
