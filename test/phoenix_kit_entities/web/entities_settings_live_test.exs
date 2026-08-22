@@ -205,7 +205,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettingsLiveTest do
       {:ok, view, _html} = live(conn, "/en/admin/settings/entities")
 
       render_hook(view, "show_import_modal", %{})
-      render_hook(view, "set_import_tab", %{"entity" => ctx.entity.name})
+      render_hook(view, "set_import_tab", %{"tab" => ctx.entity.name})
       render_hook(view, "hide_import_modal", %{})
       assert render(view) =~ "Entities System"
     end
