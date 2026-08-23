@@ -1,3 +1,23 @@
+## 0.4.6 - 2026-08-22
+
+### Changed
+
+- **The import-preview entity tabs use core's `<.nav_tabs variant={:border}>`**
+  instead of hand-rolled `tabs-border` markup. The tab-switch payload key is
+  now `tab` rather than `entity` (#34).
+- Dependency bump: `phoenix_kit` 2.13.6 (the first core release that admits
+  `variant={:border}`).
+
+### Fixed
+
+- **Clean checkouts failed to compile under `MDEX_NATIVE_BUILD=1`** — that
+  env var forces `mdex_native` to build its NIF from source (no precompiled
+  build for OTP 28), which requires `rustler` itself, not just
+  `rustler_precompiled`. Optional deps of dependencies are never resolved, so
+  this package now declares `{:rustler, ">= 0.0.0", optional: true}` the same
+  way core does. Host applications still need to declare rustler themselves
+  (#35).
+
 ## 0.4.5 - 2026-08-21
 
 ### Changed
