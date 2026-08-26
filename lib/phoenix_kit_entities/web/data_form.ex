@@ -39,7 +39,13 @@ defmodule PhoenixKitEntities.Web.DataForm do
     # Defer DB queries (entity load, data record load) and presence init to
     # handle_params/3 — mount runs twice (HTTP + WebSocket), handle_params
     # runs once. See Phoenix iron law.
-    {:ok, socket}
+    {:ok,
+     assign(socket,
+       show_media_selector: false,
+       media_pick_target: nil,
+       media_filter: :image,
+       media_pick_generation: 0
+     )}
   end
 
   @impl true
@@ -355,6 +361,46 @@ defmodule PhoenixKitEntities.Web.DataForm do
     end
   end
 
+  # ── Media picker (2026-08-27: managed blueprints edit their values,
+  # images included, right here — the owning modules dropped their own
+  # editors). ONE page-level MediaSelectorModal shared by every media
+  # field, reconfigured per click; the generation in its id remounts it
+  # fresh each open so a previous open's search/page (possibly a
+  # different type lock) can't present a wrong-empty library.
+
+  def handle_event("pick_media_field", %{"key" => key, "type" => type}, socket) do
+    # The field must exist on the blueprint with a matching media type —
+    # the buttons only render for legal fields, but events are events.
+    fields = socket.assigns.entity.fields_definition || []
+    legal? = Enum.any?(fields, &(&1["key"] == key and &1["type"] == type))
+
+    if legal? and type in ["image", "video"] and socket.assigns.lock_owner? do
+      {:noreply,
+       socket
+       |> assign(:media_pick_target, key)
+       |> assign(:media_filter, if(type == "video", do: :video, else: :image))
+       |> update(:media_pick_generation, &(&1 + 1))
+       |> assign(:show_media_selector, true)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("clear_media_field", %{"key" => key}, socket) do
+    fields = socket.assigns.entity.fields_definition || []
+
+    if Enum.any?(fields, &(&1["key"] == key and &1["type"] in ["image", "video"])) and
+         socket.assigns.lock_owner? do
+      {:noreply, put_media_value(socket, key, nil)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("close_media_selector", _params, socket) do
+    {:noreply, assign(socket, show_media_selector: false, media_pick_target: nil)}
+  end
+
   # Pulls the resource uuid off socket assigns for use in error log
   # context. Returns `nil` when the assign is missing or the underlying
   # struct hasn't been hydrated yet (e.g. an exception during the very
@@ -364,6 +410,27 @@ defmodule PhoenixKitEntities.Web.DataForm do
       %{uuid: uuid} -> uuid
       _ -> nil
     end
+  end
+
+  # Writes the picked/cleared value into the changeset's data so the
+  # hidden input re-renders with it — from there the ordinary form params
+  # carry it through every validate and the save (see the FormBuilder
+  # media block: a changeset-only value would be wiped by the next
+  # keystroke).
+  defp put_media_value(socket, key, value) do
+    changeset = socket.assigns.changeset
+    data = Ecto.Changeset.get_field(changeset, :data) || %{}
+    lang = socket.assigns[:current_lang]
+
+    data =
+      if socket.assigns[:multilang_enabled] && is_binary(lang) do
+        Map.update(data, lang, %{key => value}, &Map.put(&1 || %{}, key, value))
+      else
+        Map.put(data, key, value)
+      end
+
+    changeset = Ecto.Changeset.put_change(changeset, :data, data)
+    assign(socket, :changeset, changeset)
   end
 
   # The parent picker is rendered as a raw <select>, so any changeset
@@ -638,6 +705,25 @@ defmodule PhoenixKitEntities.Web.DataForm do
   end
 
   ## Live updates
+
+  def handle_info({:media_selected, [file_uuid | _]}, socket) do
+    case socket.assigns.media_pick_target do
+      key when is_binary(key) ->
+        {:noreply,
+         socket
+         |> assign(show_media_selector: false, media_pick_target: nil)
+         |> put_media_value(key, file_uuid)}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_info({:media_selected, _}, socket), do: {:noreply, socket}
+
+  def handle_info({:media_selector_closed}, socket) do
+    {:noreply, assign(socket, show_media_selector: false, media_pick_target: nil)}
+  end
 
   @impl true
   def handle_info({:data_form_change, entity_uuid, record_key, payload, source}, socket) do
@@ -1470,6 +1556,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
                     {PhoenixKitEntities.FormBuilder.build_fields(@entity, f,
                       wrapper_class: "mb-6",
                       disabled: @readonly?,
+                      media_picker: not @readonly?,
                       lang_code: if(@multilang_enabled, do: @current_lang, else: nil)
                     )}
                   </div>
@@ -1749,6 +1836,23 @@ defmodule PhoenixKitEntities.Web.DataForm do
             </button>
           </div>
         </.form>
+
+        <.live_component
+          :if={@show_media_selector}
+          module={PhoenixKitWeb.Live.Components.MediaSelectorModal}
+          id={"data-form-media-selector-#{@media_filter}-g#{@media_pick_generation}"}
+          show={@show_media_selector}
+          mode={:single}
+          file_type_filter={@media_filter}
+          lock_file_type
+          title={
+            if @media_filter == :video,
+              do: gettext("Select Video"),
+              else: gettext("Select Image")
+          }
+          selected_uuids={[]}
+          phoenix_kit_current_user={assigns[:phoenix_kit_current_user]}
+        />
       </div>
     """
   end

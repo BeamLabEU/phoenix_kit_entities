@@ -1031,7 +1031,9 @@ defmodule PhoenixKitEntities.Web.EntityForm do
            put_flash(
              socket,
              :error,
-             gettext("This blueprint is managed by another module — edit it there.")
+             gettext(
+               "The blueprint's slug, status and module-locked settings are protected — revert those changes to save."
+             )
            )}
       end
     rescue
@@ -1752,6 +1754,21 @@ defmodule PhoenixKitEntities.Web.EntityForm do
             {gettext("Define your custom content type with dynamic fields")}
           </p>
         </.admin_page_header>
+
+        <%!-- Managed Banner — the blueprint belongs to another module.
+        Since 2026-08-27 these ARE edited here (the owning modules dropped
+        their own editors); only the structural surface stays locked. --%>
+        <%= if owner = PhoenixKitEntities.Managed.owner(@entity) do %>
+          <div class="alert alert-info mb-6">
+            <.icon name="hero-shield-check" class="w-5 h-5" />
+            <span>
+              {gettext(
+                "Managed by the %{owner} module. Its slug, status and %{owner}-locked settings are protected — everything else is edited right here.",
+                owner: owner
+              )}
+            </span>
+          </div>
+        <% end %>
 
         <%!-- Readonly Banner --%>
         <%= if @readonly? do %>

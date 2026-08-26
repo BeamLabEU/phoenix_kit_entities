@@ -153,7 +153,9 @@ defmodule PhoenixKitEntities.Web.EntityFormLiveTest do
         |> form("form[phx-change='validate']", %{"entities" => %{"name" => "renamed_slug"}})
         |> render_submit()
 
-      assert html =~ "managed by another module"
+      # Copy changed 2026-08-27: editing lives HERE now, only the
+      # structural surface stays protected.
+      assert html =~ "slug, status and module-locked settings are protected"
       assert Entities.get_entity!(managed.uuid).name == "catalogue_set_guarded"
     end
   end
