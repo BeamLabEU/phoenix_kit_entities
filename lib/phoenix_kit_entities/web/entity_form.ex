@@ -1741,6 +1741,14 @@ defmodule PhoenixKitEntities.Web.EntityForm do
     |> assign(:spectators, spectators)
   end
 
+  # True for an EXISTING blueprint owned by another module — the fields
+  # the write guard would refuse render disabled (with hidden twins so
+  # the form params stay whole; disabled controls don't submit).
+  defp managed_blueprint?(%{uuid: uuid} = entity) when not is_nil(uuid),
+    do: PhoenixKitEntities.Managed.owner(entity) != nil
+
+  defp managed_blueprint?(_), do: false
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -1938,13 +1946,18 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                   label={gettext("Slug")}
                   placeholder={gettext("brand")}
                   required
-                  disabled={@readonly?}
+                  disabled={@readonly? or managed_blueprint?(@entity)}
                   class="w-full"
-                  hint={gettext("snake_case identifier used in the system")}
+                  hint={
+                    if managed_blueprint?(@entity),
+                      do: gettext("Locked — the owning module keys on this slug"),
+                      else: gettext("snake_case identifier used in the system")
+                  }
                 >
                   <:label_extra>
                     <%= if !@multilang_enabled || @current_lang == @primary_language do %>
                       <button
+                        :if={not managed_blueprint?(@entity)}
                         type="button"
                         class="btn btn-ghost btn-xs ml-2"
                         phx-click="generate_entity_slug"
@@ -1956,6 +1969,14 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                     <% end %>
                   </:label_extra>
                 </.translatable_field>
+                <%!-- A disabled input doesn't submit; keep the slug in the
+                params so validation stays whole. --%>
+                <input
+                  :if={managed_blueprint?(@entity)}
+                  type="hidden"
+                  name="entities[name]"
+                  value={Ecto.Changeset.get_field(@changeset, :name)}
+                />
 
                 <%!-- Description (translatable) --%>
                 <.translatable_field
@@ -2042,7 +2063,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                       id="entity_status"
                       name={f[:status].name}
                       required
-                      disabled={@readonly?}
+                      disabled={@readonly? or managed_blueprint?(@entity)}
                     >
                       <option value="published" selected={f[:status].value == "published"}>
                         {gettext("Published (active)")}
@@ -2055,9 +2076,19 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                       </option>
                     </select>
                   </label>
+                  <input
+                    :if={managed_blueprint?(@entity)}
+                    type="hidden"
+                    name={f[:status].name}
+                    value={f[:status].value}
+                  />
                   <.label class="label">
                     <span class="fieldset-label">
-                      {gettext("Only published can be used")}
+                      <%= if managed_blueprint?(@entity) do %>
+                        {gettext("Locked — the owning module controls the lifecycle")}
+                      <% else %>
+                        {gettext("Only published can be used")}
+                      <% end %>
                     </span>
                   </.label>
                 </div>
