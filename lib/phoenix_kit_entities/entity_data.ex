@@ -1073,9 +1073,13 @@ defmodule PhoenixKitEntities.EntityData do
       preload: [:entity, :creator]
     )
     |> exclude_trashed(opts)
+    |> maybe_limit(opts[:limit])
     |> repo().all()
     |> maybe_resolve_langs(opts)
   end
+
+  defp maybe_limit(query, n) when is_integer(n) and n > 0, do: limit(query, ^n)
+  defp maybe_limit(query, _), do: query
 
   @doc """
   Returns the entity's records as a depth-ordered flat list for
@@ -2107,6 +2111,39 @@ defmodule PhoenixKitEntities.EntityData do
     from(d in __MODULE__, where: d.entity_uuid == ^entity_uuid, select: count(d.uuid))
     |> exclude_trashed(opts)
     |> repo().one()
+  end
+
+  @doc """
+  Record counts for many entities at once: `%{entity_uuid => count}`.
+  One grouped query — a listing showing counts for a page of entities
+  must not run one COUNT per row (and must never length/1 a full load).
+  `exclude_statuses:` drops records in the given statuses from the tally
+  (e.g. `["archived"]` to match viewers that hide archived records);
+  trashed records are excluded the same way `list_by_entity/2` does it.
+  """
+  @spec counts_by_entities([binary()], keyword()) :: %{optional(binary()) => non_neg_integer()}
+  def counts_by_entities(entity_uuids, opts \\ [])
+  def counts_by_entities([], _opts), do: %{}
+
+  def counts_by_entities(entity_uuids, opts) when is_list(entity_uuids) do
+    query =
+      from(d in __MODULE__,
+        where: d.entity_uuid in ^entity_uuids,
+        group_by: d.entity_uuid,
+        select: {d.entity_uuid, count(d.uuid)}
+      )
+      |> exclude_trashed(opts)
+
+    query =
+      case opts[:exclude_statuses] do
+        statuses when is_list(statuses) and statuses != [] ->
+          from(d in query, where: d.status not in ^statuses)
+
+        _ ->
+          query
+      end
+
+    query |> repo().all() |> Map.new()
   end
 
   @doc """
