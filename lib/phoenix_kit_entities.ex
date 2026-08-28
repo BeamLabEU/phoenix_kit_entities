@@ -1199,6 +1199,17 @@ defmodule PhoenixKitEntities do
   end
 
   @impl PhoenixKit.Module
+  def js_sources do
+    [
+      %{
+        app: :phoenix_kit_entities,
+        file: "static/assets/phoenix_kit_entities.js",
+        global: "PhoenixKitEntitiesHooks"
+      }
+    ]
+  end
+
+  @impl PhoenixKit.Module
   @spec admin_tabs() :: [PhoenixKit.Dashboard.Tab.t()]
   def admin_tabs do
     [

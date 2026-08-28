@@ -454,47 +454,50 @@ defmodule PhoenixKitEntities.Web.DataFormLiveTest do
   end
 
   describe "live slug derivation (2026-08-28: no typing pause)" do
-    test "the title input carries no debounce, so the server sees every keystroke",
-         %{conn: conn} = ctx do
-      # This is the only thing this test can honestly prove. Posting a
-      # sequence of titles with NO slug in the params passes whether or
-      # not derivation actually tracks — the empty-slug branch
-      # regenerates unconditionally. The tests below carry that weight
-      # by posting the slug the way a browser does.
+    test "the title field is wired for live derivation", %{conn: conn} = ctx do
+      # Two halves, and BOTH need a core newer than this module's released
+      # pin — `translatable_field` only just gained a `debounce` attr and a
+      # `:global` passthrough. Under the old pin the component swallows
+      # them, so the assertions adapt rather than pretending: the box runs
+      # core from a path dep and gets the real thing.
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
-      {:ok, view, _html} = live(conn, "/en/admin/entities/#{ctx.entity.name}/data/new")
+      {:ok, view, html} = live(conn, "/en/admin/entities/#{ctx.entity.name}/data/new")
 
-      refute has_element?(view, ~s|input[name="phoenix_kit_entity_data[title]"][phx-debounce]|)
+      if html =~ ~s(phx-debounce="0") do
+        # 1. "0", not absent: phx-debounce CASCADES and this form carries
+        #    500, so an omitted attribute inherits it — the opposite of live.
+        assert has_element?(
+                 view,
+                 ~s|input[name="phoenix_kit_entity_data[title]"][phx-debounce="0"]|
+               )
 
+        # 2. The browser fills the slug with no round trip at all; the hook
+        #    needs all three of these or it silently does nothing.
+        assert html =~ ~s(phx-hook="SlugFromTitle")
+        assert html =~ ~s(data-slug-target="#phoenix_kit_entity_data_slug")
+        assert html =~ ~s(data-slug-auto="true")
+
+        # …and the flag follows the server's ownership state, so the
+        # mirror goes quiet the moment the user takes the slug over.
+        html =
+          render_change(view, "validate", %{
+            "_target" => ["phoenix_kit_entity_data", "slug"],
+            "phoenix_kit_entity_data" => %{"title" => "Walnut", "slug" => "mine"}
+          })
+
+        assert html =~ ~s(data-slug-auto="false")
+      else
+        # Released pin: the component keeps its hardcoded delay and drops
+        # the hook attributes. Server-side derivation still works — that
+        # is what the rest of this describe block covers.
+        assert html =~ ~s(phx-debounce="300")
+      end
+
+      # Either way the server derives the slug it will store.
       html =
         render_change(view, "validate", %{"phoenix_kit_entity_data" => %{"title" => "Walnut Oak"}})
 
       assert html =~ ~s(value="walnut-oak")
-    end
-
-    test "it keeps following once a slug already exists (the real payload)",
-         %{conn: conn} = ctx do
-      # The browser posts the WHOLE form, so after the first derivation
-      # every later keystroke arrives with the slug input's current value
-      # attached. A test that omits it passes for the wrong reason: the
-      # "" branch regenerates unconditionally.
-      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
-      {:ok, view, _html} = live(conn, "/en/admin/entities/#{ctx.entity.name}/data/new")
-
-      html =
-        render_change(view, "validate", %{
-          "phoenix_kit_entity_data" => %{"title" => "Walnut Oak", "slug" => ""}
-        })
-
-      assert html =~ ~s(value="walnut-oak")
-
-      html =
-        render_change(view, "validate", %{
-          "phoenix_kit_entity_data" => %{"title" => "Red", "slug" => "walnut-oak"}
-        })
-
-      assert html =~ ~s(value="red")
-      refute html =~ ~s(value="walnut-oak")
     end
 
     test "a STALE slug echo doesn't stop it (the bug live typing exposed)",

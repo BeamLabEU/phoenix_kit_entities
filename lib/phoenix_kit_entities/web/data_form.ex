@@ -494,6 +494,23 @@ defmodule PhoenixKitEntities.Web.DataForm do
     end
   end
 
+  # Client-side echo of the slug while typing (SlugFromTitle in
+  # priv/static/assets/phoenix_kit_entities.js). The round trip is what
+  # made this feel laggy even at zero debounce — a slug is just text, and
+  # the browser can write it immediately. The server still derives the
+  # slug it stores; the hook stays quiet unless `data-slug-auto` says the
+  # slug is still following the title, and for scripts it cannot romanize
+  # (core's rule is locale-aware) it leaves the server's value alone.
+  #
+  # Dynamic attrs for the same reason as live_debounce/0: phx-hook and
+  # data-* are not declared attributes of translatable_field.
+  defp slug_mirror_attrs do
+    %{"phx-hook" => "SlugFromTitle", "data-slug-target" => "#phoenix_kit_entity_data_slug"}
+  end
+
+  # The hook reads this rather than guessing from the field's contents.
+  defp slug_auto_attrs(auto?), do: %{"data-slug-auto" => to_string(auto? == true)}
+
   # Ownership of the slug is server state, deliberately NOT inferred from
   # the slug value the client posts back.
   #
@@ -1361,13 +1378,18 @@ defmodule PhoenixKitEntities.Web.DataForm do
   defp normalize_record_key(key) when is_binary(key), do: key
   defp normalize_record_key(key), do: to_string(key)
 
-  # `debounce: nil` for the title, passed as a DYNAMIC attr rather than a
+  # `debounce: "0"` for the title, passed as a DYNAMIC attr rather than a
   # literal one: `translatable_field` only gained the attribute in core
   # after this module's released pin, and a literal would fail the
   # compile gate until that release lands. An older core simply ignores
   # the extra assign and keeps its hardcoded 300ms — the same graceful
   # degradation the apply/3 guards give us on the data side.
-  defp live_debounce, do: %{debounce: nil}
+  #
+  # "0", not nil: phx-debounce CASCADES, and this form carries
+  # phx-debounce="500". Omitting the attribute inherits that 500ms — the
+  # opposite of live, and slower than the 300ms it replaced. Only an
+  # explicit value on the input overrides an ancestor's.
+  defp live_debounce, do: %{debounce: "0"}
 
   defp auto_generate_entity_slug(_entity_uuid, _record_uuid, title, _lang)
        when title in [nil, ""],
@@ -1557,6 +1579,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
                       disabled={@readonly?}
                       class="w-full"
                       {live_debounce()}
+                      {slug_mirror_attrs()}
                     />
 
                     <.translatable_field
@@ -1576,6 +1599,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
                       title={gettext("Use lowercase letters, numbers, and hyphens only.")}
                       hint={gettext("Leave empty to auto-generate from title")}
                       secondary_hint={gettext("Leave empty to use the primary language slug")}
+                      {slug_auto_attrs(@slug_auto?)}
                     >
                       <:label_extra>
                         <button
