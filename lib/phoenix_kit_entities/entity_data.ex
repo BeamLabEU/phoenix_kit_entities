@@ -2184,11 +2184,19 @@ defmodule PhoenixKitEntities.EntityData do
         query =
           from(d in __MODULE__,
             where: d.entity_uuid in ^entity_uuids,
-            # `data::text` alongside the title column: translations live
-            # in that JSONB under language keys, so a record titled
-            # "Oak" in en and "Tamm" in et is found by either (Max,
-            # 2026-08-28 — search has to work in all the languages).
-            where: ilike(d.title, ^pattern) or fragment("?::text ILIKE ?", d.data, ^pattern),
+            # The data JSONB alongside the title column: translations
+            # live there under language keys, so a record titled "Oak" in
+            # en and "Tamm" in et is found by either. Only string VALUES
+            # are searched — reading the encoded document matched KEY
+            # names too, so a query of "a" hit anything holding `_title`
+            # (Max, 2026-08-28).
+            where:
+              ilike(d.title, ^pattern) or
+                fragment(
+                  "EXISTS (SELECT 1 FROM jsonb_path_query(?, '$.**') AS v WHERE jsonb_typeof(v) = 'string' AND v #>> '{}' ILIKE ?)",
+                  d.data,
+                  ^pattern
+                ),
             distinct: true,
             select: d.entity_uuid
           )
