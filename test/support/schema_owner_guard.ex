@@ -21,6 +21,8 @@ defmodule PhoenixKitEntities.Test.SchemaOwnerGuard do
   already owns can be in play at all.
   """
 
+  require Logger
+
   @package "phoenix_kit_entities"
 
   defmodule OwnerMismatch do
@@ -51,11 +53,38 @@ defmodule PhoenixKitEntities.Test.SchemaOwnerGuard do
     end
   end
 
-  @doc "Stamps this package as schema_migrations' owner. Unconditional — see moduledoc."
+  @doc """
+  Stamps this package as schema_migrations' owner. Unconditional — see moduledoc.
+
+  `COMMENT ON TABLE` requires being the table's OWNER, not merely having
+  DML grants on it — a role provisioned with narrower rights (a
+  maintainer's CI, deliberately not superuser) can't leave a marker at
+  all. Degrades to a logged no-op rather than raising: this repo's own
+  boot must still succeed on such a role exactly as it did before
+  `stamp!/1` became unconditional, just without the mark this run would
+  have left. A future collision against THIS database then falls back to
+  whatever marker (if any) a privileged run already stamped — silently
+  weaker, not silently absent; the warning says so.
+  """
   @spec stamp!((String.t() -> %{rows: list()})) :: :ok
   def stamp!(query_fn) do
     query_fn.("COMMENT ON TABLE schema_migrations IS '#{@package}'")
     :ok
+  rescue
+    e in Postgrex.Error ->
+      if match?(%{postgres: %{code: :insufficient_privilege}}, e) do
+        Logger.warning(
+          "SchemaOwnerGuard.stamp!/1: not the owner of schema_migrations, so " <>
+            "COMMENT ON TABLE was refused (Postgres 42501) — this run leaves no " <>
+            "ownership marker. A later PGDATABASE collision against this same " <>
+            "database won't be caught unless an earlier, privileged run already " <>
+            "left one."
+        )
+
+        :ok
+      else
+        reraise e, __STACKTRACE__
+      end
   end
 
   defp owner(query_fn) do
