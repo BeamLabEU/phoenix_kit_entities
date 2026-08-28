@@ -66,9 +66,36 @@ defmodule PhoenixKitEntities.MixProject do
         # process — the hex.* archive tasks aren't resolvable via Mix.Task.run
         # inside an alias.
         "cmd mix hex.audit",
-        "quality.ci"
-      ]
+        "quality.ci",
+        "test.js"
+      ],
+
+      # `node --test test/js` over the pure helpers exported from the hook
+      # bundle — the same gate core runs. Node is optional tooling, so a
+      # machine without it skips rather than fails; the Elixir suite is
+      # still the gate.
+      "test.js": &run_js_tests/1
     ]
+  end
+
+  defp run_js_tests(_args) do
+    # `node --test` with no file arguments walks the CWD looking for
+    # anything test-shaped, so an empty glob must skip rather than hand
+    # node the whole repo (deps/ and _build/ included).
+    files = Path.wildcard("test/js/*.test.cjs")
+
+    cond do
+      files == [] ->
+        Mix.shell().info("[skip] no test/js/*.test.cjs files")
+
+      System.find_executable("node") == nil ->
+        Mix.shell().info("[skip] node not found — skipping test/js")
+
+      true ->
+        {output, status} = System.cmd("node", ["--test" | files], stderr_to_stdout: true)
+        IO.puts(output)
+        if status != 0, do: Mix.raise("JS tests failed")
+    end
   end
 
   # phoenix_kit deps resolve from Hex by default. For cross-repo work against a

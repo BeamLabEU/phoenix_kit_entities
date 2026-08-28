@@ -22,6 +22,27 @@
   //     Cyrillic ("Цвет" -> "tsvet"), which is not something to
   //     re-implement here; for anything this cannot handle it leaves the
   //     field alone and lets the server's value land.
+  // Pure, and exported at the bottom of this file so `mix test.js` can
+  // pin it: what this refuses to slugify is the whole contract between
+  // the hook and core's locale-aware rule.
+  function slugifyLatin(text) {
+    // Combining marks: "é" -> "e". Anything without a Latin
+    // decomposition (Cyrillic, Greek, CJK) survives this untouched.
+    var latin = text.normalize("NFD").replace(/[̀-ͯ]/g, "");
+
+    // Bail on ANY leftover non-ASCII, not just on an empty result.
+    // Core romanizes ("Цвет Red" -> "tsvet-red"); dropping what this
+    // cannot read would show "red" for an instant and then jump to the
+    // server's answer. A mixed-script title is exactly where the two
+    // disagree, so say nothing and let the server's value land.
+    if (/[^\x00-\x7F]/.test(latin)) return "";
+
+    return latin
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+
   window.PhoenixKitEntitiesHooks.SlugFromTitle = {
     mounted() {
       this.onInput = () => this.mirror();
@@ -33,7 +54,12 @@
     },
 
     mirror() {
-      var target = document.querySelector(this.el.dataset.slugTarget || "");
+      // querySelector("") THROWS — an absent data-slug-target would take
+      // the whole hook down rather than quietly doing nothing.
+      var selector = this.el.dataset.slugTarget;
+      if (!selector) return;
+
+      var target = document.querySelector(selector);
       if (!target) return;
 
       // The server owns "is this still auto-generated?" — never guess it
@@ -43,22 +69,16 @@
       // Don't fight the user if they happen to be in the slug field.
       if (document.activeElement === target) return;
 
-      var slug = this.slugify(this.el.value || "");
+      var slug = slugifyLatin(this.el.value || "");
       if (slug === "") return;
 
       target.value = slug;
     },
 
-    slugify(text) {
-      return text
-        .normalize("NFD")
-        // Combining marks: "é" -> "e". Anything without a Latin
-        // decomposition (Cyrillic, Greek, CJK) survives this untouched
-        // and is dropped below, which is the signal to stay quiet.
-        .replace(/[̀-ͯ]/g, "")
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "");
-    }
+    slugify: slugifyLatin
   };
+
+  if (typeof module === "object" && module.exports) {
+    module.exports.slugifyLatin = slugifyLatin;
+  }
 })();

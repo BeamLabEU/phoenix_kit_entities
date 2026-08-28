@@ -150,4 +150,60 @@ defmodule PhoenixKitEntities.EntityDataBatchCountsTest do
     assert length(EntityData.list_by_entity(a.uuid, limit: 2)) == 2
     assert length(EntityData.list_by_entity(a.uuid)) == 4
   end
+
+  describe "list_by_entities/2" do
+    test "groups per entity and leaves empty ones out", %{a: a, b: b, make: make} do
+      make.(a, "A One", "published")
+      make.(a, "A Two", "published")
+      make.(b, "B One", "published")
+
+      rows = EntityData.list_by_entities([a.uuid, b.uuid, Ecto.UUID.generate()])
+
+      assert length(rows[a.uuid]) == 2
+      assert length(rows[b.uuid]) == 1
+      assert map_size(rows) == 2
+      assert EntityData.list_by_entities([]) == %{}
+    end
+
+    test ":limit is exact even when the excluded rows come first", %{a: a, make: make} do
+      # The point of filtering in SQL. Limiting first and dropping
+      # archived after returns 1 of the 2 asked for, and a caller
+      # showing "the first 2 values" then shows one and looks done.
+      for i <- 1..6, do: make.(a, "Old #{i}", "archived")
+      for i <- 1..3, do: make.(a, "Live #{i}", "published")
+
+      rows = EntityData.list_by_entities([a.uuid], exclude_statuses: ["archived"], limit: 2)
+
+      assert length(rows[a.uuid]) == 2
+      assert Enum.all?(rows[a.uuid], &(&1.status == "published"))
+    end
+
+    test "order matches list_by_entity, in both sort modes", %{a: a, actor: actor, make: make} do
+      # The batch sorts already-loaded rows in Elixir; the single-entity
+      # path sorts in SQL. A set whose values are hand-ordered has to come
+      # back the same way from both, and only this holds them together.
+      for i <- 1..4, do: make.(a, "Rec #{i}", "published")
+
+      assert ids(EntityData.list_by_entities([a.uuid])[a.uuid]) ==
+               ids(EntityData.list_by_entity(a.uuid))
+
+      {:ok, _} =
+        Entities.update_entity(a, %{settings: Map.put(a.settings || %{}, "sort_mode", "manual")},
+          actor_uuid: actor
+        )
+
+      # Positions out of insertion order, and one left unset — nulls last.
+      [r1, r2, r3, r4] = EntityData.list_by_entity(a.uuid)
+
+      for {rec, pos} <- [{r1, 3}, {r2, 1}, {r3, nil}, {r4, 2}] do
+        {:ok, _} = EntityData.update(rec, %{position: pos})
+      end
+
+      manual = EntityData.list_by_entity(a.uuid)
+      assert ids(EntityData.list_by_entities([a.uuid])[a.uuid]) == ids(manual)
+      assert Enum.map(manual, & &1.position) == [1, 2, 3, nil]
+    end
+  end
+
+  defp ids(records), do: Enum.map(records, & &1.uuid)
 end

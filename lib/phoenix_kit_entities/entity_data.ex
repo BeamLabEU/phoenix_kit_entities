@@ -1082,6 +1082,93 @@ defmodule PhoenixKitEntities.EntityData do
   defp maybe_limit(query, _), do: query
 
   @doc """
+  Records for MANY entities at once: `%{entity_uuid => [record]}`.
+
+  The batched twin of `list_by_entity/2`, for a caller holding a list of
+  entities that needs the rows of each — a filter offering one dropdown
+  per attribute set, say. The loop version costs two queries per entity
+  (the sort mode, then the rows) and grows with the data.
+
+  Options:
+
+    * `:exclude_statuses` — drop records in these statuses (e.g.
+      `["archived"]`). Applied in SQL, which is what makes `:limit`
+      exact: filtering after a limited fetch silently returns fewer
+      rows than asked for and reads as "that's all there is".
+    * `:limit` — at most this many records PER entity, after filtering.
+    * `:include_trashed`, `:lang` — as `list_by_entity/2`.
+    * `:preload` — defaults to `[:entity, :creator]`; pass `[]` when the
+      caller only reads the record's own columns.
+
+  Entities with no matching records are absent from the map — use
+  `Map.get(result, uuid, [])`.
+  """
+  @spec list_by_entities([binary()], keyword()) :: %{optional(binary()) => [t()]}
+  def list_by_entities(entity_uuids, opts \\ [])
+  def list_by_entities([], _opts), do: %{}
+
+  def list_by_entities(entity_uuids, opts) when is_list(entity_uuids) do
+    uuids = Enum.uniq(entity_uuids)
+    modes = sort_modes_for(uuids)
+    limit = opts[:limit]
+
+    query =
+      from(d in __MODULE__,
+        where: d.entity_uuid in ^uuids,
+        preload: ^Keyword.get(opts, :preload, [:entity, :creator])
+      )
+      |> exclude_trashed(opts)
+      |> exclude_statuses(opts)
+
+    query
+    |> repo().all()
+    |> maybe_resolve_langs(opts)
+    |> Enum.group_by(& &1.entity_uuid)
+    |> Map.new(fn {uuid, rows} ->
+      rows = sort_rows(rows, modes[uuid])
+      {uuid, if(is_integer(limit) and limit > 0, do: Enum.take(rows, limit), else: rows)}
+    end)
+  end
+
+  defp exclude_statuses(query, opts) do
+    case opts[:exclude_statuses] do
+      statuses when is_list(statuses) and statuses != [] ->
+        from(d in query, where: d.status not in ^statuses)
+
+      _ ->
+        query
+    end
+  end
+
+  defp sort_modes_for(entity_uuids) do
+    from(e in Entities, where: e.uuid in ^entity_uuids, select: {e.uuid, e.settings})
+    |> repo().all()
+    |> Map.new(fn
+      {uuid, %{"sort_mode" => mode}} -> {uuid, mode}
+      {uuid, _} -> {uuid, "auto"}
+    end)
+  end
+
+  # Mirrors `sort_order_for_mode/1` for an already-loaded batch. The two
+  # must agree: a set whose values are hand-ordered has to come back in
+  # that order whichever function loaded it, and nothing but a test
+  # holds them together (`list_by_entities_test.exs`).
+  defp sort_rows(rows, "manual") do
+    Enum.sort_by(rows, &{is_nil(&1.position), &1.position, inverted_date(&1.date_created)})
+  end
+
+  defp sort_rows(rows, _auto) do
+    Enum.sort_by(rows, &inverted_date(&1.date_created))
+  end
+
+  # `desc: :date_created` inside an otherwise ascending sort key.
+  defp inverted_date(nil), do: nil
+  defp inverted_date(%DateTime{} = dt), do: -DateTime.to_unix(dt, :microsecond)
+
+  defp inverted_date(%NaiveDateTime{} = dt),
+    do: -(dt |> DateTime.from_naive!("Etc/UTC") |> DateTime.to_unix(:microsecond))
+
+  @doc """
   Returns the entity's records as a depth-ordered flat list for
   WordPress-style indented rendering — parents precede their children,
   siblings preserve the entity's current sort order.
