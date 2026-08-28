@@ -21,6 +21,13 @@ defmodule PhoenixKitEntities.SchemaOwnerGuardWiringTest do
 
   use ExUnit.Case, async: false
 
+  # Same tag `PhoenixKitEntities.DataCase`/`LiveCase` inject for every other
+  # DB-backed test in this suite — this one drives raw Postgrex against
+  # scratch databases of its own instead of the sandboxed `TestRepo`, so it
+  # can't go through either case template, but it needs the same exclusion
+  # when Postgres is unavailable (see `test_helper.exs`'s `exclude` list).
+  @moduletag :integration
+
   # Real randomness (not a PID or node name — either could coincidentally
   # repeat across two different hosts hitting the same shared instance) so
   # two concurrent `mix test` runs against a shared Postgres never collide
@@ -40,24 +47,7 @@ defmodule PhoenixKitEntities.SchemaOwnerGuardWiringTest do
   # chain.
   @template_db "phoenix_kit_entities_test"
 
-  # `CREATE DATABASE ... TEMPLATE` refuses outright while ANY session holds
-  # a connection to the source database — and `PhoenixKitEntities.Test.Repo`
-  # always has some, idle in its own pool, from `test_helper.exs`'s own
-  # boot (independent of Sandbox mode, which only governs per-test
-  # checkout, not the pool's persistent connections). By the time this
-  # module runs, every `async: true` module has already finished (ExUnit
-  # runs `async: false` strictly after), so nothing legitimate is still
-  # using the template DB — these are exactly the pool's own idle
-  # connections, safe to terminate; Ecto reconnects them lazily on the
-  # next checkout.
   defp clone_template!(admin, dest_db) do
-    Postgrex.query!(
-      admin,
-      "SELECT pg_terminate_backend(pid) FROM pg_stat_activity " <>
-        "WHERE datname = '#{@template_db}' AND pid <> pg_backend_pid()",
-      []
-    )
-
     Postgrex.query!(admin, "CREATE DATABASE #{dest_db} TEMPLATE #{@template_db}", [])
   end
 
@@ -284,10 +274,21 @@ defmodule PhoenixKitEntities.SchemaOwnerGuardWiringTest do
     ]
 
     {output, 0} =
-      System.cmd("pg_dump", args,
-        env: [{"PGPASSWORD", admin_opts[:password]}],
-        stderr_to_stdout: true
-      )
+      try do
+        System.cmd("pg_dump", args,
+          env: [{"PGPASSWORD", admin_opts[:password]}],
+          stderr_to_stdout: true
+        )
+      rescue
+        # `System.cmd/3` raises rather than returning a tuple when the
+        # binary is absent from PATH — the same failure mode
+        # `test_helper.exs`'s own `psql` check already guards against.
+        # Without this, a machine with the Postgres client library but not
+        # its CLI tools installed would crash this test with an opaque
+        # ErlangError instead of a diagnosable message.
+        ErlangError ->
+          flunk("pg_dump not found on PATH — install the postgresql-client tools")
+      end
 
     # PG17's pg_dump emits a `\restrict <random-token>` / `\unrestrict
     # <same-token>` pair on every invocation — a fresh nonce gating

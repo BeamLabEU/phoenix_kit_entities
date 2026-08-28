@@ -8,6 +8,13 @@ defmodule PhoenixKitEntities.SchemaOwnerGuardTest do
 
   use ExUnit.Case, async: false
 
+  # Same tag `PhoenixKitEntities.DataCase`/`LiveCase` inject for every other
+  # DB-backed test in this suite — this one drives raw Postgrex against
+  # scratch databases of its own instead of the sandboxed `TestRepo`, so it
+  # can't go through either case template, but it needs the same exclusion
+  # when Postgres is unavailable (see `test_helper.exs`'s `exclude` list).
+  @moduletag :integration
+
   alias PhoenixKitEntities.Test.SchemaOwnerGuard
 
   @scratch_db "i067_schema_owner_guard_scratch_entities"
@@ -59,6 +66,20 @@ defmodule PhoenixKitEntities.SchemaOwnerGuardTest do
     query_fn.("CREATE TABLE schema_migrations (version bigint)")
     assert SchemaOwnerGuard.stamp!(query_fn) == :ok
     assert SchemaOwnerGuard.check!(query_fn) == :ok
+  end
+
+  test "stamp! marks ownership even without PGDATABASE — the default DB isn't exempt", %{
+    query_fn: query_fn
+  } do
+    query_fn.("CREATE TABLE schema_migrations (version bigint)")
+    System.delete_env("PGDATABASE")
+
+    assert SchemaOwnerGuard.stamp!(query_fn) == :ok
+
+    %{rows: [[marker]]} =
+      query_fn.("SELECT obj_description('schema_migrations'::regclass, 'pg_class')")
+
+    assert marker == "phoenix_kit_entities"
   end
 
   test "a different package's marker: check! raises the legible refusal message", %{

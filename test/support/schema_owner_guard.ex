@@ -11,8 +11,14 @@ defmodule PhoenixKitEntities.Test.SchemaOwnerGuard do
   the owning package, and refuses to proceed if a stamped marker names
   someone else.
 
-  Only engages when `PGDATABASE` is explicitly set — the default, isolated
-  per-repo DB is unaffected either way.
+  `stamp!/1` runs UNCONDITIONALLY, on every boot, `PGDATABASE` or not.
+  Marking only under `PGDATABASE` would leave a package's own default,
+  isolated DB unmarked forever — and that default DB, with its predictable
+  name on the same instance, is the single most likely target for a later
+  `PGDATABASE` override. Stamping only there would catch the SECOND
+  collision, never the first, silently. `check!/1` still only matters
+  under `PGDATABASE` — that's the only time a name someone else's migrator
+  already owns can be in play at all.
   """
 
   @package "phoenix_kit_entities"
@@ -45,13 +51,10 @@ defmodule PhoenixKitEntities.Test.SchemaOwnerGuard do
     end
   end
 
-  @doc "Stamps this package as schema_migrations' owner. No-op unless PGDATABASE is set."
+  @doc "Stamps this package as schema_migrations' owner. Unconditional — see moduledoc."
   @spec stamp!((String.t() -> %{rows: list()})) :: :ok
   def stamp!(query_fn) do
-    if System.get_env("PGDATABASE") do
-      query_fn.("COMMENT ON TABLE schema_migrations IS '#{@package}'")
-    end
-
+    query_fn.("COMMENT ON TABLE schema_migrations IS '#{@package}'")
     :ok
   end
 
