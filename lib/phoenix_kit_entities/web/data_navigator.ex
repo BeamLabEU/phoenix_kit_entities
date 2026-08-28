@@ -989,19 +989,14 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
              the "Browse and manage your …" line are gone — the admin
              header above already names the entity, and repeating it cost
              a whole band above the fold (Max, 2026-08-28). --%>
-        <.admin_page_header>
-          <%!-- Our own back control, not the header's `back=`: that one is
-                a 32px ghost CIRCLE, which reads as a floating arrow and
-                sits visibly smaller than the buttons opposite it (Max,
-                2026-08-28). Same row, same button size, and it names
-                where it goes. --%>
-          <.link
-            navigate={PhoenixKit.Utils.Routes.path("/admin/entities")}
-            class="btn btn-ghost gap-2 -ml-2"
-          >
-            <.icon name="hero-arrow-left" class="w-4 h-4" />
-            {gettext("Entities")}
-          </.link>
+        <%!-- back_label names the destination: an unlabeled arrow makes the
+             reader guess, and this page is going in front of clients. The
+             control's shape and size are core's job again as of the
+             2026-08-28 header change. --%>
+        <.admin_page_header
+          back={PhoenixKit.Utils.Routes.path("/admin/entities")}
+          back_label={gettext("Entities")}
+        >
           <:actions>
           <%!-- View Mode Toggle --%>
           <div class="join">
