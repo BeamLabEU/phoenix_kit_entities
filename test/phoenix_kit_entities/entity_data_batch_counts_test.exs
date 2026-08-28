@@ -77,6 +77,54 @@ defmodule PhoenixKitEntities.EntityDataBatchCountsTest do
              %{a.uuid => 1}
   end
 
+  describe "entity_uuids_matching_title/3" do
+    test "one query answers 'which of these contain a match?'", %{a: a, b: b, make: make} do
+      make.(a, "Oak", "published")
+      make.(a, "Walnut", "published")
+      make.(b, "Steel", "published")
+
+      assert EntityData.entity_uuids_matching_title([a.uuid, b.uuid], "oak") == [a.uuid]
+
+      # Case-insensitive, substring, and scoped to the given uuids.
+      assert EntityData.entity_uuids_matching_title([a.uuid], "WALN") == [a.uuid]
+      assert EntityData.entity_uuids_matching_title([b.uuid], "oak") == []
+      assert EntityData.entity_uuids_matching_title([], "oak") == []
+    end
+
+    test "blank terms match nothing; statuses filter like the viewers", %{a: a, make: make} do
+      make.(a, "Archived Oak", "archived")
+
+      assert EntityData.entity_uuids_matching_title([a.uuid], "   ") == []
+      assert EntityData.entity_uuids_matching_title([a.uuid], "oak") == [a.uuid]
+
+      assert EntityData.entity_uuids_matching_title([a.uuid], "oak",
+               exclude_statuses: ["archived"]
+             ) == []
+    end
+
+    test "LIKE metacharacters are literal", %{a: a, b: b, actor: actor, make: make} do
+      # Built inline: the slug format rejects "%", but the TITLE may
+      # carry it — which is exactly the case being pinned.
+      {:ok, _} =
+        EntityData.create(%{
+          entity_uuid: a.uuid,
+          title: "50% gloss",
+          slug: "fifty-gloss",
+          status: "published",
+          data: %{},
+          created_by_uuid: actor
+        })
+
+      make.(b, "plain", "published")
+
+      # "%" must not act as a wildcard: it matches the one real title.
+      assert EntityData.entity_uuids_matching_title([a.uuid, b.uuid], "0% gl") == [a.uuid]
+
+      # A bare "%" would match everything if unescaped.
+      assert EntityData.entity_uuids_matching_title([b.uuid], "%") == []
+    end
+  end
+
   test "list_by_entity honors :limit", %{a: a, make: make} do
     for i <- 1..4, do: make.(a, "Rec #{i}", "published")
 

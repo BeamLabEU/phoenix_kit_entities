@@ -2147,6 +2147,72 @@ defmodule PhoenixKitEntities.EntityData do
   end
 
   @doc """
+  Of the given entities, which have at least one record whose title
+  matches `term`? Returns a deduplicated list of entity uuids.
+
+  One DISTINCT query for the whole batch — a listing that filters its
+  rows by "does this entity contain a matching record?" must not run a
+  search per row, and must never load the records themselves just to
+  test for existence. Trashed records are excluded the same way
+  `list_by_entity/2` does it; `exclude_statuses:` drops more (e.g.
+  `["archived"]` to match viewers that hide archived records).
+
+  A blank term matches nothing — callers treat "no query" as "no
+  filter" and should not call this at all. A LIST, not a MapSet:
+  the result crosses a module boundary (the catalogue calls this
+  through `apply/3` under its released pin) and MapSet is opaque, so
+  callers build their own set.
+
+  ## Examples
+
+      iex> PhoenixKitEntities.EntityData.entity_uuids_matching_title(uuids, "oak")
+      ["01a0…"]
+  """
+  @spec entity_uuids_matching_title([binary()], String.t(), keyword()) :: [binary()]
+  def entity_uuids_matching_title(entity_uuids, term, opts \\ [])
+  def entity_uuids_matching_title([], _term, _opts), do: []
+
+  def entity_uuids_matching_title(entity_uuids, term, opts)
+      when is_list(entity_uuids) and is_binary(term) do
+    case String.trim(term) do
+      "" ->
+        []
+
+      trimmed ->
+        pattern = "%#{escape_like(trimmed)}%"
+
+        query =
+          from(d in __MODULE__,
+            where: d.entity_uuid in ^entity_uuids,
+            where: ilike(d.title, ^pattern),
+            distinct: true,
+            select: d.entity_uuid
+          )
+          |> exclude_trashed(opts)
+
+        query =
+          case opts[:exclude_statuses] do
+            statuses when is_list(statuses) and statuses != [] ->
+              from(d in query, where: d.status not in ^statuses)
+
+            _ ->
+              query
+          end
+
+        repo().all(query)
+    end
+  end
+
+  # `%`, `_` and `\\` are LIKE metacharacters — a value titled "50%" must
+  # not turn the pattern into a wildcard.
+  defp escape_like(term) do
+    term
+    |> String.replace("\\", "\\\\")
+    |> String.replace("%", "\\%")
+    |> String.replace("_", "\\_")
+  end
+
+  @doc """
   Counts trashed records for an entity. Drives the trash-bin badge.
   """
   @spec trashed_count(binary()) :: non_neg_integer()
