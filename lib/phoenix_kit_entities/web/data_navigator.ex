@@ -985,117 +985,97 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
     ~H"""
       <div class="container flex flex-col mx-auto px-4 py-6">
         <%!-- Header Section --%>
+        <%!-- One row: back arrow left, actions right. The page title and
+             the "Browse and manage your …" line are gone — the admin
+             header above already names the entity, and repeating it cost
+             a whole band above the fold (Max, 2026-08-28). --%>
         <.admin_page_header back={PhoenixKit.Utils.Routes.path("/admin/entities")}>
+          <:actions>
+          <%!-- View Mode Toggle --%>
+          <div class="join">
+            <button
+              type="button"
+              phx-click="toggle_view_mode"
+              phx-value-mode="card"
+              class={["btn join-item", @view_mode == "card" && "btn-active"]}
+              title={gettext("Card view")}
+            >
+              <.icon name="hero-squares-2x2" class="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              phx-click="toggle_view_mode"
+              phx-value-mode="table"
+              class={["btn join-item", @view_mode == "table" && "btn-active"]}
+              title={gettext("Table view")}
+            >
+              <.icon name="hero-bars-3-bottom-left" class="w-4 h-4" />
+            </button>
+          </div>
+
           <%= if @selected_entity do %>
-            <h1 class="text-xl sm:text-2xl lg:text-3xl font-bold text-base-content">
-              {@selected_entity.display_name_plural || @selected_entity.display_name}
-            </h1>
-            <p class="text-sm text-base-content/60 mt-0.5">
-              {gettext("Browse and manage your %{entity}",
-                entity:
-                  String.downcase(
-                    @selected_entity.display_name_plural || @selected_entity.display_name
-                  )
-              )}
-            </p>
-          <% else %>
-            <h1 class="text-xl sm:text-2xl lg:text-3xl font-bold text-base-content">
-              {gettext("Data Navigator")}
-            </h1>
-            <p class="text-sm text-base-content/60 mt-0.5">
-              {gettext("Browse and manage all entity data records across your system")}
-            </p>
+            <.link
+              navigate={
+                PhoenixKit.Utils.Routes.path("/admin/entities/#{@selected_entity.uuid}/edit")
+              }
+              class="btn btn-outline"
+            >
+              <.icon name="hero-cog-6-tooth" class="w-4 h-4 mr-2" /> {gettext("Edit Entity")}
+            </.link>
           <% end %>
-        </.admin_page_header>
-
-        <%!-- Action Bar --%>
-        <div class="flex flex-col sm:flex-row justify-end items-start sm:items-center mb-6 gap-4">
-          <div class="flex gap-2 items-center">
-            <%!-- View Mode Toggle --%>
-            <div class="join">
-              <button
-                type="button"
-                phx-click="toggle_view_mode"
-                phx-value-mode="card"
-                class={["btn join-item", @view_mode == "card" && "btn-active"]}
-                title={gettext("Card view")}
-              >
-                <.icon name="hero-squares-2x2" class="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                phx-click="toggle_view_mode"
-                phx-value-mode="table"
-                class={["btn join-item", @view_mode == "table" && "btn-active"]}
-                title={gettext("Table view")}
-              >
-                <.icon name="hero-bars-3-bottom-left" class="w-4 h-4" />
-              </button>
-            </div>
-
+          <%= if not Enum.empty?(@entities) do %>
             <%= if @selected_entity do %>
+              <%!-- Direct add button when viewing specific entity --%>
               <.link
                 navigate={
-                  PhoenixKit.Utils.Routes.path("/admin/entities/#{@selected_entity.uuid}/edit")
+                  PhoenixKit.Utils.Routes.path("/admin/entities/#{@selected_entity.name}/data/new")
                 }
-                class="btn btn-outline"
+                class="btn btn-primary"
               >
-                <.icon name="hero-cog-6-tooth" class="w-4 h-4 mr-2" /> {gettext("Edit Entity")}
+                <.icon name="hero-plus" class="w-4 h-4 mr-2" /> {gettext("Add")}
               </.link>
-            <% end %>
-            <%= if not Enum.empty?(@entities) do %>
-              <%= if @selected_entity do %>
-                <%!-- Direct add button when viewing specific entity --%>
-                <.link
-                  navigate={
-                    PhoenixKit.Utils.Routes.path("/admin/entities/#{@selected_entity.name}/data/new")
-                  }
-                  class="btn btn-primary"
-                >
+            <% else %>
+              <%!-- Dropdown to select entity when viewing all data --%>
+              <div class="dropdown dropdown-end">
+                <label tabindex="0" class="btn btn-primary">
                   <.icon name="hero-plus" class="w-4 h-4 mr-2" /> {gettext("Add")}
-                </.link>
-              <% else %>
-                <%!-- Dropdown to select entity when viewing all data --%>
-                <div class="dropdown dropdown-end">
-                  <label tabindex="0" class="btn btn-primary">
-                    <.icon name="hero-plus" class="w-4 h-4 mr-2" /> {gettext("Add")}
-                    <.icon name="hero-chevron-down" class="w-4 h-4 ml-2" />
-                  </label>
-                  <ul
-                    tabindex="0"
-                    class="dropdown-content z-[1] menu p-2 shadow-lg bg-base-100 rounded-box w-64 mt-2"
-                  >
-                    <li class="menu-title">
-                      <span>{gettext("Select Entity Type")}</span>
-                    </li>
-                    <%= for entity <- @entities do %>
-                      <%= if entity.status == "published" do %>
-                        <li>
-                          <.link
-                            navigate={
-                              PhoenixKit.Utils.Routes.path("/admin/entities/#{entity.name}/data/new")
-                            }
-                            class="flex items-center justify-between"
-                          >
-                            <span>{entity.display_name}</span>
-                            <span class="badge badge-sm badge-ghost">{entity.name}</span>
-                          </.link>
-                        </li>
-                      <% end %>
-                    <% end %>
-                    <%= if Enum.all?(@entities, & &1.status != "published") do %>
-                      <li class="disabled">
-                        <span class="text-sm text-base-content/50">
-                          {gettext("No published entities available. Publish an entity first.")}
-                        </span>
+                  <.icon name="hero-chevron-down" class="w-4 h-4 ml-2" />
+                </label>
+                <ul
+                  tabindex="0"
+                  class="dropdown-content z-[1] menu p-2 shadow-lg bg-base-100 rounded-box w-64 mt-2"
+                >
+                  <li class="menu-title">
+                    <span>{gettext("Select Entity Type")}</span>
+                  </li>
+                  <%= for entity <- @entities do %>
+                    <%= if entity.status == "published" do %>
+                      <li>
+                        <.link
+                          navigate={
+                            PhoenixKit.Utils.Routes.path("/admin/entities/#{entity.name}/data/new")
+                          }
+                          class="flex items-center justify-between"
+                        >
+                          <span>{entity.display_name}</span>
+                          <span class="badge badge-sm badge-ghost">{entity.name}</span>
+                        </.link>
                       </li>
                     <% end %>
-                  </ul>
-                </div>
-              <% end %>
+                  <% end %>
+                  <%= if Enum.all?(@entities, & &1.status != "published") do %>
+                    <li class="disabled">
+                      <span class="text-sm text-base-content/50">
+                        {gettext("No published entities available. Publish an entity first.")}
+                      </span>
+                    </li>
+                  <% end %>
+                </ul>
+              </div>
             <% end %>
-          </div>
-        </div>
+          <% end %>
+          </:actions>
+        </.admin_page_header>
 
         <%!-- Filters. The counts used to be four 130px dashboard cards
              above the fold restating this very control (Max/boss,

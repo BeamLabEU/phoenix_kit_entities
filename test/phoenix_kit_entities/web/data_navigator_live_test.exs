@@ -46,15 +46,21 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
   end
 
   describe "mount" do
-    test "renders data navigator with entity title", %{conn: conn} = ctx do
+    test "renders the records, not a second copy of the entity name", %{conn: conn} = ctx do
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
-      {:ok, _view, html} = live(conn, navigator_url(ctx.entity))
+      {:ok, view, html} = live(conn, navigator_url(ctx.entity))
 
-      assert html =~ "DN Test"
       # All seeded records render in the table.
       assert html =~ "Record 1"
       assert html =~ "Record 2"
       assert html =~ "Record 3"
+
+      # The page title and its "Browse and manage your …" line are gone
+      # on purpose (Max, 2026-08-28): the admin header above already
+      # names the entity, so the page opens on its content.
+      refute html =~ "DN Test"
+      refute html =~ "Browse and manage"
+      assert has_element?(view, ~s|a[href$="/admin/entities"]|)
     end
   end
 
@@ -192,7 +198,7 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
       {:ok, view, _html} = live(conn, navigator_url(ctx.entity))
 
       send(view.pid, {:unknown_message, "noise"})
-      assert render(view) =~ "DN Test"
+      assert render(view) =~ "Record 1"
     end
 
     test "logs at :debug level so unexpected messages stay visible in dev",
@@ -241,7 +247,7 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
 
       render_hook(view, "toggle_view_mode", %{"mode" => "grid"})
       render_hook(view, "toggle_view_mode", %{"mode" => "table"})
-      assert render(view) =~ "DN Test"
+      assert render(view) =~ "Record 1"
     end
 
     test "filter_by_status patches without crashing", %{conn: conn} = ctx do
@@ -249,7 +255,7 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
       {:ok, view, _html} = live(conn, pk_navigator_url(ctx.entity))
 
       render_hook(view, "filter_by_status", %{"status" => "published"})
-      assert render(view) =~ "DN Test"
+      assert render(view) =~ "Record 1"
     end
 
     test "search + clear_filters patch without crashing", %{conn: conn} = ctx do
@@ -258,7 +264,7 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
 
       render_hook(view, "search", %{"search" => %{"term" => "find_me"}})
       render_hook(view, "clear_filters", %{})
-      assert render(view) =~ "DN Test"
+      assert render(view) =~ "Record 1"
     end
 
     test "filter_by_entity with empty uuid redirects to entities list (entities route mounted)",
