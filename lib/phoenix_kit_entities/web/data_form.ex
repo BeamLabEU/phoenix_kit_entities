@@ -465,6 +465,36 @@ defmodule PhoenixKitEntities.Web.DataForm do
     current_slug = data_params["slug"] || ""
     lang = socket.assigns[:primary_language]
 
+    # Nothing to derive when the title is unchanged — and now that the
+    # title field fires on EVERY keystroke, this is the difference
+    # between two uniqueness queries per character typed ANYWHERE in the
+    # form and none at all (2026-08-28).
+    if title == previous_title do
+      data_params
+    else
+      derive_slug(
+        data_params,
+        entity_uuid,
+        record_uuid,
+        title,
+        previous_title,
+        current_slug,
+        lang
+      )
+    end
+  end
+
+  # The stored slug is only replaced while it still looks auto-generated:
+  # once someone types their own, the title stops driving it.
+  defp derive_slug(
+         data_params,
+         entity_uuid,
+         record_uuid,
+         title,
+         previous_title,
+         current_slug,
+         lang
+       ) do
     auto_generated_slug =
       auto_generate_entity_slug(entity_uuid, record_uuid, previous_title, lang)
 
@@ -1324,6 +1354,14 @@ defmodule PhoenixKitEntities.Web.DataForm do
   defp normalize_record_key(key) when is_binary(key), do: key
   defp normalize_record_key(key), do: to_string(key)
 
+  # `debounce: nil` for the title, passed as a DYNAMIC attr rather than a
+  # literal one: `translatable_field` only gained the attribute in core
+  # after this module's released pin, and a literal would fail the
+  # compile gate until that release lands. An older core simply ignores
+  # the extra assign and keeps its hardcoded 300ms — the same graceful
+  # degradation the apply/3 guards give us on the data side.
+  defp live_debounce, do: %{debounce: nil}
+
   defp auto_generate_entity_slug(_entity_uuid, _record_uuid, title, _lang)
        when title in [nil, ""],
        do: ""
@@ -1493,6 +1531,10 @@ defmodule PhoenixKitEntities.Web.DataForm do
                   </h3>
 
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <%!-- The slug beside this field is DERIVED from it, so
+                          waiting 300ms for a typing pause reads as lag
+                          rather than as typing (Max, 2026-08-28) — see
+                          live_debounce/0 for why it is passed dynamically. --%>
                     <.translatable_field
                       field_name="title"
                       form_prefix="phoenix_kit_entity_data"
@@ -1507,6 +1549,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
                       required
                       disabled={@readonly?}
                       class="w-full"
+                      {live_debounce()}
                     />
 
                     <.translatable_field
@@ -1670,7 +1713,6 @@ defmodule PhoenixKitEntities.Web.DataForm do
                       value={Ecto.Changeset.get_field(@changeset, :title) || ""}
                       placeholder={gettext("Enter a title for this record")}
                       class="input w-full"
-                      phx-debounce="300"
                       required
                       disabled={@readonly?}
                     />

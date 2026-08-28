@@ -453,6 +453,50 @@ defmodule PhoenixKitEntities.Web.DataFormLiveTest do
     end
   end
 
+  describe "live slug derivation (2026-08-28: no typing pause)" do
+    test "the slug follows the title as it is typed, keystroke by keystroke",
+         %{conn: conn} = ctx do
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, "/en/admin/entities/#{ctx.entity.name}/data/new")
+
+      # Each validate is one keystroke's worth of title. The debounce is
+      # gone, so the server sees them all — and the slug tracks every one.
+      for {typed, expected} <- [{"Wa", "wa"}, {"Waln", "waln"}, {"Walnut Oak", "walnut-oak"}] do
+        html =
+          render_change(view, "validate", %{"phoenix_kit_entity_data" => %{"title" => typed}})
+
+        assert html =~ ~s(value="#{expected}")
+      end
+
+      # The title input itself must carry no debounce, or none of the
+      # above reaches the server until typing stops.
+      refute has_element?(view, ~s|input[name="phoenix_kit_entity_data[title]"][phx-debounce]|)
+    end
+
+    test "a hand-typed slug stops following the title", %{conn: conn} = ctx do
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, "/en/admin/entities/#{ctx.entity.name}/data/new")
+
+      render_change(view, "validate", %{"phoenix_kit_entity_data" => %{"title" => "Walnut"}})
+
+      html =
+        render_change(view, "validate", %{
+          "phoenix_kit_entity_data" => %{"title" => "Walnut", "slug" => "my-own-slug"}
+        })
+
+      assert html =~ ~s(value="my-own-slug")
+
+      # …and keeps its own value while the title keeps changing.
+      html =
+        render_change(view, "validate", %{
+          "phoenix_kit_entity_data" => %{"title" => "Walnut Door", "slug" => "my-own-slug"}
+        })
+
+      assert html =~ ~s(value="my-own-slug")
+      refute html =~ ~s(value="walnut-door")
+    end
+  end
+
   describe "new form" do
     test "mounts the new path successfully", %{conn: conn} = ctx do
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
