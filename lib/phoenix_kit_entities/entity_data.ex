@@ -1073,9 +1073,100 @@ defmodule PhoenixKitEntities.EntityData do
       preload: [:entity, :creator]
     )
     |> exclude_trashed(opts)
+    |> maybe_limit(opts[:limit])
     |> repo().all()
     |> maybe_resolve_langs(opts)
   end
+
+  defp maybe_limit(query, n) when is_integer(n) and n > 0, do: limit(query, ^n)
+  defp maybe_limit(query, _), do: query
+
+  @doc """
+  Records for MANY entities at once: `%{entity_uuid => [record]}`.
+
+  The batched twin of `list_by_entity/2`, for a caller holding a list of
+  entities that needs the rows of each — a filter offering one dropdown
+  per attribute set, say. The loop version costs two queries per entity
+  (the sort mode, then the rows) and grows with the data.
+
+  Options:
+
+    * `:exclude_statuses` — drop records in these statuses (e.g.
+      `["archived"]`). Applied in SQL, which is what makes `:limit`
+      exact: filtering after a limited fetch silently returns fewer
+      rows than asked for and reads as "that's all there is".
+    * `:limit` — at most this many records PER entity, after filtering.
+    * `:include_trashed`, `:lang` — as `list_by_entity/2`.
+    * `:preload` — defaults to `[:entity, :creator]`; pass `[]` when the
+      caller only reads the record's own columns.
+
+  Entities with no matching records are absent from the map — use
+  `Map.get(result, uuid, [])`.
+  """
+  @spec list_by_entities([binary()], keyword()) :: %{optional(binary()) => [t()]}
+  def list_by_entities(entity_uuids, opts \\ [])
+  def list_by_entities([], _opts), do: %{}
+
+  def list_by_entities(entity_uuids, opts) when is_list(entity_uuids) do
+    uuids = Enum.uniq(entity_uuids)
+    modes = sort_modes_for(uuids)
+    limit = opts[:limit]
+
+    query =
+      from(d in __MODULE__,
+        where: d.entity_uuid in ^uuids,
+        preload: ^Keyword.get(opts, :preload, [:entity, :creator])
+      )
+      |> exclude_trashed(opts)
+      |> exclude_statuses(opts)
+
+    query
+    |> repo().all()
+    |> maybe_resolve_langs(opts)
+    |> Enum.group_by(& &1.entity_uuid)
+    |> Map.new(fn {uuid, rows} ->
+      rows = sort_rows(rows, modes[uuid])
+      {uuid, if(is_integer(limit) and limit > 0, do: Enum.take(rows, limit), else: rows)}
+    end)
+  end
+
+  defp exclude_statuses(query, opts) do
+    case opts[:exclude_statuses] do
+      statuses when is_list(statuses) and statuses != [] ->
+        from(d in query, where: d.status not in ^statuses)
+
+      _ ->
+        query
+    end
+  end
+
+  defp sort_modes_for(entity_uuids) do
+    from(e in Entities, where: e.uuid in ^entity_uuids, select: {e.uuid, e.settings})
+    |> repo().all()
+    |> Map.new(fn
+      {uuid, %{"sort_mode" => mode}} -> {uuid, mode}
+      {uuid, _} -> {uuid, "auto"}
+    end)
+  end
+
+  # Mirrors `sort_order_for_mode/1` for an already-loaded batch. The two
+  # must agree: a set whose values are hand-ordered has to come back in
+  # that order whichever function loaded it, and nothing but a test
+  # holds them together (`list_by_entities_test.exs`).
+  defp sort_rows(rows, "manual") do
+    Enum.sort_by(rows, &{is_nil(&1.position), &1.position, inverted_date(&1.date_created)})
+  end
+
+  defp sort_rows(rows, _auto) do
+    Enum.sort_by(rows, &inverted_date(&1.date_created))
+  end
+
+  # `desc: :date_created` inside an otherwise ascending sort key.
+  defp inverted_date(nil), do: nil
+  defp inverted_date(%DateTime{} = dt), do: -DateTime.to_unix(dt, :microsecond)
+
+  defp inverted_date(%NaiveDateTime{} = dt),
+    do: -(dt |> DateTime.from_naive!("Etc/UTC") |> DateTime.to_unix(:microsecond))
 
   @doc """
   Returns the entity's records as a depth-ordered flat list for
@@ -2107,6 +2198,117 @@ defmodule PhoenixKitEntities.EntityData do
     from(d in __MODULE__, where: d.entity_uuid == ^entity_uuid, select: count(d.uuid))
     |> exclude_trashed(opts)
     |> repo().one()
+  end
+
+  @doc """
+  Record counts for many entities at once: `%{entity_uuid => count}`.
+  One grouped query — a listing showing counts for a page of entities
+  must not run one COUNT per row (and must never length/1 a full load).
+  `exclude_statuses:` drops records in the given statuses from the tally
+  (e.g. `["archived"]` to match viewers that hide archived records);
+  trashed records are excluded the same way `list_by_entity/2` does it.
+  """
+  @spec counts_by_entities([binary()], keyword()) :: %{optional(binary()) => non_neg_integer()}
+  def counts_by_entities(entity_uuids, opts \\ [])
+  def counts_by_entities([], _opts), do: %{}
+
+  def counts_by_entities(entity_uuids, opts) when is_list(entity_uuids) do
+    query =
+      from(d in __MODULE__,
+        where: d.entity_uuid in ^entity_uuids,
+        group_by: d.entity_uuid,
+        select: {d.entity_uuid, count(d.uuid)}
+      )
+      |> exclude_trashed(opts)
+
+    query =
+      case opts[:exclude_statuses] do
+        statuses when is_list(statuses) and statuses != [] ->
+          from(d in query, where: d.status not in ^statuses)
+
+        _ ->
+          query
+      end
+
+    query |> repo().all() |> Map.new()
+  end
+
+  @doc """
+  Of the given entities, which have at least one record whose title
+  matches `term`? Returns a deduplicated list of entity uuids.
+
+  One DISTINCT query for the whole batch — a listing that filters its
+  rows by "does this entity contain a matching record?" must not run a
+  search per row, and must never load the records themselves just to
+  test for existence. Trashed records are excluded the same way
+  `list_by_entity/2` does it; `exclude_statuses:` drops more (e.g.
+  `["archived"]` to match viewers that hide archived records).
+
+  A blank term matches nothing — callers treat "no query" as "no
+  filter" and should not call this at all. A LIST, not a MapSet:
+  the result crosses a module boundary (the catalogue calls this
+  through `apply/3` under its released pin) and MapSet is opaque, so
+  callers build their own set.
+
+  ## Examples
+
+      iex> PhoenixKitEntities.EntityData.entity_uuids_matching_title(uuids, "oak")
+      ["01a0…"]
+  """
+  @spec entity_uuids_matching_title([binary()], String.t(), keyword()) :: [binary()]
+  def entity_uuids_matching_title(entity_uuids, term, opts \\ [])
+  def entity_uuids_matching_title([], _term, _opts), do: []
+
+  def entity_uuids_matching_title(entity_uuids, term, opts)
+      when is_list(entity_uuids) and is_binary(term) do
+    case String.trim(term) do
+      "" ->
+        []
+
+      trimmed ->
+        pattern = "%#{escape_like(trimmed)}%"
+
+        query =
+          from(d in __MODULE__,
+            where: d.entity_uuid in ^entity_uuids,
+            # The data JSONB alongside the title column: translations
+            # live there under language keys, so a record titled "Oak" in
+            # en and "Tamm" in et is found by either. Only string VALUES
+            # are searched — reading the encoded document matched KEY
+            # names too, so a query of "a" hit anything holding `_title`
+            # (Max, 2026-08-28).
+            where:
+              ilike(d.title, ^pattern) or
+                fragment(
+                  "EXISTS (SELECT 1 FROM jsonb_path_query(?, '$.**') AS v WHERE jsonb_typeof(v) = 'string' AND v #>> '{}' ILIKE ?)",
+                  d.data,
+                  ^pattern
+                ),
+            distinct: true,
+            select: d.entity_uuid
+          )
+          |> exclude_trashed(opts)
+
+        query =
+          case opts[:exclude_statuses] do
+            statuses when is_list(statuses) and statuses != [] ->
+              from(d in query, where: d.status not in ^statuses)
+
+            _ ->
+              query
+          end
+
+        repo().all(query)
+    end
+  end
+
+  # `%`, `_` and `\\` are LIKE metacharacters — a value titled "50%" must
+  # not turn the pattern into a wildcard.
+  defp escape_like(term) do
+    term
+    |> String.replace("\\", "\\\\")
+    |> String.replace("%", "\\%")
+    |> String.replace("_", "\\_")
   end
 
   @doc """

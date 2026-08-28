@@ -946,227 +946,209 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
 
   def format_data_preview(_), do: ""
 
+  # Nothing to filter on a brand-new entity: no records, no trash, no
+  # query, default status. The page is then just its title, Add, and the
+  # empty state — the case that used to render four giant zeros.
+  defp show_filters?(assigns) do
+    assigns.total_records > 0 or assigns.trashed_records > 0 or
+      assigns.search_term != "" or assigns.selected_status != "all"
+  end
+
+  attr(:status, :string, required: true)
+  attr(:label, :string, required: true)
+  attr(:count, :integer, required: true)
+  attr(:selected, :string, required: true)
+
+  # One status, its count, and the filtering it always should have done.
+  defp status_chip(assigns) do
+    ~H"""
+    <button
+      type="button"
+      phx-click="filter_by_status"
+      phx-value-status={@status}
+      aria-pressed={to_string(@selected == @status)}
+      class={["btn btn-sm gap-2", if(@selected == @status, do: "btn-primary", else: "btn-ghost")]}
+    >
+      {@label}
+      <span class={[
+        "badge badge-sm",
+        if(@selected == @status, do: "badge-neutral", else: "badge-ghost")
+      ]}>
+        {@count}
+      </span>
+    </button>
+    """
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
       <div class="container flex flex-col mx-auto px-4 py-6">
         <%!-- Header Section --%>
-        <.admin_page_header back={PhoenixKit.Utils.Routes.path("/admin/entities")}>
+        <%!-- One row: back arrow left, actions right. The page title and
+             the "Browse and manage your …" line are gone — the admin
+             header above already names the entity, and repeating it cost
+             a whole band above the fold (Max, 2026-08-28). --%>
+        <%!-- back_label names the destination: an unlabeled arrow makes the
+             reader guess, and this page is going in front of clients. The
+             control's shape and size are core's job again as of the
+             2026-08-28 header change. --%>
+        <.admin_page_header
+          back={PhoenixKit.Utils.Routes.path("/admin/entities")}
+          back_label={gettext("Entities")}
+        >
+          <:actions>
+          <%!-- View Mode Toggle --%>
+          <div class="join">
+            <button
+              type="button"
+              phx-click="toggle_view_mode"
+              phx-value-mode="card"
+              class={["btn join-item", @view_mode == "card" && "btn-active"]}
+              title={gettext("Card view")}
+            >
+              <.icon name="hero-squares-2x2" class="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              phx-click="toggle_view_mode"
+              phx-value-mode="table"
+              class={["btn join-item", @view_mode == "table" && "btn-active"]}
+              title={gettext("Table view")}
+            >
+              <.icon name="hero-bars-3-bottom-left" class="w-4 h-4" />
+            </button>
+          </div>
+
           <%= if @selected_entity do %>
-            <h1 class="text-xl sm:text-2xl lg:text-3xl font-bold text-base-content">
-              {@selected_entity.display_name_plural || @selected_entity.display_name}
-            </h1>
-            <p class="text-sm text-base-content/60 mt-0.5">
-              {gettext("Browse and manage your %{entity}",
-                entity:
-                  String.downcase(
-                    @selected_entity.display_name_plural || @selected_entity.display_name
-                  )
-              )}
-            </p>
-          <% else %>
-            <h1 class="text-xl sm:text-2xl lg:text-3xl font-bold text-base-content">
-              {gettext("Data Navigator")}
-            </h1>
-            <p class="text-sm text-base-content/60 mt-0.5">
-              {gettext("Browse and manage all entity data records across your system")}
-            </p>
+            <.link
+              navigate={
+                PhoenixKit.Utils.Routes.path("/admin/entities/#{@selected_entity.uuid}/edit")
+              }
+              class="btn btn-outline"
+            >
+              <.icon name="hero-cog-6-tooth" class="w-4 h-4 mr-2" /> {gettext("Edit Entity")}
+            </.link>
           <% end %>
-        </.admin_page_header>
-
-        <%!-- Stats Cards --%>
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div class="bg-primary text-primary-content rounded-2xl p-6 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105">
-            <div class="flex items-center justify-between mb-4">
-              <div class="p-2 bg-base-100/20 rounded-lg">
-                <.icon name="hero-circle-stack" class="w-6 h-6" />
-              </div>
-            </div>
-            <div class="text-3xl font-bold mb-2">{@total_records}</div>
-            <div class="opacity-90 font-medium">{gettext("Total Records")}</div>
-            <div class="opacity-70 text-xs mt-1">{gettext("All data records")}</div>
-          </div>
-
-          <div class="bg-success text-success-content rounded-2xl p-6 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105">
-            <div class="flex items-center justify-between mb-4">
-              <div class="p-2 bg-base-100/20 rounded-lg">
-                <.icon name="hero-bolt" class="w-6 h-6" />
-              </div>
-            </div>
-            <div class="text-3xl font-bold mb-2">{@published_records}</div>
-            <div class="opacity-90 font-medium">{gettext("Published")}</div>
-            <div class="opacity-70 text-xs mt-1">{gettext("Live content")}</div>
-          </div>
-
-          <div class="bg-warning text-warning-content rounded-2xl p-6 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105">
-            <div class="flex items-center justify-between mb-4">
-              <div class="p-2 bg-base-100/20 rounded-lg">
-                <.icon name="hero-pencil" class="w-6 h-6" />
-              </div>
-            </div>
-            <div class="text-3xl font-bold mb-2">{@draft_records}</div>
-            <div class="opacity-90 font-medium">{gettext("Drafts")}</div>
-            <div class="opacity-70 text-xs mt-1">{gettext("Work in progress")}</div>
-          </div>
-
-          <div class="bg-neutral text-neutral-content rounded-2xl p-6 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105">
-            <div class="flex items-center justify-between mb-4">
-              <div class="p-2 bg-base-100/20 rounded-lg">
-                <.icon name="hero-archive-box" class="w-6 h-6" />
-              </div>
-            </div>
-            <div class="text-3xl font-bold mb-2">{@archived_records}</div>
-            <div class="opacity-90 font-medium">{gettext("Archived")}</div>
-            <div class="opacity-70 text-xs mt-1">{gettext("Stored content")}</div>
-          </div>
-        </div>
-
-        <%!-- Action Bar --%>
-        <div class="flex flex-col sm:flex-row justify-end items-start sm:items-center mb-6 gap-4">
-          <div class="flex gap-2 items-center">
-            <%!-- View Mode Toggle --%>
-            <div class="join">
-              <button
-                type="button"
-                phx-click="toggle_view_mode"
-                phx-value-mode="card"
-                class={["btn join-item", @view_mode == "card" && "btn-active"]}
-                title={gettext("Card view")}
-              >
-                <.icon name="hero-squares-2x2" class="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                phx-click="toggle_view_mode"
-                phx-value-mode="table"
-                class={["btn join-item", @view_mode == "table" && "btn-active"]}
-                title={gettext("Table view")}
-              >
-                <.icon name="hero-bars-3-bottom-left" class="w-4 h-4" />
-              </button>
-            </div>
-
+          <%= if not Enum.empty?(@entities) do %>
             <%= if @selected_entity do %>
+              <%!-- Direct add button when viewing specific entity --%>
               <.link
                 navigate={
-                  PhoenixKit.Utils.Routes.path("/admin/entities/#{@selected_entity.uuid}/edit")
+                  PhoenixKit.Utils.Routes.path("/admin/entities/#{@selected_entity.name}/data/new")
                 }
-                class="btn btn-outline"
+                class="btn btn-primary"
               >
-                <.icon name="hero-cog-6-tooth" class="w-4 h-4 mr-2" /> {gettext("Edit Entity")}
+                <.icon name="hero-plus" class="w-4 h-4 mr-2" /> {gettext("Add")}
               </.link>
-            <% end %>
-            <%= if not Enum.empty?(@entities) do %>
-              <%= if @selected_entity do %>
-                <%!-- Direct add button when viewing specific entity --%>
-                <.link
-                  navigate={
-                    PhoenixKit.Utils.Routes.path("/admin/entities/#{@selected_entity.name}/data/new")
-                  }
-                  class="btn btn-primary"
-                >
+            <% else %>
+              <%!-- Dropdown to select entity when viewing all data --%>
+              <div class="dropdown dropdown-end">
+                <label tabindex="0" class="btn btn-primary">
                   <.icon name="hero-plus" class="w-4 h-4 mr-2" /> {gettext("Add")}
-                </.link>
-              <% else %>
-                <%!-- Dropdown to select entity when viewing all data --%>
-                <div class="dropdown dropdown-end">
-                  <label tabindex="0" class="btn btn-primary">
-                    <.icon name="hero-plus" class="w-4 h-4 mr-2" /> {gettext("Add")}
-                    <.icon name="hero-chevron-down" class="w-4 h-4 ml-2" />
-                  </label>
-                  <ul
-                    tabindex="0"
-                    class="dropdown-content z-[1] menu p-2 shadow-lg bg-base-100 rounded-box w-64 mt-2"
-                  >
-                    <li class="menu-title">
-                      <span>{gettext("Select Entity Type")}</span>
-                    </li>
-                    <%= for entity <- @entities do %>
-                      <%= if entity.status == "published" do %>
-                        <li>
-                          <.link
-                            navigate={
-                              PhoenixKit.Utils.Routes.path("/admin/entities/#{entity.name}/data/new")
-                            }
-                            class="flex items-center justify-between"
-                          >
-                            <span>{entity.display_name}</span>
-                            <span class="badge badge-sm badge-ghost">{entity.name}</span>
-                          </.link>
-                        </li>
-                      <% end %>
-                    <% end %>
-                    <%= if Enum.all?(@entities, & &1.status != "published") do %>
-                      <li class="disabled">
-                        <span class="text-sm text-base-content/50">
-                          {gettext("No published entities available. Publish an entity first.")}
-                        </span>
+                  <.icon name="hero-chevron-down" class="w-4 h-4 ml-2" />
+                </label>
+                <ul
+                  tabindex="0"
+                  class="dropdown-content z-[1] menu p-2 shadow-lg bg-base-100 rounded-box w-64 mt-2"
+                >
+                  <li class="menu-title">
+                    <span>{gettext("Select Entity Type")}</span>
+                  </li>
+                  <%= for entity <- @entities do %>
+                    <%= if entity.status == "published" do %>
+                      <li>
+                        <.link
+                          navigate={
+                            PhoenixKit.Utils.Routes.path("/admin/entities/#{entity.name}/data/new")
+                          }
+                          class="flex items-center justify-between"
+                        >
+                          <span>{entity.display_name}</span>
+                          <span class="badge badge-sm badge-ghost">{entity.name}</span>
+                        </.link>
                       </li>
                     <% end %>
-                  </ul>
-                </div>
-              <% end %>
+                  <% end %>
+                  <%= if Enum.all?(@entities, & &1.status != "published") do %>
+                    <li class="disabled">
+                      <span class="text-sm text-base-content/50">
+                        {gettext("No published entities available. Publish an entity first.")}
+                      </span>
+                    </li>
+                  <% end %>
+                </ul>
+              </div>
             <% end %>
-          </div>
-        </div>
+          <% end %>
+          </:actions>
+        </.admin_page_header>
 
-        <%!-- Filters Section --%>
-        <div class="card bg-base-100 shadow-xl mb-6">
-          <div class="card-body">
-            <h2 class="card-title text-xl mb-4">
-              <.icon name="hero-funnel" class="w-5 h-5" /> {gettext("Filters & Search")}
-            </h2>
-
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <%!-- Status Filter --%>
-              <div>
-                <label class="label">
-                  <span class="fieldset-legend">{gettext("Filter by Status")}</span>
-                </label>
-                <.form for={%{}} phx-change="filter_by_status">
-                  <label class="select w-full">
-                    <select name="status">
-                      <option value="all" selected={@selected_status == "all"}>
-                        {gettext("All Statuses")}
-                      </option>
-                      <option value="published" selected={@selected_status == "published"}>
-                        {gettext("Published")}
-                      </option>
-                      <option value="draft" selected={@selected_status == "draft"}>
-                        {gettext("Draft")}
-                      </option>
-                      <option value="archived" selected={@selected_status == "archived"}>
-                        {gettext("Archived")}
-                      </option>
-                      <option value="trashed" selected={@selected_status == "trashed"}>
-                        {if @trashed_records > 0,
-                          do: gettext("Trash (%{count})", count: @trashed_records),
-                          else: gettext("Trash")}
-                      </option>
-                    </select>
-                  </label>
-                </.form>
-              </div>
-
-              <%!-- Search --%>
-              <div>
-                <label class="label">
-                  <span class="fieldset-legend">{gettext("Search Records")}</span>
-                </label>
-                <.form for={%{}} phx-change="search" phx-submit="search" class="join w-full">
-                  <input
-                    type="text"
-                    name="search[term]"
-                    value={@search_term}
-                    placeholder={gettext("Search by title or slug...")}
-                    class="input join-item flex-1"
-                  />
-                  <button type="submit" class="btn btn-primary join-item">
-                    <.icon name="hero-magnifying-glass" class="w-4 h-4" />
-                  </button>
-                </.form>
-              </div>
+        <%!-- Filters. The counts used to be four 130px dashboard cards
+             above the fold restating this very control (Max/boss,
+             2026-08-28: clients see this page too). They are now ON the
+             filter: same numbers, one row, and clicking actually
+             filters. Statuses that are empty stay out of the way unless
+             they are the current view — a brand-new entity showed four
+             giant zeros. --%>
+        <div :if={show_filters?(assigns)} class="card bg-base-100 shadow-xl mb-6">
+          <div class="card-body gap-3">
+            <div class="flex flex-wrap items-center gap-2">
+              <.status_chip
+                status="all"
+                label={gettext("All")}
+                count={@total_records}
+                selected={@selected_status}
+              />
+              <.status_chip
+                status="published"
+                label={gettext("Published")}
+                count={@published_records}
+                selected={@selected_status}
+              />
+              <.status_chip
+                :if={@draft_records > 0 or @selected_status == "draft"}
+                status="draft"
+                label={gettext("Drafts")}
+                count={@draft_records}
+                selected={@selected_status}
+              />
+              <.status_chip
+                :if={@archived_records > 0 or @selected_status == "archived"}
+                status="archived"
+                label={gettext("Archived")}
+                count={@archived_records}
+                selected={@selected_status}
+              />
+              <.status_chip
+                :if={@trashed_records > 0 or @selected_status == "trashed"}
+                status="trashed"
+                label={gettext("Trash")}
+                count={@trashed_records}
+                selected={@selected_status}
+              />
             </div>
+
+            <.form
+              for={%{}}
+              id="data-navigator-search"
+              phx-change="search"
+              phx-submit="search"
+              class="join w-full"
+            >
+              <input
+                type="text"
+                name="search[term]"
+                value={@search_term}
+                placeholder={gettext("Search by title or slug...")}
+                phx-debounce="250"
+                autocomplete="off"
+                class="input join-item flex-1"
+              />
+              <button type="submit" class="btn btn-primary join-item">
+                <.icon name="hero-magnifying-glass" class="w-4 h-4" />
+              </button>
+            </.form>
 
             <%!-- Clear Filters --%>
             <%= if @selected_status != "all" || @search_term != "" do %>

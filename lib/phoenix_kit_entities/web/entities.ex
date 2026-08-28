@@ -46,7 +46,7 @@ defmodule PhoenixKitEntities.Web.Entities do
     socket =
       socket
       |> assign(:view_mode, view_mode)
-      |> assign(:entities, Entities.list_entities(lang: locale, include_managed: false))
+      |> assign(:entities, Entities.list_entities(lang: locale))
 
     {:noreply, socket}
   end
@@ -68,7 +68,7 @@ defmodule PhoenixKitEntities.Web.Entities do
         {:ok, _entity} ->
           socket =
             socket
-            |> assign(:entities, Entities.list_entities(lang: locale, include_managed: false))
+            |> assign(:entities, Entities.list_entities(lang: locale))
             |> put_flash(
               :info,
               gettext("Entity '%{name}' archived successfully", name: entity.display_name)
@@ -93,7 +93,7 @@ defmodule PhoenixKitEntities.Web.Entities do
         {:ok, _entity} ->
           socket =
             socket
-            |> assign(:entities, Entities.list_entities(lang: locale, include_managed: false))
+            |> assign(:entities, Entities.list_entities(lang: locale))
             |> put_flash(
               :info,
               gettext("Entity '%{name}' restored successfully", name: entity.display_name)
@@ -124,7 +124,7 @@ defmodule PhoenixKitEntities.Web.Entities do
            socket
            |> assign(
              :entities,
-             Entities.list_entities(lang: socket.assigns[:current_locale], include_managed: false)
+             Entities.list_entities(lang: socket.assigns[:current_locale])
            )
            |> push_event("sortable:flash", %{uuid: moved_id, status: "ok"})}
 
@@ -160,7 +160,7 @@ defmodule PhoenixKitEntities.Web.Entities do
      assign(
        socket,
        :entities,
-       Entities.list_entities(lang: socket.assigns[:current_locale], include_managed: false)
+       Entities.list_entities(lang: socket.assigns[:current_locale])
      )}
   end
 
@@ -315,8 +315,15 @@ defmodule PhoenixKitEntities.Web.Entities do
                             <% end %>
                           </div>
                           <div>
-                            <div class="font-bold">
+                            <div class="font-bold flex items-center gap-2">
                               {entity.display_name_plural || entity.display_name}
+                              <span
+                                :if={owner = PhoenixKitEntities.Managed.owner(entity)}
+                                class="badge badge-outline badge-sm font-normal"
+                                title={gettext("Owned by the %{owner} module — its structural settings are locked", owner: owner)}
+                              >
+                                {gettext("Managed by %{owner}", owner: owner)}
+                              </span>
                             </div>
                             <div class="text-sm opacity-50">
                               <.icon name="hero-link" class="w-3 h-3 inline" />
@@ -437,6 +444,12 @@ defmodule PhoenixKitEntities.Web.Entities do
                             <.icon name="hero-link" class="w-3 h-3 inline" />
                             {entity.name}
                           </p>
+                          <span
+                            :if={owner = PhoenixKitEntities.Managed.owner(entity)}
+                            class="badge badge-outline badge-sm font-normal mt-1"
+                          >
+                            {gettext("Managed by %{owner}", owner: owner)}
+                          </span>
                         </div>
                       </.link>
 

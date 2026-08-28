@@ -46,15 +46,21 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
   end
 
   describe "mount" do
-    test "renders data navigator with entity title", %{conn: conn} = ctx do
+    test "renders the records, not a second copy of the entity name", %{conn: conn} = ctx do
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
-      {:ok, _view, html} = live(conn, navigator_url(ctx.entity))
+      {:ok, view, html} = live(conn, navigator_url(ctx.entity))
 
-      assert html =~ "DN Test"
       # All seeded records render in the table.
       assert html =~ "Record 1"
       assert html =~ "Record 2"
       assert html =~ "Record 3"
+
+      # The page title and its "Browse and manage your …" line are gone
+      # on purpose (Max, 2026-08-28): the admin header above already
+      # names the entity, so the page opens on its content.
+      refute html =~ "DN Test"
+      refute html =~ "Browse and manage"
+      assert has_element?(view, ~s|a[href$="/admin/entities"]|)
     end
   end
 
@@ -192,7 +198,7 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
       {:ok, view, _html} = live(conn, navigator_url(ctx.entity))
 
       send(view.pid, {:unknown_message, "noise"})
-      assert render(view) =~ "DN Test"
+      assert render(view) =~ "Record 1"
     end
 
     test "logs at :debug level so unexpected messages stay visible in dev",
@@ -241,7 +247,7 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
 
       render_hook(view, "toggle_view_mode", %{"mode" => "grid"})
       render_hook(view, "toggle_view_mode", %{"mode" => "table"})
-      assert render(view) =~ "DN Test"
+      assert render(view) =~ "Record 1"
     end
 
     test "filter_by_status patches without crashing", %{conn: conn} = ctx do
@@ -249,7 +255,7 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
       {:ok, view, _html} = live(conn, pk_navigator_url(ctx.entity))
 
       render_hook(view, "filter_by_status", %{"status" => "published"})
-      assert render(view) =~ "DN Test"
+      assert render(view) =~ "Record 1"
     end
 
     test "search + clear_filters patch without crashing", %{conn: conn} = ctx do
@@ -258,7 +264,7 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
 
       render_hook(view, "search", %{"search" => %{"term" => "find_me"}})
       render_hook(view, "clear_filters", %{})
-      assert render(view) =~ "DN Test"
+      assert render(view) =~ "Record 1"
     end
 
     test "filter_by_entity with empty uuid redirects to entities list (entities route mounted)",
@@ -661,25 +667,33 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
       assert render(view) =~ "Not authorized"
     end
 
-    test "Trash filter option appears in status dropdown (UI structure)",
+    test "an empty Trash offers no chip; a full one does (2026-08-28 filter row)",
          %{conn: conn} = ctx do
+      # The status dropdown became a row of counted, clickable chips, and
+      # a status nobody can reach stays out of the way: with nothing
+      # trashed there is no Trash chip at all.
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
-      {:ok, _view, html} = live(conn, navigator_url(ctx.entity))
+      {:ok, view, _html} = live(conn, navigator_url(ctx.entity))
 
-      assert html =~ ~s(<option value="trashed")
-      assert html =~ "Trash"
-    end
+      refute has_element?(view, ~s|button[phx-value-status="trashed"]|)
 
-    test "Trash filter option shows count badge when trashed_records > 0",
-         %{conn: conn} = ctx do
       [record | _] = ctx.records
       {:ok, _} = EntityData.trash(record, actor_uuid: ctx.actor_uuid)
 
-      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
-      {:ok, _view, html} = live(conn, navigator_url(ctx.entity))
+      {:ok, view, _html} = live(conn, navigator_url(ctx.entity))
+      assert has_element?(view, ~s|button[phx-value-status="trashed"]|, "Trash")
+      assert has_element?(view, ~s|button[phx-value-status="trashed"] .badge|, "1")
+    end
 
-      # The dropdown option text includes "(N)" when trashed_records is non-zero.
-      assert html =~ ~r/Trash\s*\(1\)/
+    test "the current status chip stays visible even at zero",
+         %{conn: conn} = ctx do
+      # Otherwise selecting Trash from a full bin, then restoring the
+      # last record, would erase the control the user is standing on.
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, navigator_url(ctx.entity, status: "trashed"))
+
+      assert has_element?(view, ~s|button[phx-value-status="trashed"][aria-pressed="true"]|)
+      assert has_element?(view, ~s|button[phx-value-status="trashed"] .badge|, "0")
     end
 
     test "viewing the Trash filter shows Restore + Delete-forever bulk buttons",
@@ -799,6 +813,88 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
       assert render(view) =~ "Failed to save the new order"
       # LV still alive.
       assert render(view) =~ "Record 1"
+    end
+  end
+
+  describe "status filter row (2026-08-28: the dashboard cards are gone)" do
+    test "counts live ON the filter, not in four cards above the fold", %{conn: conn} = ctx do
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, html} = live(conn, navigator_url(ctx.entity))
+
+      # The four stat cards and their CMS vocabulary are gone…
+      refute html =~ "Total Records"
+      refute html =~ "All data records"
+      refute html =~ "Live content"
+      refute html =~ "Work in progress"
+      refute html =~ "Stored content"
+
+      # …the numbers they carried are on the chips, which actually filter.
+      assert has_element?(view, ~s|button[phx-value-status="all"] .badge|, "3")
+      assert has_element?(view, ~s|button[phx-value-status="published"] .badge|, "3")
+      assert has_element?(view, ~s|button[phx-value-status="all"][aria-pressed="true"]|)
+
+      # Empty statuses stay out of the way until they hold something.
+      refute has_element?(view, ~s|button[phx-value-status="draft"]|)
+      refute has_element?(view, ~s|button[phx-value-status="archived"]|)
+    end
+
+    test "a chip click filters the list", %{conn: conn} = ctx do
+      {:ok, _} =
+        EntityData.create(
+          %{
+            entity_uuid: ctx.entity.uuid,
+            title: "Unfinished",
+            slug: "unfinished",
+            status: "draft",
+            data: %{},
+            created_by_uuid: ctx.actor_uuid
+          },
+          actor_uuid: ctx.actor_uuid
+        )
+
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, navigator_url(ctx.entity))
+
+      # A draft exists now, so its chip appears with the count and the
+      # click wiring that reaches filter_by_status.
+      assert has_element?(view, ~s|button[phx-value-status="draft"] .badge|, "1")
+
+      assert has_element?(
+               view,
+               ~s|button[phx-click="filter_by_status"][phx-value-status="draft"]|
+             )
+
+      # Where that click lands (the chip patches the URL, which this
+      # harness mounts under a different prefix than Routes.path/1
+      # builds — so drive the destination directly).
+      {:ok, view, html} = live(conn, navigator_url(ctx.entity, status: "draft"))
+      assert html =~ "Unfinished"
+      refute html =~ "Record 1"
+      assert has_element?(view, ~s|button[phx-value-status="draft"][aria-pressed="true"]|)
+    end
+
+    test "a brand-new entity shows no filter row at all", %{conn: conn} = ctx do
+      # This was the worst case of the old design: four giant zeros.
+      {:ok, empty} =
+        Entities.create_entity(
+          %{
+            name: "dn_empty",
+            display_name: "DN Empty",
+            display_name_plural: "DN Empties",
+            fields_definition: [],
+            status: "published",
+            created_by_uuid: ctx.actor_uuid
+          },
+          actor_uuid: ctx.actor_uuid
+        )
+
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, html} = live(conn, navigator_url(empty))
+
+      refute has_element?(view, ~s|button[phx-value-status="all"]|)
+      refute html =~ "Search by title or slug"
+      # …but the way forward is still there.
+      assert html =~ "No Data Records Yet"
     end
   end
 

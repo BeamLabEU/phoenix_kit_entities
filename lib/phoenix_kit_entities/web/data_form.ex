@@ -39,7 +39,13 @@ defmodule PhoenixKitEntities.Web.DataForm do
     # Defer DB queries (entity load, data record load) and presence init to
     # handle_params/3 — mount runs twice (HTTP + WebSocket), handle_params
     # runs once. See Phoenix iron law.
-    {:ok, socket}
+    {:ok,
+     assign(socket,
+       show_media_selector: false,
+       media_pick_target: nil,
+       media_filter: :image,
+       media_pick_generation: 0
+     )}
   end
 
   @impl true
@@ -145,6 +151,9 @@ defmodule PhoenixKitEntities.Web.DataForm do
       |> assign(:project_title, project_title)
       |> assign(:entity, entity)
       |> assign(:data_record, data_record)
+      # Does the slug still follow the title? Server state — see
+      # track_slug_ownership/3.
+      |> assign(:slug_auto?, is_nil(data_record.uuid))
       |> assign(:changeset, changeset)
       |> assign(:current_user, current_user)
       |> assign(:form_record_key, form_record_key)
@@ -271,9 +280,11 @@ defmodule PhoenixKitEntities.Web.DataForm do
     {:noreply, handle_switch_language(socket, lang_code)}
   end
 
-  def handle_event("validate", %{"phoenix_kit_entity_data" => data_params}, socket) do
+  def handle_event("validate", %{"phoenix_kit_entity_data" => data_params} = params, socket) do
     if socket.assigns[:lock_owner?] do
-      do_validate(data_params, socket)
+      socket
+      |> track_slug_ownership(params, data_params)
+      |> then(&do_validate(data_params, &1))
     else
       # Spectator - ignore local changes, wait for broadcasts
       {:noreply, socket}
@@ -355,6 +366,46 @@ defmodule PhoenixKitEntities.Web.DataForm do
     end
   end
 
+  # ── Media picker (2026-08-27: managed blueprints edit their values,
+  # images included, right here — the owning modules dropped their own
+  # editors). ONE page-level MediaSelectorModal shared by every media
+  # field, reconfigured per click; the generation in its id remounts it
+  # fresh each open so a previous open's search/page (possibly a
+  # different type lock) can't present a wrong-empty library.
+
+  def handle_event("pick_media_field", %{"key" => key, "type" => type}, socket) do
+    # The field must exist on the blueprint with a matching media type —
+    # the buttons only render for legal fields, but events are events.
+    fields = socket.assigns.entity.fields_definition || []
+    legal? = Enum.any?(fields, &(&1["key"] == key and &1["type"] == type))
+
+    if legal? and type in ["image", "video"] and socket.assigns.lock_owner? do
+      {:noreply,
+       socket
+       |> assign(:media_pick_target, key)
+       |> assign(:media_filter, if(type == "video", do: :video, else: :image))
+       |> update(:media_pick_generation, &(&1 + 1))
+       |> assign(:show_media_selector, true)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("clear_media_field", %{"key" => key}, socket) do
+    fields = socket.assigns.entity.fields_definition || []
+
+    if Enum.any?(fields, &(&1["key"] == key and &1["type"] in ["image", "video"])) and
+         socket.assigns.lock_owner? do
+      {:noreply, put_media_value(socket, key, nil)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("close_media_selector", _params, socket) do
+    {:noreply, assign(socket, show_media_selector: false, media_pick_target: nil)}
+  end
+
   # Pulls the resource uuid off socket assigns for use in error log
   # context. Returns `nil` when the assign is missing or the underlying
   # struct hasn't been hydrated yet (e.g. an exception during the very
@@ -364,6 +415,27 @@ defmodule PhoenixKitEntities.Web.DataForm do
       %{uuid: uuid} -> uuid
       _ -> nil
     end
+  end
+
+  # Writes the picked/cleared value into the changeset's data so the
+  # hidden input re-renders with it — from there the ordinary form params
+  # carry it through every validate and the save (see the FormBuilder
+  # media block: a changeset-only value would be wiped by the next
+  # keystroke).
+  defp put_media_value(socket, key, value) do
+    changeset = socket.assigns.changeset
+    data = Ecto.Changeset.get_field(changeset, :data) || %{}
+    lang = socket.assigns[:current_lang]
+
+    data =
+      if socket.assigns[:multilang_enabled] && is_binary(lang) do
+        Map.update(data, lang, %{key => value}, &Map.put(&1 || %{}, key, value))
+      else
+        Map.put(data, key, value)
+      end
+
+    changeset = Ecto.Changeset.put_change(changeset, :data, data)
+    assign(socket, :changeset, changeset)
   end
 
   # The parent picker is rendered as a raw <select>, so any changeset
@@ -395,20 +467,69 @@ defmodule PhoenixKitEntities.Web.DataForm do
     current_data = Ecto.Changeset.apply_changes(socket.assigns.changeset)
     previous_title = current_data.title || ""
     title = data_params["title"] || previous_title
-    current_slug = data_params["slug"] || ""
-    lang = socket.assigns[:primary_language]
 
-    auto_generated_slug =
-      auto_generate_entity_slug(entity_uuid, record_uuid, previous_title, lang)
+    cond do
+      # The user owns the slug now — the title stops driving it.
+      not socket.assigns[:slug_auto?] ->
+        data_params
 
-    if current_slug == "" || current_slug == auto_generated_slug do
-      Map.put(
-        data_params,
-        "slug",
-        auto_generate_entity_slug(entity_uuid, record_uuid, title, lang)
-      )
-    else
-      data_params
+      # Nothing to derive when the title is unchanged. With the title
+      # field firing on EVERY keystroke, this is the difference between
+      # a uniqueness query per character typed ANYWHERE in the form and
+      # none at all (2026-08-28).
+      title == previous_title and (data_params["slug"] || "") != "" ->
+        data_params
+
+      true ->
+        Map.put(
+          data_params,
+          "slug",
+          auto_generate_entity_slug(
+            entity_uuid,
+            record_uuid,
+            title,
+            socket.assigns[:primary_language]
+          )
+        )
+    end
+  end
+
+  # Client-side echo of the slug while typing (SlugFromTitle in
+  # priv/static/assets/phoenix_kit_entities.js). The round trip is what
+  # made this feel laggy even at zero debounce — a slug is just text, and
+  # the browser can write it immediately. The server still derives the
+  # slug it stores; the hook stays quiet unless `data-slug-auto` says the
+  # slug is still following the title, and for scripts it cannot romanize
+  # (core's rule is locale-aware) it leaves the server's value alone.
+  #
+  # Dynamic attrs for the same reason as live_debounce/0: phx-hook and
+  # data-* are not declared attributes of translatable_field.
+  defp slug_mirror_attrs do
+    %{"phx-hook" => "SlugFromTitle", "data-slug-target" => "#phoenix_kit_entity_data_slug"}
+  end
+
+  # The hook reads this rather than guessing from the field's contents.
+  defp slug_auto_attrs(auto?), do: %{"data-slug-auto" => to_string(auto? == true)}
+
+  # Ownership of the slug is server state, deliberately NOT inferred from
+  # the slug value the client posts back.
+  #
+  # It used to be "regenerate while the posted slug still equals what the
+  # PREVIOUS title would generate". That reads fine and passes any test
+  # that posts tidy, in-order params — but with the debounce gone the
+  # client posts a slug it has not caught up on yet (the server is
+  # already a keystroke or two further along), so the comparison failed,
+  # the form decided the user had typed a custom slug, and the slug
+  # froze after the first character. Only touching the slug field itself
+  # ends auto mode now; emptying it starts it again, which is what the
+  # field's own hint promises.
+  defp track_slug_ownership(socket, params, data_params) do
+    case params["_target"] do
+      [_prefix, "slug"] ->
+        assign(socket, :slug_auto?, String.trim(data_params["slug"] || "") == "")
+
+      _ ->
+        socket
     end
   end
 
@@ -638,6 +759,25 @@ defmodule PhoenixKitEntities.Web.DataForm do
   end
 
   ## Live updates
+
+  def handle_info({:media_selected, [file_uuid | _]}, socket) do
+    case socket.assigns.media_pick_target do
+      key when is_binary(key) ->
+        {:noreply,
+         socket
+         |> assign(show_media_selector: false, media_pick_target: nil)
+         |> put_media_value(key, file_uuid)}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_info({:media_selected, _}, socket), do: {:noreply, socket}
+
+  def handle_info({:media_selector_closed}, socket) do
+    {:noreply, assign(socket, show_media_selector: false, media_pick_target: nil)}
+  end
 
   @impl true
   def handle_info({:data_form_change, entity_uuid, record_key, payload, source}, socket) do
@@ -1238,6 +1378,19 @@ defmodule PhoenixKitEntities.Web.DataForm do
   defp normalize_record_key(key) when is_binary(key), do: key
   defp normalize_record_key(key), do: to_string(key)
 
+  # `debounce: "0"` for the title, passed as a DYNAMIC attr rather than a
+  # literal one: `translatable_field` only gained the attribute in core
+  # after this module's released pin, and a literal would fail the
+  # compile gate until that release lands. An older core simply ignores
+  # the extra assign and keeps its hardcoded 300ms — the same graceful
+  # degradation the apply/3 guards give us on the data side.
+  #
+  # "0", not nil: phx-debounce CASCADES, and this form carries
+  # phx-debounce="500". Omitting the attribute inherits that 500ms — the
+  # opposite of live, and slower than the 300ms it replaced. Only an
+  # explicit value on the input overrides an ancestor's.
+  defp live_debounce, do: %{debounce: "0"}
+
   defp auto_generate_entity_slug(_entity_uuid, _record_uuid, title, _lang)
        when title in [nil, ""],
        do: ""
@@ -1338,6 +1491,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
         <.form
           :let={f}
           for={@changeset}
+          id="entity-data-form"
           phx-change="validate"
           phx-debounce="500"
           phx-submit="save"
@@ -1407,6 +1561,10 @@ defmodule PhoenixKitEntities.Web.DataForm do
                   </h3>
 
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <%!-- The slug beside this field is DERIVED from it, so
+                          waiting 300ms for a typing pause reads as lag
+                          rather than as typing (Max, 2026-08-28) — see
+                          live_debounce/0 for why it is passed dynamically. --%>
                     <.translatable_field
                       field_name="title"
                       form_prefix="phoenix_kit_entity_data"
@@ -1421,6 +1579,8 @@ defmodule PhoenixKitEntities.Web.DataForm do
                       required
                       disabled={@readonly?}
                       class="w-full"
+                      {live_debounce()}
+                      {slug_mirror_attrs()}
                     />
 
                     <.translatable_field
@@ -1440,6 +1600,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
                       title={gettext("Use lowercase letters, numbers, and hyphens only.")}
                       hint={gettext("Leave empty to auto-generate from title")}
                       secondary_hint={gettext("Leave empty to use the primary language slug")}
+                      {slug_auto_attrs(@slug_auto?)}
                     >
                       <:label_extra>
                         <button
@@ -1470,6 +1631,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
                     {PhoenixKitEntities.FormBuilder.build_fields(@entity, f,
                       wrapper_class: "mb-6",
                       disabled: @readonly?,
+                      media_picker: not @readonly?,
                       lang_code: if(@multilang_enabled, do: @current_lang, else: nil)
                     )}
                   </div>
@@ -1583,7 +1745,6 @@ defmodule PhoenixKitEntities.Web.DataForm do
                       value={Ecto.Changeset.get_field(@changeset, :title) || ""}
                       placeholder={gettext("Enter a title for this record")}
                       class="input w-full"
-                      phx-debounce="300"
                       required
                       disabled={@readonly?}
                     />
@@ -1749,6 +1910,23 @@ defmodule PhoenixKitEntities.Web.DataForm do
             </button>
           </div>
         </.form>
+
+        <.live_component
+          :if={@show_media_selector}
+          module={PhoenixKitWeb.Live.Components.MediaSelectorModal}
+          id={"data-form-media-selector-#{@media_filter}-g#{@media_pick_generation}"}
+          show={@show_media_selector}
+          mode={:single}
+          file_type_filter={@media_filter}
+          lock_file_type
+          title={
+            if @media_filter == :video,
+              do: gettext("Select Video"),
+              else: gettext("Select Image")
+          }
+          selected_uuids={[]}
+          phoenix_kit_current_user={assigns[:phoenix_kit_current_user]}
+        />
       </div>
     """
   end

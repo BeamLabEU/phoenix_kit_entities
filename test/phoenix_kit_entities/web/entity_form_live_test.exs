@@ -125,12 +125,14 @@ defmodule PhoenixKitEntities.Web.EntityFormLiveTest do
       assert Entities.get_entity!(ctx.entity.uuid).display_name == "Stay Put"
     end
 
-    test "renaming a managed blueprint flashes the ownership message, not a crash",
+    test "a managed blueprint's slug is LOCKED in the form, not refused after the fact",
          %{conn: conn} = ctx do
-      # Managed blueprints are uuid-addressable in the generic form even
-      # though listings hide them. The Managed refusal is an ATOM error
-      # — without its own branch it fell into the rescue and read as an
-      # unexplained "Something went wrong" (panel finding, 2026-08-19).
+      # 2026-08-27: the banner promised protection while the inputs still
+      # looked editable (Max's report). The slug control is now disabled
+      # with a hidden twin pinning its value — the form cannot even
+      # EXPRESS a rename (LiveViewTest would refuse a forged value), and
+      # a save leaves the slug untouched. The write-path guard behind it
+      # keeps its own coverage in managed_test.exs.
       {:ok, managed} =
         Entities.create_entity(
           %{
@@ -146,15 +148,26 @@ defmodule PhoenixKitEntities.Web.EntityFormLiveTest do
         )
 
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
-      {:ok, view, _html} = live(conn, "/en/admin/entities/#{managed.uuid}/edit")
+      {:ok, view, html} = live(conn, "/en/admin/entities/#{managed.uuid}/edit")
 
+      # The structural surface renders locked…
+      assert html =~ "Managed by the catalogue module"
+      assert html =~ ~s(id="entity_status")
+      assert view |> element("#entity_status") |> render() =~ "disabled"
+      assert html =~ "Locked — the owning module keys on this slug"
+      refute html =~ "generate_entity_slug"
+
+      # …the hidden twin pins the slug, so a plain save changes nothing.
       html =
         view
-        |> form("form[phx-change='validate']", %{"entities" => %{"name" => "renamed_slug"}})
+        |> form("form[phx-change='validate']", %{
+          "entities" => %{"display_name" => "Guarded Renamed"}
+        })
         |> render_submit()
 
-      assert html =~ "managed by another module"
       assert Entities.get_entity!(managed.uuid).name == "catalogue_set_guarded"
+      assert Entities.get_entity!(managed.uuid).display_name == "Guarded Renamed"
+      _ = html
     end
   end
 

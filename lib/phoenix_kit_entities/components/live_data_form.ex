@@ -741,6 +741,7 @@ defmodule PhoenixKitEntities.Components.LiveDataForm do
     <div>
       <.form
         for={@form}
+        id={"#{@id}-form"}
         phx-change="autosave"
         phx-submit="submit"
         phx-debounce="500"
