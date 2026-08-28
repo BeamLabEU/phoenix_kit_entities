@@ -955,6 +955,20 @@ defmodule PhoenixKitEntities.EntityData do
   # represented in the activity table even when the DB write rolls
   # back. `db_pending: true` lets consumers distinguish from
   # successful rows.
+  defp log_data_reorder(uuid_position_pairs, entity_uuid, opts) do
+    PhoenixKitEntities.ActivityLog.log(%{
+      action: "entity_data.reordered",
+      mode: "manual",
+      actor_uuid: Keyword.get(opts, :actor_uuid),
+      resource_type: "entity_data",
+      resource_uuid: first_uuid_from_pairs(uuid_position_pairs),
+      metadata: %{
+        "entity_uuid" => entity_uuid,
+        "count" => length(uuid_position_pairs)
+      }
+    })
+  end
+
   defp log_data_reorder_error(uuid_position_pairs, entity_uuid_scope, _reason, opts) do
     PhoenixKitEntities.ActivityLog.log(%{
       action: "entity_data.reordered",
@@ -1680,6 +1694,12 @@ defmodule PhoenixKitEntities.EntityData do
         entity_uuid =
           entity_uuid_scope || resolve_entity_uuid_from_pairs(uuid_position_pairs)
 
+        # The SUCCESS path logged nothing, while both the failure and the
+        # rejected-payload paths did — so the activity table contained only
+        # reorders that went wrong, and an auditor reading it would conclude
+        # reordering was rare rather than invisible. The actor was already
+        # being threaded here and then dropped.
+        log_data_reorder(uuid_position_pairs, entity_uuid, opts)
         notify_reorder_event(entity_uuid)
         :ok
 
@@ -2141,7 +2161,11 @@ defmodule PhoenixKitEntities.EntityData do
 
   def search_by_title(search_term, entity_uuid, opts)
       when is_binary(search_term) do
-    search_pattern = "%#{search_term}%"
+    # Escaped: `escape_like/1` exists in this module and is applied by
+    # `entity_uuids_matching_title/3`, but not here — so an admin searching
+    # "50%" matched every record, and "a_b" matched "axb". Not injection
+    # (Ecto parameterises), but a wrong answer and an unbounded scan.
+    search_pattern = "%#{escape_like(search_term)}%"
     order = if entity_uuid, do: resolve_sort_order(entity_uuid, opts), else: [desc: :date_created]
 
     query =

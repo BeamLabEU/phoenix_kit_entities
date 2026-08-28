@@ -225,8 +225,6 @@ defmodule PhoenixKitEntities.Web.DataForm do
     socket
     |> assign(:lock_owner?, true)
     |> assign(:readonly?, false)
-    |> assign(:lock_owner_user, nil)
-    |> assign(:spectators, [])
   end
 
   defp assign_editing_role(socket, data_uuid) do
@@ -238,14 +236,12 @@ defmodule PhoenixKitEntities.Web.DataForm do
         socket
         |> assign(:lock_owner?, true)
         |> assign(:readonly?, false)
-        |> populate_presence_info(:data, data_uuid)
 
       {:spectator, _owner_meta, _presences} ->
         # Different user is the owner - I'm read-only
         socket
         |> assign(:lock_owner?, false)
         |> assign(:readonly?, true)
-        |> populate_presence_info(:data, data_uuid)
     end
   end
 
@@ -681,9 +677,9 @@ defmodule PhoenixKitEntities.Web.DataForm do
             socket.assigns
           )
 
-        # Add metadata to params
         params =
           data_params
+          |> client_writable_params()
           |> Map.put("data", final_data)
           |> maybe_add_creator_uuid(socket.assigns.current_user, socket.assigns.data_record)
 
@@ -717,6 +713,13 @@ defmodule PhoenixKitEntities.Web.DataForm do
           socket.assigns.data_record
           |> EntityData.change(error_params)
           |> add_form_errors(errors)
+          # `EntityData.change/2` never touches repo.insert/update, so this
+          # changeset arrives with `action: nil` — and `<.input>` gates error
+          # display on `changeset.action != nil`. Every per-field error
+          # add_form_errors/2 just attached was invisible, leaving the user
+          # only the concatenated flash below. The `validate` handler above
+          # already does this; the save path was the outlier.
+          |> Map.put(:action, :validate)
 
         error_list =
           Enum.map_join(errors, "; ", fn {k, v} -> "#{k}: #{Enum.join(v, ", ")}" end)
@@ -1322,6 +1325,22 @@ defmodule PhoenixKitEntities.Web.DataForm do
     |> Enum.into(%{}, fn {key, value} -> {to_string(key), value} end)
   end
 
+  # The fields this form actually renders. `data_params` is whatever the
+  # client submitted under `phoenix_kit_entity_data`, and
+  # `EntityData.changeset/2` casts rather more than that — `created_by_uuid`,
+  # `date_created`, `metadata` and `position` are all castable and none has an
+  # input. So a crafted `save` payload could forge authorship, back-date the
+  # audit timestamp, or rewrite the `ip_address` / `user_agent` /
+  # `security_warnings` metadata that a flagged public submission was stored
+  # with. Admin access is required to reach this, but these are the columns
+  # that exist to survive an admin.
+  #
+  # `data` is rebuilt server-side by the caller and the creator is applied by
+  # `maybe_add_creator_uuid/3`, so neither belongs in the allowlist.
+  defp client_writable_params(data_params) do
+    Map.take(data_params, ["title", "slug", "status", "parent_uuid", "entity_uuid"])
+  end
+
   defp save_data_record(socket, data_params) do
     opts = actor_opts(socket)
 
@@ -1413,42 +1432,6 @@ defmodule PhoenixKitEntities.Web.DataForm do
       %EntityData{uuid: uuid} ->
         is_nil(current_record_uuid) || uuid != current_record_uuid
     end
-  end
-
-  defp populate_presence_info(socket, type, id) do
-    # Get all presences sorted by joined_at (FIFO order)
-    presences = PresenceHelpers.get_sorted_presences(type, id)
-
-    # Extract owner (first in list) and spectators (rest of list)
-    {lock_owner_user, lock_info, spectators} =
-      case presences do
-        [] ->
-          {nil, nil, []}
-
-        [{owner_socket_id, owner_meta} | spectator_list] ->
-          # Build owner info
-          lock_info = %{
-            socket_id: owner_socket_id,
-            user_uuid: owner_meta.user_uuid
-          }
-
-          # Map spectators to expected format
-          spectators =
-            Enum.map(spectator_list, fn {spectator_socket_id, meta} ->
-              %{
-                socket_id: spectator_socket_id,
-                user: meta.user,
-                user_uuid: meta.user_uuid
-              }
-            end)
-
-          {owner_meta.user, lock_info, spectators}
-      end
-
-    socket
-    |> assign(:lock_owner_user, lock_owner_user)
-    |> assign(:lock_info, lock_info)
-    |> assign(:spectators, spectators)
   end
 
   @impl true
@@ -1738,6 +1721,13 @@ defmodule PhoenixKitEntities.Web.DataForm do
                   <%!-- Title --%>
                   <div>
                     <.label for="phoenix_kit_entity_data_title">{gettext("Title")} *</.label>
+                    <%!-- The hook attrs belong on THIS branch too. They were
+                         only on the multilang one, so on a single-language
+                         install — the default — the slug never derived itself
+                         in the browser and fell back to a 300ms round trip.
+                         Being raw inputs rather than <.translatable_field>,
+                         these also work against the released core, which does
+                         not yet forward :global attrs to its input. --%>
                     <input
                       type="text"
                       name="phoenix_kit_entity_data[title]"
@@ -1746,7 +1736,9 @@ defmodule PhoenixKitEntities.Web.DataForm do
                       placeholder={gettext("Enter a title for this record")}
                       class="input w-full"
                       required
+                      phx-debounce="0"
                       disabled={@readonly?}
+                      {slug_mirror_attrs()}
                     />
                   </div>
 
@@ -1773,8 +1765,9 @@ defmodule PhoenixKitEntities.Web.DataForm do
                       class="input w-full"
                       pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
                       title={gettext("Use lowercase letters, numbers, and hyphens only.")}
-                      phx-debounce="300"
+                      phx-debounce="0"
                       disabled={@readonly?}
+                      {slug_auto_attrs(@slug_auto?)}
                     />
                     <.label class="label">
                       <span class="fieldset-label">

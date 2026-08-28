@@ -65,6 +65,46 @@ defmodule PhoenixKitEntities.Web.DataFormLiveTest do
     end
   end
 
+  describe "a crafted save payload cannot write fields the form never renders" do
+    test "created_by_uuid, date_created, metadata and position are ignored",
+         %{conn: conn} = ctx do
+      # EntityData.changeset/2 casts rather more than this form renders, and
+      # `data_params` is whatever the client submitted. Without an allowlist a
+      # crafted `save` could forge authorship, back-date the audit timestamp,
+      # rewrite the ip_address / user_agent / security_warnings metadata a
+      # flagged public submission was stored with, or move the row to another
+      # blueprint. Admin access is required to get here — but these are the
+      # columns that exist to survive an admin.
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, edit_url(ctx.entity, ctx.record))
+
+      before = EntityData.get(ctx.record.uuid)
+      impostor = Ecto.UUID.generate()
+
+      render_submit(view, "save", %{
+        "phoenix_kit_entity_data" => %{
+          "title" => "Renamed",
+          "created_by_uuid" => impostor,
+          "date_created" => "2020-01-01T00:00:00Z",
+          "metadata" => %{"ip_address" => "wiped"},
+          "position" => 999
+        }
+      })
+
+      after_save = EntityData.get(ctx.record.uuid)
+
+      # The field the form does render still takes effect…
+      assert after_save.title == "Renamed"
+
+      # …and none of the forged ones did.
+      refute after_save.created_by_uuid == impostor
+      assert after_save.created_by_uuid == before.created_by_uuid
+      assert after_save.date_created == before.date_created
+      assert after_save.metadata == before.metadata
+      assert after_save.position == before.position
+    end
+  end
+
   describe "the edit form loads the record raw (no :lang)" do
     # `EntityData.get!/2` with `:lang` runs `resolve_language/2`, which
     # replaces the multilang `data` JSONB with the single merged map for
@@ -455,49 +495,65 @@ defmodule PhoenixKitEntities.Web.DataFormLiveTest do
 
   describe "live slug derivation (2026-08-28: no typing pause)" do
     test "the title field is wired for live derivation", %{conn: conn} = ctx do
-      # Two halves, and BOTH need a core newer than this module's released
-      # pin — `translatable_field` only just gained a `debounce` attr and a
-      # `:global` passthrough. Under the old pin the component swallows
-      # them, so the assertions adapt rather than pretending: the box runs
-      # core from a path dep and gets the real thing.
+      # Asserted unconditionally. This used to be wrapped in `if html =~
+      # phx-debounce="0"`, on the reasoning that the attrs ride through
+      # core's `translatable_field`, which only just gained a `:global`
+      # passthrough — so under the released pin the whole block was skipped
+      # and the else branch asserted the 300ms fallback instead. That hid
+      # the actual gap: the SINGLE-LANGUAGE branch of this form (the
+      # default) renders raw inputs and never carried the attrs at all, on
+      # any core. Raw inputs need no passthrough, so these hold everywhere.
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
       {:ok, view, html} = live(conn, "/en/admin/entities/#{ctx.entity.name}/data/new")
 
-      if html =~ ~s(phx-debounce="0") do
-        # 1. "0", not absent: phx-debounce CASCADES and this form carries
-        #    500, so an omitted attribute inherits it — the opposite of live.
-        assert has_element?(
-                 view,
-                 ~s|input[name="phoenix_kit_entity_data[title]"][phx-debounce="0"]|
-               )
+      # "0", not absent: phx-debounce CASCADES and this form carries 500, so
+      # an omitted attribute inherits it — the opposite of live.
+      assert has_element?(
+               view,
+               ~s|input[name="phoenix_kit_entity_data[title]"][phx-debounce="0"]|
+             )
 
-        # 2. The browser fills the slug with no round trip at all; the hook
-        #    needs all three of these or it silently does nothing.
-        assert html =~ ~s(phx-hook="SlugFromTitle")
-        assert html =~ ~s(data-slug-target="#phoenix_kit_entity_data_slug")
-        assert html =~ ~s(data-slug-auto="true")
+      # The browser fills the slug with no round trip; the hook needs all
+      # three of these or it silently does nothing.
+      assert html =~ ~s(phx-hook="SlugFromTitle")
+      assert html =~ ~s(data-slug-target="#phoenix_kit_entity_data_slug")
+      assert html =~ ~s(data-slug-auto="true")
 
-        # …and the flag follows the server's ownership state, so the
-        # mirror goes quiet the moment the user takes the slug over.
-        html =
-          render_change(view, "validate", %{
-            "_target" => ["phoenix_kit_entity_data", "slug"],
-            "phoenix_kit_entity_data" => %{"title" => "Walnut", "slug" => "mine"}
-          })
-
-        assert html =~ ~s(data-slug-auto="false")
-      else
-        # Released pin: the component keeps its hardcoded delay and drops
-        # the hook attributes. Server-side derivation still works — that
-        # is what the rest of this describe block covers.
-        assert html =~ ~s(phx-debounce="300")
-      end
-
-      # Either way the server derives the slug it will store.
+      # And the server still derives the slug it will actually store.
       html =
         render_change(view, "validate", %{"phoenix_kit_entity_data" => %{"title" => "Walnut Oak"}})
 
       assert html =~ ~s(value="walnut-oak")
+    end
+
+    test "the mirror goes quiet once the user takes the slug over",
+         %{conn: conn} = ctx do
+      # Separated from the test above on purpose: taking ownership is a
+      # one-way door for the rest of the session, so asserting it in the
+      # same test as "the server derives the slug" makes the second
+      # assertion depend on the first not having run.
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, html} = live(conn, "/en/admin/entities/#{ctx.entity.name}/data/new")
+
+      assert html =~ ~s(data-slug-auto="true")
+
+      html =
+        render_change(view, "validate", %{
+          "_target" => ["phoenix_kit_entity_data", "slug"],
+          "phoenix_kit_entity_data" => %{"title" => "Walnut", "slug" => "mine"}
+        })
+
+      assert html =~ ~s(data-slug-auto="false")
+
+      # …and it stays quiet: a later title change must not overwrite the
+      # slug the user chose.
+      html =
+        render_change(view, "validate", %{
+          "phoenix_kit_entity_data" => %{"title" => "Something Else", "slug" => "mine"}
+        })
+
+      assert html =~ ~s(value="mine")
+      refute html =~ ~s(value="something-else")
     end
 
     test "a STALE slug echo doesn't stop it (the bug live typing exposed)",

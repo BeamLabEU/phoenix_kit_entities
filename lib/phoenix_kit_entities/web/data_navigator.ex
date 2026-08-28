@@ -29,9 +29,12 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
 
     project_title = Settings.get_project_title()
 
-    # Subscribe to entity definition events so we know about creates/updates/deletes
+    # Only the data topic here. `on_mount(PhoenixKitEntities.Web.Hooks)` above
+    # already calls `subscribe_to_entities/0`, and Phoenix.PubSub registers in
+    # a `keys: :duplicate` registry — so subscribing twice from the same
+    # process delivers every entity event twice, and each one runs
+    # `refresh_entities_and_data/1` (list + stats + filters, ~4 queries).
     if connected?(socket) do
-      Events.subscribe_to_entities()
       Events.subscribe_to_all_data()
     end
 

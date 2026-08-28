@@ -1270,6 +1270,14 @@ defmodule PhoenixKitEntities do
     |> build_entity_tabs()
   rescue
     _ -> []
+  catch
+    # On a cache miss this runs a live query, and the whole point of the
+    # rescue is "an unreachable database degrades to an empty sidebar". An
+    # unowned checkout raises, but a DEAD POOL EXITS — so without this the
+    # guard did not hold in the case it exists for, and because core calls
+    # this as its `dynamic_children` callback the exit took out every admin
+    # page render. `enabled?/0` below already had the catch.
+    :exit, _ -> []
   end
 
   def entities_children(_scope) do
@@ -1279,6 +1287,8 @@ defmodule PhoenixKitEntities do
     |> build_entity_tabs()
   rescue
     _ -> []
+  catch
+    :exit, _ -> []
   end
 
   defp build_entity_tabs(summaries) do
@@ -1543,10 +1553,19 @@ defmodule PhoenixKitEntities do
   def list_entities_with_mirror_status do
     entities = list_entities()
 
+    # One grouped count for the whole list rather than one per entity.
+    # `EntityData.counts_by_entities/2` already existed for exactly this and
+    # simply was not used here — and the settings LiveView re-runs this
+    # function on EVERY entity and data broadcast, so a user typing in a
+    # record (autosave emits :data_updated per debounced keystroke) drove
+    # 1 + N counts plus N filesystem stats on every open settings page.
+    counts = EntityData.counts_by_entities(Enum.map(entities, & &1.uuid))
+    mirrored_files = MapSet.new(Storage.list_entities())
+
     Enum.map(entities, fn entity ->
       mirror_settings = get_mirror_settings(entity)
-      data_count = EntityData.count_by_entity(entity.uuid)
-      file_exists = Storage.entity_exists?(entity.name)
+      data_count = Map.get(counts, entity.uuid, 0)
+      file_exists = MapSet.member?(mirrored_files, entity.name)
 
       %{
         uuid: entity.uuid,

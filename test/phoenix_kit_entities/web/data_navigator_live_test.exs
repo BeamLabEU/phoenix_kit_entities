@@ -775,6 +775,15 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
       assert EntityData.get(r3.uuid).position == 1
       assert EntityData.get(r1.uuid).position == 2
       assert EntityData.get(r2.uuid).position == 3
+
+      # A SUCCESSFUL reorder is audited, and against the admin who dragged.
+      # Only the failure and rejected-payload paths used to log, so the
+      # activity table recorded reorders exclusively when they went wrong.
+      assert_activity_logged("entity_data.reordered",
+        actor_uuid: ctx.actor_uuid,
+        resource_type: "entity_data",
+        metadata_has: %{"count" => 3}
+      )
     end
 
     test "first drag implicitly switches sort_mode to manual + logs warning",

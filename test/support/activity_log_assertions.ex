@@ -113,9 +113,22 @@ defmodule PhoenixKitEntities.ActivityLogAssertions do
     end)
   end
 
+  @known_opts [:resource_uuid, :actor_uuid, :resource_type, :metadata_has]
+
   defp matches_opts?(row, opts) do
+    # Unknown keys RAISE rather than being ignored. `match_opt/3` answers
+    # `true` for anything it is not asked about, so a caller passing
+    # `resource_type:` (which had no clause) or mistyping `metadata:` for
+    # `metadata_has:` got an assertion that quietly checked nothing and
+    # read, at the call site, exactly like one that did.
+    case Keyword.keys(opts) -- @known_opts do
+      [] -> :ok
+      unknown -> raise ArgumentError, "unknown assertion option(s): #{inspect(unknown)}"
+    end
+
     match_opt(opts, :resource_uuid, &uuid_match?(row.resource_uuid, &1)) and
       match_opt(opts, :actor_uuid, &uuid_match?(row.actor_uuid, &1)) and
+      match_opt(opts, :resource_type, &(row.resource_type == &1)) and
       match_opt(opts, :metadata_has, &metadata_subset?(row.metadata, &1))
   end
 
