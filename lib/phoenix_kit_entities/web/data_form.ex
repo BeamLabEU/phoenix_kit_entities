@@ -1491,6 +1491,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
         <.form
           :let={f}
           for={@changeset}
+          id="entity-data-form"
           phx-change="validate"
           phx-debounce="500"
           phx-submit="save"

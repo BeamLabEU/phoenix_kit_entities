@@ -1793,6 +1793,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
         <.form
           :let={f}
           for={@changeset}
+          id="entity-form"
           phx-change="validate"
           phx-debounce="500"
           phx-submit="save"
@@ -3023,6 +3024,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
 
               <.form
                 for={%{}}
+                id="entity-field-form"
                 phx-change="update_field_form"
                 phx-submit="save_field"
                 class="space-y-4"
@@ -3298,7 +3300,12 @@ defmodule PhoenixKitEntities.Web.EntityForm do
 
               <%!-- Search Bar --%>
               <div class="p-4 border-b border-base-300">
-                <.form for={%{}} phx-change="search_icons" phx-submit="search_icons">
+                <.form
+                  for={%{}}
+                  id="entity-icon-search"
+                  phx-change="search_icons"
+                  phx-submit="search_icons"
+                >
                   <div class="join w-full">
                     <input
                       type="text"
