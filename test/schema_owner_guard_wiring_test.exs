@@ -21,6 +21,8 @@ defmodule PhoenixKitEntities.SchemaOwnerGuardWiringTest do
 
   use ExUnit.Case, async: false
 
+  alias Ecto.Adapters.SQL
+
   # Same tag `PhoenixKitEntities.DataCase`/`LiveCase` inject for every other
   # DB-backed test in this suite — this one drives raw Postgrex against
   # scratch databases of its own instead of the sandboxed `TestRepo`, so it
@@ -61,26 +63,51 @@ defmodule PhoenixKitEntities.SchemaOwnerGuardWiringTest do
   # construction to our own pool, not by a WHERE-clause guess at whose
   # session is whose. Ecto reconnects lazily on the pool's next checkout.
   #
-  # `disconnect_all/3`'s `interval` is an upper bound for connections
-  # still mid-checkout, not a guarantee that idle ones (what we have here)
-  # are gone by the time the call returns. One retry on Postgres' own
-  # "source database is being accessed by other users" (55006 —
-  # object_in_use) absorbs that gap without a blind sleep on the common,
-  # already-disconnected path.
-  defp clone_template!(admin, dest_db) do
-    Ecto.Adapters.SQL.disconnect_all(PhoenixKitEntities.Test.Repo, 0)
+  # `pool: DBConnection.Ownership` is required here, not optional: this
+  # repo's test pool runs under Sandbox (`:manual` ownership mode), and
+  # `disconnect_all/3`'s default pool module targets a plain
+  # `DBConnection.ConnectionPool` — sent to `DBConnection.Ownership.Manager`
+  # instead, it's not a wrong pid, it's a message shape the ownership
+  # manager's `handle_call/3` has no clause for at all, and the manager
+  # (and the run) crashes outright.
+  #
+  # `disconnect_all/3`'s `interval` is an upper bound for connections still
+  # mid-checkout, not a guarantee that idle ones (what we have here) are
+  # gone by the time the call returns — so the first `CREATE DATABASE`
+  # attempt can still lose the race. A GENUINELY foreign session (someone
+  # else entirely connected to the template db) never releases no matter
+  # how long we wait, so retrying forever isn't the fix either — budget
+  # is finite, and exhausting it fails with a message that names the real
+  # cause instead of a bare 55006 a reader would have to go look up.
+  @clone_retry_backoffs_ms [50, 100, 200, 400]
 
-    try do
-      Postgrex.query!(admin, "CREATE DATABASE #{dest_db} TEMPLATE #{@template_db}", [])
-    rescue
-      e in Postgrex.Error ->
-        if match?(%{postgres: %{code: :object_in_use}}, e) do
-          Process.sleep(50)
-          Postgrex.query!(admin, "CREATE DATABASE #{dest_db} TEMPLATE #{@template_db}", [])
-        else
-          reraise e, __STACKTRACE__
+  defp clone_template!(admin, dest_db) do
+    SQL.disconnect_all(PhoenixKitEntities.Test.Repo, 0, pool: DBConnection.Ownership)
+    create_database_from_template!(admin, dest_db, @clone_retry_backoffs_ms)
+  end
+
+  defp create_database_from_template!(admin, dest_db, backoffs_ms) do
+    Postgrex.query!(admin, "CREATE DATABASE #{dest_db} TEMPLATE #{@template_db}", [])
+  rescue
+    e in Postgrex.Error ->
+      if match?(%{postgres: %{code: :object_in_use}}, e) do
+        case backoffs_ms do
+          [sleep_ms | rest] ->
+            Process.sleep(sleep_ms)
+            create_database_from_template!(admin, dest_db, rest)
+
+          [] ->
+            flunk(
+              "CREATE DATABASE #{dest_db} TEMPLATE #{@template_db} still refused after " <>
+                "#{length(@clone_retry_backoffs_ms) + 1} attempts (Postgres 55006, " <>
+                "object_in_use) — some session, ours or someone else's, is still " <>
+                "connected to the template database and never released it:\n" <>
+                Exception.message(e)
+            )
         end
-    end
+      else
+        reraise e, __STACKTRACE__
+      end
   end
 
   setup do
