@@ -83,6 +83,72 @@ defmodule PhoenixKitEntities.FormBuilderRenderTest do
     |> rendered_to_string()
   end
 
+  describe "media fields — hidden input and the DataForm picker opt-in (2026-08-27)" do
+    # validate_data/3 rebuilds EVERY field from form params, so a media
+    # value that isn't in the form is wiped by the next validate — before
+    # the hidden input, any DataForm save silently dropped stored media.
+    test "the stored value always rides a hidden input" do
+      uuid = Ecto.UUID.generate()
+      key = "field_image"
+      changeset = Ecto.Changeset.cast(%EntityData{data: %{key => uuid}}, %{}, [])
+      field = %{"type" => "image", "key" => key, "label" => "Img", "required" => false}
+
+      html = field |> FormBuilder.build_field(changeset) |> rendered_to_string()
+
+      assert html =~ ~s(type="hidden")
+      assert html =~ ~s(name="phoenix_kit_entity_data[data][#{key}]")
+      assert html =~ uuid
+      # Without the opt-in there are no picker buttons.
+      refute html =~ "pick_media_field"
+    end
+
+    test "media_picker: true renders Choose/Clear wired to the picker events" do
+      uuid = Ecto.UUID.generate()
+      key = "field_video"
+      changeset = Ecto.Changeset.cast(%EntityData{data: %{key => uuid}}, %{}, [])
+      field = %{"type" => "video", "key" => key, "label" => "Vid", "required" => false}
+
+      html =
+        field
+        |> FormBuilder.build_field(changeset, media_picker: true)
+        |> rendered_to_string()
+
+      assert html =~ ~s(phx-click="pick_media_field")
+      assert html =~ ~s(phx-value-key="#{key}")
+      assert html =~ ~s(phx-value-type="video")
+      assert html =~ ~s(phx-click="clear_media_field")
+    end
+
+    test "disabled (spectator) suppresses the picker even when opted in" do
+      key = "field_image"
+      changeset = Ecto.Changeset.cast(%EntityData{data: %{}}, %{}, [])
+      field = %{"type" => "image", "key" => key, "label" => "Img", "required" => false}
+
+      html =
+        field
+        |> FormBuilder.build_field(changeset, media_picker: true, disabled: true)
+        |> rendered_to_string()
+
+      refute html =~ "pick_media_field"
+      # The hidden input still carries (empty) state through the form.
+      assert html =~ ~s(type="hidden")
+    end
+
+    test "Clear only renders when something is set" do
+      key = "field_image"
+      changeset = Ecto.Changeset.cast(%EntityData{data: %{}}, %{}, [])
+      field = %{"type" => "image", "key" => key, "label" => "Img", "required" => false}
+
+      html =
+        field
+        |> FormBuilder.build_field(changeset, media_picker: true)
+        |> rendered_to_string()
+
+      assert html =~ "pick_media_field"
+      refute html =~ "clear_media_field"
+    end
+  end
+
   describe "build_field/3 — every type renders without crashing" do
     test "text" do
       html = render_field("text")

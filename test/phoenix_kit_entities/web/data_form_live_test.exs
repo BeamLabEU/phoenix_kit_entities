@@ -453,6 +453,134 @@ defmodule PhoenixKitEntities.Web.DataFormLiveTest do
     end
   end
 
+  describe "live slug derivation (2026-08-28: no typing pause)" do
+    test "the title field is wired for live derivation", %{conn: conn} = ctx do
+      # Two halves, and BOTH need a core newer than this module's released
+      # pin — `translatable_field` only just gained a `debounce` attr and a
+      # `:global` passthrough. Under the old pin the component swallows
+      # them, so the assertions adapt rather than pretending: the box runs
+      # core from a path dep and gets the real thing.
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, html} = live(conn, "/en/admin/entities/#{ctx.entity.name}/data/new")
+
+      if html =~ ~s(phx-debounce="0") do
+        # 1. "0", not absent: phx-debounce CASCADES and this form carries
+        #    500, so an omitted attribute inherits it — the opposite of live.
+        assert has_element?(
+                 view,
+                 ~s|input[name="phoenix_kit_entity_data[title]"][phx-debounce="0"]|
+               )
+
+        # 2. The browser fills the slug with no round trip at all; the hook
+        #    needs all three of these or it silently does nothing.
+        assert html =~ ~s(phx-hook="SlugFromTitle")
+        assert html =~ ~s(data-slug-target="#phoenix_kit_entity_data_slug")
+        assert html =~ ~s(data-slug-auto="true")
+
+        # …and the flag follows the server's ownership state, so the
+        # mirror goes quiet the moment the user takes the slug over.
+        html =
+          render_change(view, "validate", %{
+            "_target" => ["phoenix_kit_entity_data", "slug"],
+            "phoenix_kit_entity_data" => %{"title" => "Walnut", "slug" => "mine"}
+          })
+
+        assert html =~ ~s(data-slug-auto="false")
+      else
+        # Released pin: the component keeps its hardcoded delay and drops
+        # the hook attributes. Server-side derivation still works — that
+        # is what the rest of this describe block covers.
+        assert html =~ ~s(phx-debounce="300")
+      end
+
+      # Either way the server derives the slug it will store.
+      html =
+        render_change(view, "validate", %{"phoenix_kit_entity_data" => %{"title" => "Walnut Oak"}})
+
+      assert html =~ ~s(value="walnut-oak")
+    end
+
+    test "a STALE slug echo doesn't stop it (the bug live typing exposed)",
+         %{conn: conn} = ctx do
+      # With no debounce the client posts the slug it last rendered, which
+      # lags the server by a keystroke or two. Deciding "is this still
+      # auto-generated?" from that stale echo froze the slug after the
+      # first character on a real (remote) connection, while every
+      # tidy-params test passed.
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, "/en/admin/entities/#{ctx.entity.name}/data/new")
+
+      render_change(view, "validate", %{
+        "phoenix_kit_entity_data" => %{"title" => "W", "slug" => ""}
+      })
+
+      # Every subsequent post carries a slug from BEFORE the server's last
+      # derivation — "w" while the title has already reached "Walnut".
+      html =
+        render_change(view, "validate", %{
+          "phoenix_kit_entity_data" => %{"title" => "Walnut", "slug" => "w"}
+        })
+
+      assert html =~ ~s(value="walnut")
+
+      html =
+        render_change(view, "validate", %{
+          "phoenix_kit_entity_data" => %{"title" => "Walnut Oak", "slug" => "w"}
+        })
+
+      assert html =~ ~s(value="walnut-oak")
+    end
+
+    test "a hand-typed slug stops following the title", %{conn: conn} = ctx do
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, "/en/admin/entities/#{ctx.entity.name}/data/new")
+
+      render_change(view, "validate", %{"phoenix_kit_entity_data" => %{"title" => "Walnut"}})
+
+      # Typing IN the slug field is what hands ownership over.
+      html =
+        render_change(view, "validate", %{
+          "_target" => ["phoenix_kit_entity_data", "slug"],
+          "phoenix_kit_entity_data" => %{"title" => "Walnut", "slug" => "my-own-slug"}
+        })
+
+      assert html =~ ~s(value="my-own-slug")
+
+      # …and keeps its own value while the title keeps changing.
+      html =
+        render_change(view, "validate", %{
+          "phoenix_kit_entity_data" => %{"title" => "Walnut Door", "slug" => "my-own-slug"}
+        })
+
+      assert html =~ ~s(value="my-own-slug")
+      refute html =~ ~s(value="walnut-door")
+    end
+
+    test "clearing the slug hands it back to the title", %{conn: conn} = ctx do
+      # The field's own hint says "Leave empty to auto-generate from
+      # title", so emptying it has to mean exactly that.
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, "/en/admin/entities/#{ctx.entity.name}/data/new")
+
+      render_change(view, "validate", %{
+        "_target" => ["phoenix_kit_entity_data", "slug"],
+        "phoenix_kit_entity_data" => %{"title" => "Walnut", "slug" => "mine"}
+      })
+
+      render_change(view, "validate", %{
+        "_target" => ["phoenix_kit_entity_data", "slug"],
+        "phoenix_kit_entity_data" => %{"title" => "Walnut", "slug" => ""}
+      })
+
+      html =
+        render_change(view, "validate", %{
+          "phoenix_kit_entity_data" => %{"title" => "Walnut Door", "slug" => ""}
+        })
+
+      assert html =~ ~s(value="walnut-door")
+    end
+  end
+
   describe "new form" do
     test "mounts the new path successfully", %{conn: conn} = ctx do
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))

@@ -21,6 +21,7 @@
 require Logger
 
 alias PhoenixKitEntities.Test.Repo, as: TestRepo
+alias PhoenixKitEntities.Test.SchemaOwnerGuard
 
 # Pin URL prefix to "/" via persistent_term so PhoenixKit.Utils.Routes.path/2
 # doesn't try to read the unset application env. Tests can override this
@@ -68,6 +69,12 @@ repo_available =
     try do
       {:ok, _} = TestRepo.start_link()
 
+      # I067: PGDATABASE (opted into below, not the default) can point at a
+      # database another package's Ecto.Migrator already owns. Check the
+      # schema_migrations owner marker before trusting this DB with any
+      # migration — see PhoenixKitEntities.Test.SchemaOwnerGuard.
+      SchemaOwnerGuard.check!(&TestRepo.query!/1)
+
       # Build the schema directly from core's versioned migrations — same
       # call the host app makes in production. The entities tables come from
       # core (V17 creates them; V40/V58/V67/V74/V81 evolve them). No
@@ -84,6 +91,11 @@ repo_available =
       # prefix forwarding).
       PhoenixKit.Migration.ensure_current(TestRepo, log: false)
 
+      # Migrations for this run succeeded — stamp ownership so a future run
+      # against this same DB (still opted in via PGDATABASE) can tell it's
+      # ours vs. having been silently repurposed by another package.
+      SchemaOwnerGuard.stamp!(&TestRepo.query!/1)
+
       Ecto.Adapters.SQL.Sandbox.mode(TestRepo, :manual)
 
       # Compile the require_file paths in elixirc_paths(:test) — needed so
@@ -94,6 +106,9 @@ repo_available =
 
       true
     rescue
+      e in SchemaOwnerGuard.OwnerMismatch ->
+        reraise e, __STACKTRACE__
+
       e ->
         IO.puts("""
         \n  Could not connect to test database — integration tests excluded.

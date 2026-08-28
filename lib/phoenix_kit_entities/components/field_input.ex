@@ -9,7 +9,7 @@ defmodule PhoenixKitEntities.Components.FieldInput do
 
   ## The save contract
 
-  The host wraps its inputs in a `<form phx-change="..." phx-submit="...">`
+  The host wraps its inputs in a `<form id="..." phx-change="..." phx-submit="...">`
   it owns (include hidden inputs for row identity — a record uuid — and
   read `_target` to know which field changed). **`phx-submit` is
   load-bearing even when the change event does all the saving**: a form

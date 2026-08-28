@@ -945,21 +945,33 @@ defmodule PhoenixKitEntities.FormBuilder do
 
   # Image Upload (placeholder - not yet implemented)
   # Media references (image/video) store a storage file uuid picked
-  # through the host's media picker (see the FieldTypes entries). The
-  # admin DataForm has no picker wiring yet, so this surface shows the
-  # stored value read-only; editing happens where
-  # `PhoenixKitEntities.Components.FieldInput` is embedded with a
-  # picker (e.g. the catalogue's attribute-set editor).
+  # through a media picker. The value ALWAYS rides a hidden input:
+  # validate_data/3 rebuilds every field from form params, so a value
+  # that lives only in the changeset is wiped by the next keystroke —
+  # before the hidden input, any DataForm save silently dropped stored
+  # media. With `opts[:media_picker]` (the admin DataForm) Choose/Clear
+  # buttons drive a page-level `MediaSelectorModal` via the
+  # `pick_media_field`/`clear_media_field` events; without it the value
+  # renders read-only as before.
   def build_field(%{"type" => type} = field, changeset, opts) when type in ["image", "video"] do
     current = get_field_value(changeset, field["key"])
+    picker? = opts[:media_picker] && !opts[:disabled]
 
-    assigns = %{field: field, opts: opts, current: current, type: type}
+    assigns = %{
+      field: field,
+      opts: opts,
+      current: current,
+      type: type,
+      picker?: picker?,
+      input_name: "#{changeset.data.__struct__.__schema__(:source)}[data][#{field["key"]}]"
+    }
 
     ~H"""
     <div>
       <.label>
         {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
+      <input type="hidden" name={@input_name} value={@current} />
       <div class="border border-base-300 rounded-lg p-4 bg-base-200/50 flex items-center gap-3">
         <%= if is_binary(@current) and match?({:ok, _}, Ecto.UUID.cast(@current)) do %>
           <img
@@ -983,9 +995,33 @@ defmodule PhoenixKitEntities.FormBuilder do
             class="w-10 h-10 text-base-content/40"
           />
           <p class="text-sm text-base-content/60">
-            {gettext("No media selected — set through the owning app's editor.")}
+            <%= if @picker? do %>
+              {gettext("No media selected.")}
+            <% else %>
+              {gettext("No media selected — set through the owning app's editor.")}
+            <% end %>
           </p>
         <% end %>
+        <div :if={@picker?} class="flex gap-2 ml-auto shrink-0">
+          <button
+            type="button"
+            class="btn btn-sm"
+            phx-click="pick_media_field"
+            phx-value-key={@field["key"]}
+            phx-value-type={@type}
+          >
+            {gettext("Choose…")}
+          </button>
+          <button
+            :if={is_binary(@current) and @current != ""}
+            type="button"
+            class="btn btn-sm btn-ghost"
+            phx-click="clear_media_field"
+            phx-value-key={@field["key"]}
+          >
+            {gettext("Clear")}
+          </button>
+        </div>
       </div>
       <%= if @field["description"] do %>
         <.label class="label">

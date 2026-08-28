@@ -1,3 +1,46 @@
+## 0.4.7 - 2026-08-28
+
+### Added
+
+- **Managed blueprints are now edited directly in the generic Entities
+  admin** instead of being hidden from it — a "Managed by %{owner}" badge
+  marks them, and their slug/status stay locked (disabled controls paired
+  with hidden inputs so a save can't blank them) while everything else
+  (fields, display name, description) is editable right there (#39).
+- **A media picker (Choose/Clear) for `image`/`video` fields** in the admin
+  data form, wired through a shared `MediaSelectorModal` (#39).
+- **The slug field mirrors the title live, in the browser** — a new
+  `SlugFromTitle` JS hook (shipped via `js_sources/0`) writes an ASCII/Latin
+  slug preview as you type, with the server remaining the source of truth
+  for anything it can't confidently romanize (Cyrillic, CJK, mixed
+  scripts). Slug "ownership" (auto-derived vs. user-typed) is now tracked
+  server-side from which field was actually edited, fixing a freeze-after-
+  first-keystroke bug the old value-comparison approach had once the title
+  field's debounce dropped to zero (#39).
+- **`EntityData.list_by_entities/2`, `counts_by_entities/2`, and
+  `entity_uuids_matching_title/3`** — batched, per-entity-set query helpers
+  (one query instead of one-per-entity) for listings that filter or tally
+  across many entities at once (#39).
+- `EntityData.list_by_entity/2` accepts `:limit` (#39).
+
+### Changed
+
+- The Data Navigator page replaced its four always-shown stat cards with a
+  row of clickable status chips on the filter card itself; the filter card
+  now hides entirely for a brand-new, unfiltered entity instead of showing
+  four zeros (#39).
+- Dependency bump: `phoenix_kit` 2.13.12, plus routine bumps to `phoenix`,
+  `phoenix_live_view`, `phoenix_pubsub`, `oban`, `req`, `swoosh`, `leaf`,
+  and a new transitive `tz` dependency.
+
+### Fixed
+
+- **I067: a `PGDATABASE`-override test DB pointing at another package's
+  database now refuses to boot** instead of silently corrupting or
+  skipping that package's migration history — `SchemaOwnerGuard` stamps
+  and checks a `schema_migrations` ownership marker (test infrastructure
+  only; no runtime/`lib/` change) (#38).
+
 ## 0.4.6 - 2026-08-22
 
 ### Changed

@@ -1031,7 +1031,9 @@ defmodule PhoenixKitEntities.Web.EntityForm do
            put_flash(
              socket,
              :error,
-             gettext("This blueprint is managed by another module — edit it there.")
+             gettext(
+               "The blueprint's slug, status and module-locked settings are protected — revert those changes to save."
+             )
            )}
       end
     rescue
@@ -1739,6 +1741,14 @@ defmodule PhoenixKitEntities.Web.EntityForm do
     |> assign(:spectators, spectators)
   end
 
+  # True for an EXISTING blueprint owned by another module — the fields
+  # the write guard would refuse render disabled (with hidden twins so
+  # the form params stay whole; disabled controls don't submit).
+  defp managed_blueprint?(%{uuid: uuid} = entity) when not is_nil(uuid),
+    do: PhoenixKitEntities.Managed.owner(entity) != nil
+
+  defp managed_blueprint?(_), do: false
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -1752,6 +1762,21 @@ defmodule PhoenixKitEntities.Web.EntityForm do
             {gettext("Define your custom content type with dynamic fields")}
           </p>
         </.admin_page_header>
+
+        <%!-- Managed Banner — the blueprint belongs to another module.
+        Since 2026-08-27 these ARE edited here (the owning modules dropped
+        their own editors); only the structural surface stays locked. --%>
+        <%= if owner = PhoenixKitEntities.Managed.owner(@entity) do %>
+          <div class="alert alert-info mb-6">
+            <.icon name="hero-shield-check" class="w-5 h-5" />
+            <span>
+              {gettext(
+                "Managed by the %{owner} module. Its slug, status and %{owner}-locked settings are protected — everything else is edited right here.",
+                owner: owner
+              )}
+            </span>
+          </div>
+        <% end %>
 
         <%!-- Readonly Banner --%>
         <%= if @readonly? do %>
@@ -1768,6 +1793,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
         <.form
           :let={f}
           for={@changeset}
+          id="entity-form"
           phx-change="validate"
           phx-debounce="500"
           phx-submit="save"
@@ -1921,13 +1947,18 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                   label={gettext("Slug")}
                   placeholder={gettext("brand")}
                   required
-                  disabled={@readonly?}
+                  disabled={@readonly? or managed_blueprint?(@entity)}
                   class="w-full"
-                  hint={gettext("snake_case identifier used in the system")}
+                  hint={
+                    if managed_blueprint?(@entity),
+                      do: gettext("Locked — the owning module keys on this slug"),
+                      else: gettext("snake_case identifier used in the system")
+                  }
                 >
                   <:label_extra>
                     <%= if !@multilang_enabled || @current_lang == @primary_language do %>
                       <button
+                        :if={not managed_blueprint?(@entity)}
                         type="button"
                         class="btn btn-ghost btn-xs ml-2"
                         phx-click="generate_entity_slug"
@@ -1939,6 +1970,14 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                     <% end %>
                   </:label_extra>
                 </.translatable_field>
+                <%!-- A disabled input doesn't submit; keep the slug in the
+                params so validation stays whole. --%>
+                <input
+                  :if={managed_blueprint?(@entity)}
+                  type="hidden"
+                  name="entities[name]"
+                  value={Ecto.Changeset.get_field(@changeset, :name)}
+                />
 
                 <%!-- Description (translatable) --%>
                 <.translatable_field
@@ -2025,7 +2064,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                       id="entity_status"
                       name={f[:status].name}
                       required
-                      disabled={@readonly?}
+                      disabled={@readonly? or managed_blueprint?(@entity)}
                     >
                       <option value="published" selected={f[:status].value == "published"}>
                         {gettext("Published (active)")}
@@ -2038,9 +2077,19 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                       </option>
                     </select>
                   </label>
+                  <input
+                    :if={managed_blueprint?(@entity)}
+                    type="hidden"
+                    name={f[:status].name}
+                    value={f[:status].value}
+                  />
                   <.label class="label">
                     <span class="fieldset-label">
-                      {gettext("Only published can be used")}
+                      <%= if managed_blueprint?(@entity) do %>
+                        {gettext("Locked — the owning module controls the lifecycle")}
+                      <% else %>
+                        {gettext("Only published can be used")}
+                      <% end %>
                     </span>
                   </.label>
                 </div>
@@ -2975,6 +3024,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
 
               <.form
                 for={%{}}
+                id="entity-field-form"
                 phx-change="update_field_form"
                 phx-submit="save_field"
                 class="space-y-4"
@@ -3250,7 +3300,12 @@ defmodule PhoenixKitEntities.Web.EntityForm do
 
               <%!-- Search Bar --%>
               <div class="p-4 border-b border-base-300">
-                <.form for={%{}} phx-change="search_icons" phx-submit="search_icons">
+                <.form
+                  for={%{}}
+                  id="entity-icon-search"
+                  phx-change="search_icons"
+                  phx-submit="search_icons"
+                >
                   <div class="join w-full">
                     <input
                       type="text"
