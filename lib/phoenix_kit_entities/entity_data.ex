@@ -1152,7 +1152,7 @@ defmodule PhoenixKitEntities.EntityData do
   # Mirrors `sort_order_for_mode/1` for an already-loaded batch. The two
   # must agree: a set whose values are hand-ordered has to come back in
   # that order whichever function loaded it, and nothing but a test
-  # holds them together (`list_by_entities_test.exs`).
+  # holds them together (`entity_data_batch_counts_test.exs`).
   defp sort_rows(rows, "manual") do
     Enum.sort_by(rows, &{is_nil(&1.position), &1.position, inverted_date(&1.date_created)})
   end
