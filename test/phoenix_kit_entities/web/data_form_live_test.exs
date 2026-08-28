@@ -454,23 +454,22 @@ defmodule PhoenixKitEntities.Web.DataFormLiveTest do
   end
 
   describe "live slug derivation (2026-08-28: no typing pause)" do
-    test "the slug follows the title as it is typed, keystroke by keystroke",
+    test "the title input carries no debounce, so the server sees every keystroke",
          %{conn: conn} = ctx do
+      # This is the only thing this test can honestly prove. Posting a
+      # sequence of titles with NO slug in the params passes whether or
+      # not derivation actually tracks — the empty-slug branch
+      # regenerates unconditionally. The tests below carry that weight
+      # by posting the slug the way a browser does.
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
       {:ok, view, _html} = live(conn, "/en/admin/entities/#{ctx.entity.name}/data/new")
 
-      # Each validate is one keystroke's worth of title. The debounce is
-      # gone, so the server sees them all — and the slug tracks every one.
-      for {typed, expected} <- [{"Wa", "wa"}, {"Waln", "waln"}, {"Walnut Oak", "walnut-oak"}] do
-        html =
-          render_change(view, "validate", %{"phoenix_kit_entity_data" => %{"title" => typed}})
-
-        assert html =~ ~s(value="#{expected}")
-      end
-
-      # The title input itself must carry no debounce, or none of the
-      # above reaches the server until typing stops.
       refute has_element?(view, ~s|input[name="phoenix_kit_entity_data[title]"][phx-debounce]|)
+
+      html =
+        render_change(view, "validate", %{"phoenix_kit_entity_data" => %{"title" => "Walnut Oak"}})
+
+      assert html =~ ~s(value="walnut-oak")
     end
 
     test "it keeps following once a slug already exists (the real payload)",
