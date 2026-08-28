@@ -47,8 +47,40 @@ defmodule PhoenixKitEntities.SchemaOwnerGuardWiringTest do
   # chain.
   @template_db "phoenix_kit_entities_test"
 
+  # `CREATE DATABASE ... TEMPLATE` refuses outright while ANY session holds
+  # a connection to the source database — and `PhoenixKitEntities.Test.Repo`
+  # always has some, idle in its own pool, from `test_helper.exs`'s own
+  # boot (independent of Sandbox mode, which only governs per-test
+  # checkout, not the pool's persistent connections).
+  #
+  # `disconnect_all/3` releases exactly and only THIS repo's own pool
+  # connections, through DBConnection — not a raw `pg_terminate_backend`
+  # sweep over `pg_stat_activity`, which has no way to tell "this suite's
+  # own idle connection" apart from any other session on the same
+  # instance and, live in review, killed one that wasn't ours. Scoped by
+  # construction to our own pool, not by a WHERE-clause guess at whose
+  # session is whose. Ecto reconnects lazily on the pool's next checkout.
+  #
+  # `disconnect_all/3`'s `interval` is an upper bound for connections
+  # still mid-checkout, not a guarantee that idle ones (what we have here)
+  # are gone by the time the call returns. One retry on Postgres' own
+  # "source database is being accessed by other users" (55006 —
+  # object_in_use) absorbs that gap without a blind sleep on the common,
+  # already-disconnected path.
   defp clone_template!(admin, dest_db) do
-    Postgrex.query!(admin, "CREATE DATABASE #{dest_db} TEMPLATE #{@template_db}", [])
+    Ecto.Adapters.SQL.disconnect_all(PhoenixKitEntities.Test.Repo, 0)
+
+    try do
+      Postgrex.query!(admin, "CREATE DATABASE #{dest_db} TEMPLATE #{@template_db}", [])
+    rescue
+      e in Postgrex.Error ->
+        if match?(%{postgres: %{code: :object_in_use}}, e) do
+          Process.sleep(50)
+          Postgrex.query!(admin, "CREATE DATABASE #{dest_db} TEMPLATE #{@template_db}", [])
+        else
+          reraise e, __STACKTRACE__
+        end
+    end
   end
 
   setup do
