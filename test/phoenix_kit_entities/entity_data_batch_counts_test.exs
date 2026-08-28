@@ -102,6 +102,25 @@ defmodule PhoenixKitEntities.EntityDataBatchCountsTest do
              ) == []
     end
 
+    test "a translated title matches too", %{a: a, b: b, actor: actor, make: make} do
+      # Translations live in the record's data JSONB, so searching the
+      # Estonian label has to find the record whose column says "Oak".
+      {:ok, _} =
+        EntityData.create(%{
+          entity_uuid: a.uuid,
+          title: "Oak",
+          slug: "oak",
+          status: "published",
+          data: %{"et" => %{"_title" => "Tamm"}},
+          created_by_uuid: actor
+        })
+
+      make.(b, "Steel", "published")
+
+      assert EntityData.entity_uuids_matching_title([a.uuid, b.uuid], "Tamm") == [a.uuid]
+      assert EntityData.entity_uuids_matching_title([a.uuid, b.uuid], "oak") == [a.uuid]
+    end
+
     test "LIKE metacharacters are literal", %{a: a, b: b, actor: actor, make: make} do
       # Built inline: the slug format rejects "%", but the TITLE may
       # carry it — which is exactly the case being pinned.

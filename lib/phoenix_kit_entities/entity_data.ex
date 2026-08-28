@@ -2184,7 +2184,11 @@ defmodule PhoenixKitEntities.EntityData do
         query =
           from(d in __MODULE__,
             where: d.entity_uuid in ^entity_uuids,
-            where: ilike(d.title, ^pattern),
+            # `data::text` alongside the title column: translations live
+            # in that JSONB under language keys, so a record titled
+            # "Oak" in en and "Tamm" in et is found by either (Max,
+            # 2026-08-28 — search has to work in all the languages).
+            where: ilike(d.title, ^pattern) or fragment("?::text ILIKE ?", d.data, ^pattern),
             distinct: true,
             select: d.entity_uuid
           )
