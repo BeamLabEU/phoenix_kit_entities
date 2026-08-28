@@ -11,7 +11,7 @@ msgstr ""
 "Language: ru\n"
 "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100 != 11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10||n%100>=20) ? 1 : 2);\n"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2104
+#: lib/phoenix_kit_entities/web/entity_form.ex:2135
 #, elixir-autogen, elixir-format
 msgid "%{count} Field Definition"
 msgid_plural "%{count} Field Definitions"
@@ -27,7 +27,7 @@ msgstr[0] "%{count} день"
 msgstr[1] "%{count} дня"
 msgstr[2] "%{count} дней"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:3339
+#: lib/phoenix_kit_entities/web/entity_form.ex:3370
 #, elixir-autogen, elixir-format
 msgid "%{count} icon available"
 msgid_plural "%{count} icons available"
@@ -81,7 +81,7 @@ msgstr "%{count} записей восстановлено из корзины"
 msgid "%{count} records updated"
 msgstr "%{count} записей обновлено"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1196
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1191
 #, elixir-autogen, elixir-format
 msgid "%{count} selected"
 msgstr "Выбрано: %{count}"
@@ -115,7 +115,7 @@ msgstr "%{new} новых, %{identical} идентичных, %{conflicts} из�
 msgid "%{years} year(s), %{days} day(s)"
 msgstr "%{years} лет, %{days} дней"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:3145
+#: lib/phoenix_kit_entities/web/entity_form.ex:3176
 #, elixir-autogen, elixir-format
 msgid "Accepted File Types"
 msgstr "Допустимые типы файлов"
@@ -130,7 +130,7 @@ msgstr "Допустимые типы:"
 msgid "Action"
 msgstr "Действие"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1424
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1419
 #: lib/phoenix_kit_entities/web/entities.ex:278
 #: lib/phoenix_kit_entities/web/entities_settings.ex:988
 #: lib/phoenix_kit_entities/web/entity_form.ex:1492
@@ -138,36 +138,36 @@ msgstr "Действие"
 msgid "Actions"
 msgstr "Действия"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1068
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1074
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1337
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1343
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1055
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1061
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1332
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1338
 #, elixir-autogen, elixir-format
 msgid "Add"
 msgstr "Добавить"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2117
-#: lib/phoenix_kit_entities/web/entity_form.ex:3236
+#: lib/phoenix_kit_entities/web/entity_form.ex:2148
+#: lib/phoenix_kit_entities/web/entity_form.ex:3267
 #, elixir-autogen, elixir-format
 msgid "Add Field"
 msgstr "Добавить поле"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2982
+#: lib/phoenix_kit_entities/web/entity_form.ex:3013
 #, elixir-autogen, elixir-format
 msgid "Add New Field"
 msgstr "Добавить новое поле"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:3174
+#: lib/phoenix_kit_entities/web/entity_form.ex:3205
 #, elixir-autogen, elixir-format
 msgid "Add Option"
 msgstr "Добавить вариант"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2137
+#: lib/phoenix_kit_entities/web/entity_form.ex:2168
 #, elixir-autogen, elixir-format
 msgid "Add Your First Field"
 msgstr "Добавить первое поле"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2514
+#: lib/phoenix_kit_entities/web/entity_form.ex:2545
 #, elixir-autogen, elixir-format
 msgid "Add a hidden field that bots typically fill out"
 msgstr "Добавить скрытое поле, которое обычно заполняют боты"
@@ -177,12 +177,12 @@ msgstr "Добавить скрытое поле, которое обычно з
 msgid "Add data for the %{entity} entity"
 msgstr "Добавление данных для сущности «%{entity}»"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2129
+#: lib/phoenix_kit_entities/web/entity_form.ex:2160
 #, elixir-autogen, elixir-format
 msgid "Add fields to define what data this entity can store"
 msgstr "Добавьте поля, чтобы определить, какие данные может хранить эта сущность"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2403
+#: lib/phoenix_kit_entities/web/entity_form.ex:2434
 #, elixir-autogen, elixir-format
 msgid "Add fields to this entity first before configuring the public form."
 msgstr "Сначала добавьте поля к этой сущности, прежде чем настраивать публичную форму."
@@ -193,6 +193,7 @@ msgstr "Сначала добавьте поля к этой сущности, �
 msgid "Advanced"
 msgstr "Расширенный"
 
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1112
 #: lib/phoenix_kit_entities/web/entity_form.ex:1489
 #, elixir-autogen, elixir-format
 msgid "All"
@@ -203,17 +204,7 @@ msgstr "Все"
 msgid "All Entities"
 msgstr "Все сущности"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1130
-#, elixir-autogen, elixir-format
-msgid "All Statuses"
-msgstr "Все статусы"
-
-#: lib/phoenix_kit_entities/web/data_navigator.ex:987
-#, elixir-autogen, elixir-format
-msgid "All data records"
-msgstr "Все записи данных"
-
-#: lib/phoenix_kit_entities/web/entity_form.ex:2283
+#: lib/phoenix_kit_entities/web/entity_form.ex:2314
 #, elixir-autogen, elixir-format
 msgid "Allow this entity to be embedded as a form on public pages"
 msgstr "Разрешить встраивать эту сущность как форму на публичных страницах"
@@ -223,9 +214,9 @@ msgstr "Разрешить встраивать эту сущность как �
 msgid "An unexpected error occurred."
 msgstr "Произошла непредвиденная ошибка."
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1232
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1559
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1758
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1227
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1554
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1753
 #: lib/phoenix_kit_entities/web/entities.ex:390
 #: lib/phoenix_kit_entities/web/entities.ex:518
 #, elixir-autogen, elixir-format
@@ -235,14 +226,13 @@ msgstr "Архивировать"
 #: lib/phoenix_kit_entities/web/data_form.ex:1600
 #: lib/phoenix_kit_entities/web/data_form.ex:1736
 #: lib/phoenix_kit_entities/web/data_navigator.ex:889
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1019
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1139
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1285
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1132
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1280
 #, elixir-autogen, elixir-format
 msgid "Archived"
 msgstr "Архивирован"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2054
+#: lib/phoenix_kit_entities/web/entity_form.ex:2075
 #, elixir-autogen, elixir-format
 msgid "Archived (hidden)"
 msgstr "Архивирован (скрыт)"
@@ -252,17 +242,17 @@ msgstr "Архивирован (скрыт)"
 msgid "Are you sure you want to disable the entities system? This will make all entities and data inaccessible."
 msgstr "Вы уверены, что хотите отключить систему сущностей? Это сделает все сущности и данные недоступными."
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2078
+#: lib/phoenix_kit_entities/web/entity_form.ex:2109
 #, elixir-autogen, elixir-format
 msgid "Automatic (by creation date)"
 msgstr "Автоматически (по дате создания)"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2905
+#: lib/phoenix_kit_entities/web/entity_form.ex:2936
 #, elixir-autogen, elixir-format
 msgid "Automatically export data records when they are created or updated"
 msgstr "Автоматически экспортировать записи данных при создании или обновлении"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2881
+#: lib/phoenix_kit_entities/web/entity_form.ex:2912
 #, elixir-autogen, elixir-format
 msgid "Automatically export entity schema when changes are saved"
 msgstr "Автоматически экспортировать схему сущности при сохранении изменений"
@@ -272,7 +262,7 @@ msgstr "Автоматически экспортировать схему су�
 msgid "Available entities:"
 msgstr "Доступные сущности:"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2844
+#: lib/phoenix_kit_entities/web/entity_form.ex:2875
 #, elixir-autogen, elixir-format
 msgid "Backup Settings"
 msgstr "Настройки резервного копирования"
@@ -296,27 +286,27 @@ msgstr "Основная информация"
 msgid "Boolean"
 msgstr "Логическое значение"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:1898
+#: lib/phoenix_kit_entities/web/entity_form.ex:1906
 #, elixir-autogen, elixir-format
 msgid "Brand"
 msgstr "Бренд"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:1918
+#: lib/phoenix_kit_entities/web/entity_form.ex:1926
 #, elixir-autogen, elixir-format
 msgid "Brands"
 msgstr "Бренды"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:972
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1006
 #, elixir-autogen, elixir-format
 msgid "Browse and manage all entity data records across your system"
 msgstr "Просматривайте и управляйте всеми записями данных сущностей в вашей системе"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:960
+#: lib/phoenix_kit_entities/web/data_navigator.ex:994
 #, elixir-autogen, elixir-format
 msgid "Browse and manage your %{entity}"
 msgstr "Просматривайте и управляйте вашими %{entity}"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2008
+#: lib/phoenix_kit_entities/web/entity_form.ex:2029
 #, elixir-autogen, elixir-format
 msgid "Browse icons"
 msgstr "Просмотреть иконки"
@@ -334,10 +324,10 @@ msgstr "ИЗМЕНЕНО"
 
 #: lib/phoenix_kit_entities/web/data_form.ex:1815
 #: lib/phoenix_kit_entities/web/entities_settings.ex:1412
-#: lib/phoenix_kit_entities/web/entity_form.ex:2207
-#: lib/phoenix_kit_entities/web/entity_form.ex:2943
-#: lib/phoenix_kit_entities/web/entity_form.ex:3230
-#: lib/phoenix_kit_entities/web/entity_form.ex:3347
+#: lib/phoenix_kit_entities/web/entity_form.ex:2238
+#: lib/phoenix_kit_entities/web/entity_form.ex:2974
+#: lib/phoenix_kit_entities/web/entity_form.ex:3261
+#: lib/phoenix_kit_entities/web/entity_form.ex:3378
 #, elixir-autogen, elixir-format
 msgid "Cancel"
 msgstr "Отмена"
@@ -397,13 +387,13 @@ msgstr "Невозможно сохранить — вы в режиме наб�
 msgid "Cannot save field - you are spectating"
 msgstr "Невозможно сохранить поле — вы в режиме наблюдения"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1034
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1021
 #: lib/phoenix_kit_entities/web/entities.ex:222
 #, elixir-autogen, elixir-format
 msgid "Card view"
 msgstr "Вид карточками"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1266
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1261
 #, elixir-autogen, elixir-format
 msgid "Change Status"
 msgstr "Изменить статус"
@@ -414,7 +404,7 @@ msgstr "Изменить статус"
 msgid "Changes reset to last saved state"
 msgstr "Изменения сброшены до последнего сохранённого состояния"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2591
+#: lib/phoenix_kit_entities/web/entity_form.ex:2622
 #, elixir-autogen, elixir-format
 msgid "Check if submission happens too quickly (less than 3 seconds)"
 msgstr "Проверять, не отправлена ли форма слишком быстро (менее 3 секунд)"
@@ -437,32 +427,32 @@ msgstr "Выбор"
 
 #: lib/phoenix_kit_entities/components/field_input.ex:383
 #: lib/phoenix_kit_entities/form_builder.ex:1022
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1292
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1287
 #, elixir-autogen, elixir-format
 msgid "Clear"
 msgstr "Очистить"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1175
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1170
 #, elixir-autogen, elixir-format
 msgid "Clear All Filters"
 msgstr "Очистить все фильтры"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1394
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1389
 #, elixir-autogen, elixir-format
 msgid "Clear Filters"
 msgstr "Очистить фильтры"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2018
+#: lib/phoenix_kit_entities/web/entity_form.ex:2039
 #, elixir-autogen, elixir-format
 msgid "Clear icon"
 msgstr "Очистить иконку"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2449
+#: lib/phoenix_kit_entities/web/entity_form.ex:2480
 #, elixir-autogen, elixir-format
 msgid "Collect Submission Metadata"
 msgstr "Собирать метаданные отправки"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:3155
+#: lib/phoenix_kit_entities/web/entity_form.ex:3186
 #, elixir-autogen, elixir-format
 msgid "Comma-separated list of extensions (e.g., .pdf, .jpg, .png, .step, .dwg)"
 msgstr "Список расширений через запятую (например, .pdf, .jpg, .png, .step, .dwg)"
@@ -472,7 +462,7 @@ msgstr "Список расширений через запятую (напри�
 msgid "Communication"
 msgstr "Коммуникация"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2847
+#: lib/phoenix_kit_entities/web/entity_form.ex:2878
 #, elixir-autogen, elixir-format
 msgid "Configure automatic backup to file for this entity"
 msgstr "Настроить автоматическое резервное копирование в файл для этой сущности"
@@ -482,7 +472,7 @@ msgstr "Настроить автоматическое резервное ко�
 msgid "Configure the entities system behavior and preferences"
 msgstr "Настройте поведение и параметры системы сущностей"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2199
+#: lib/phoenix_kit_entities/web/entity_form.ex:2230
 #, elixir-autogen, elixir-format
 msgid "Confirm?"
 msgstr "Подтвердить?"
@@ -498,8 +488,8 @@ msgstr "Контент"
 msgid "Create %{entity}"
 msgstr "Создать %{entity}"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:1800
-#: lib/phoenix_kit_entities/web/entity_form.ex:2959
+#: lib/phoenix_kit_entities/web/entity_form.ex:1808
+#: lib/phoenix_kit_entities/web/entity_form.ex:2990
 #, elixir-autogen, elixir-format
 msgid "Create Entity"
 msgstr "Создать сущность"
@@ -509,19 +499,19 @@ msgstr "Создать сущность"
 msgid "Create New %{entity}"
 msgstr "Создать новую запись %{entity}"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:1751
+#: lib/phoenix_kit_entities/web/entity_form.ex:1759
 #, elixir-autogen, elixir-format
 msgid "Create New Entity"
 msgstr "Создать новую сущность"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1316
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1311
 #: lib/phoenix_kit_entities/web/entities.ex:262
 #, elixir-autogen, elixir-format
 msgid "Create Your First Entity"
 msgstr "Создайте свою первую сущность"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:1812
-#: lib/phoenix_kit_entities/web/entity_form.ex:2971
+#: lib/phoenix_kit_entities/web/entity_form.ex:1820
+#: lib/phoenix_kit_entities/web/entity_form.ex:3002
 #, elixir-autogen, elixir-format
 msgid "Create and Return"
 msgstr "Создать и вернуться"
@@ -531,12 +521,12 @@ msgstr "Создать и вернуться"
 msgid "Create and manage custom content types with dynamic fields"
 msgstr "Создавайте и управляйте пользовательскими типами контента с динамическими полями"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1310
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1305
 #, elixir-autogen, elixir-format
 msgid "Create your first entity to start managing data records."
 msgstr "Создайте свою первую сущность, чтобы начать управлять записями данных."
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1422
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1417
 #: lib/phoenix_kit_entities/web/entities.ex:276
 #, elixir-autogen, elixir-format
 msgid "Created"
@@ -553,14 +543,14 @@ msgstr "Текущие файлы:"
 msgid "Custom Fields"
 msgstr "Пользовательские поля"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1655
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1650
 #, elixir-autogen, elixir-format
 msgid "Cycle status"
 msgstr "Переключить статус"
 
 #: lib/phoenix_kit_entities/web/data_navigator.ex:44
 #: lib/phoenix_kit_entities/web/data_navigator.ex:77
-#: lib/phoenix_kit_entities/web/data_navigator.ex:969
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1003
 #, elixir-autogen, elixir-format
 msgid "Data Navigator"
 msgstr "Навигатор данных"
@@ -608,22 +598,22 @@ msgstr "Дата и время"
 msgid "Date picker"
 msgstr "Выбор даты"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2474
+#: lib/phoenix_kit_entities/web/entity_form.ex:2505
 #, elixir-autogen, elixir-format
 msgid "Debug Mode"
 msgstr "Режим отладки"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2489
+#: lib/phoenix_kit_entities/web/entity_form.ex:2520
 #, elixir-autogen, elixir-format
 msgid "Debug mode is enabled. Detailed security errors will be shown to users. Disable this in production."
 msgstr "Режим отладки включён. Пользователям будут показаны подробные ошибки безопасности. Отключите это в продакшене."
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:3083
+#: lib/phoenix_kit_entities/web/entity_form.ex:3114
 #, elixir-autogen, elixir-format
 msgid "Default Value (Optional)"
 msgstr "Значение по умолчанию (необязательно)"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:1754
+#: lib/phoenix_kit_entities/web/entity_form.ex:1762
 #, elixir-autogen, elixir-format
 msgid "Define your custom content type with dynamic fields"
 msgstr "Определите свой пользовательский тип контента с динамическими полями"
@@ -640,29 +630,29 @@ msgstr "Определение"
 msgid "Definitions"
 msgstr "Определения"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2227
+#: lib/phoenix_kit_entities/web/entity_form.ex:2258
 #, elixir-autogen, elixir-format
 msgid "Delete field"
 msgstr "Удалить поле"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1223
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1536
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1735
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1218
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1531
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1730
 #, elixir-autogen, elixir-format
 msgid "Delete forever"
 msgstr "Удалить навсегда"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:1973
+#: lib/phoenix_kit_entities/web/entity_form.ex:1994
 #, elixir-autogen, elixir-format
 msgid "Describe what this entity represents..."
 msgstr "Опишите, что представляет эта сущность..."
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2314
+#: lib/phoenix_kit_entities/web/entity_form.ex:2345
 #, elixir-autogen, elixir-format
 msgid "Describe what this form is for..."
 msgstr "Опишите, для чего предназначена эта форма..."
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:1972
+#: lib/phoenix_kit_entities/web/entity_form.ex:1993
 #, elixir-autogen, elixir-format
 msgid "Description (Optional)"
 msgstr "Описание (необязательно)"
@@ -715,7 +705,7 @@ msgstr "Синхронизация определений отключена д�
 msgid "Disabling…"
 msgstr "Отключение…"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:3035
+#: lib/phoenix_kit_entities/web/entity_form.ex:3066
 #, elixir-autogen, elixir-format
 msgid "Display name for users"
 msgstr "Отображаемое имя для пользователей"
@@ -728,25 +718,24 @@ msgstr "Заголовок раздела только для отображен
 #: lib/phoenix_kit_entities/web/data_form.ex:1588
 #: lib/phoenix_kit_entities/web/data_form.ex:1724
 #: lib/phoenix_kit_entities/web/data_navigator.ex:888
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1136
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1280
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1275
 #, elixir-autogen, elixir-format
 msgid "Draft"
 msgstr "Черновик"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2051
+#: lib/phoenix_kit_entities/web/entity_form.ex:2072
 #, elixir-autogen, elixir-format
 msgid "Draft (not visible)"
 msgstr "Черновик (не виден)"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1008
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1125
 #: lib/phoenix_kit_entities/web/entities_settings.ex:860
 #, elixir-autogen, elixir-format
 msgid "Drafts"
 msgstr "Черновики"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1445
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1594
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1440
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1589
 #: lib/phoenix_kit_entities/web/entities.ex:296
 #: lib/phoenix_kit_entities/web/entities.ex:421
 #, elixir-autogen, elixir-format
@@ -764,8 +753,8 @@ msgstr "Выпадающий список (один вариант)"
 msgid "ERROR"
 msgstr "ОШИБКА"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1514
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1713
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1509
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1708
 #: lib/phoenix_kit_entities/web/entities.ex:373
 #: lib/phoenix_kit_entities/web/entities.ex:501
 #, elixir-autogen, elixir-format
@@ -783,14 +772,14 @@ msgstr "Редактировать %{entity}"
 msgid "Edit Data"
 msgstr "Редактировать данные"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1056
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1043
 #: lib/phoenix_kit_entities/web/entity_form.ex:59
-#: lib/phoenix_kit_entities/web/entity_form.ex:1751
+#: lib/phoenix_kit_entities/web/entity_form.ex:1759
 #, elixir-autogen, elixir-format
 msgid "Edit Entity"
 msgstr "Редактировать сущность"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2982
+#: lib/phoenix_kit_entities/web/entity_form.ex:3013
 #, elixir-autogen, elixir-format
 msgid "Edit Field"
 msgstr "Редактировать поле"
@@ -805,7 +794,7 @@ msgstr "Email"
 msgid "Email address with validation"
 msgstr "Email-адрес с проверкой"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2415
+#: lib/phoenix_kit_entities/web/entity_form.ex:2446
 #, elixir-autogen, elixir-format
 msgid "Embed this form:"
 msgstr "Встроить эту форму:"
@@ -827,7 +816,7 @@ msgstr "Включить все"
 msgid "Enable Definition sync"
 msgstr "Включить синхронизацию определений"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2280
+#: lib/phoenix_kit_entities/web/entity_form.ex:2311
 #, elixir-autogen, elixir-format
 msgid "Enable Public Form"
 msgstr "Включить публичную форму"
@@ -852,7 +841,7 @@ msgstr "Сначала включите синхронизацию опреде�
 msgid "Enable or disable the entire entities module"
 msgstr "Включить или отключить весь модуль сущностей"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2262
+#: lib/phoenix_kit_entities/web/entity_form.ex:2293
 #, elixir-autogen, elixir-format
 msgid "Enable this entity to be used as an embeddable form on public pages"
 msgstr "Разрешить использовать эту сущность как встраиваемую форму на публичных страницах"
@@ -931,7 +920,7 @@ msgstr "Система сущностей успешно отключена"
 msgid "Entities system enabled successfully"
 msgstr "Система сущностей успешно включена"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1419
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1414
 #: lib/phoenix_kit_entities/web/entities.ex:273
 #: lib/phoenix_kit_entities/web/entities_settings.ex:985
 #, elixir-autogen, elixir-format
@@ -955,7 +944,7 @@ msgstr "Сущность «%{name}» успешно восстановлена"
 msgid "Entity '%{name}' was %{status} in another session."
 msgstr "Сущность «%{name}» была %{status} в другой сессии."
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:1820
+#: lib/phoenix_kit_entities/web/entity_form.ex:1828
 #, elixir-autogen, elixir-format
 msgid "Entity Information"
 msgstr "Информация о сущности"
@@ -965,12 +954,12 @@ msgstr "Информация о сущности"
 msgid "Entity Manager"
 msgstr "Менеджер сущностей"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:1917
+#: lib/phoenix_kit_entities/web/entity_form.ex:1925
 #, elixir-autogen, elixir-format
 msgid "Entity Name (Plural)"
 msgstr "Название сущности (множественное число)"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:1897
+#: lib/phoenix_kit_entities/web/entity_form.ex:1905
 #, elixir-autogen, elixir-format
 msgid "Entity Name (Singular)"
 msgstr "Название сущности (единственное число)"
@@ -1032,7 +1021,7 @@ msgstr "Сущность была удалена в другой сессии."
 msgid "Export All"
 msgstr "Экспортировать все"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2859
+#: lib/phoenix_kit_entities/web/entity_form.ex:2890
 #, elixir-autogen, elixir-format
 msgid "Export Now"
 msgstr "Экспортировать сейчас"
@@ -1059,7 +1048,7 @@ msgstr "Ошибка экспорта"
 msgid "Export now"
 msgstr "Экспортировать сейчас"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2918
+#: lib/phoenix_kit_entities/web/entity_form.ex:2949
 #, elixir-autogen, elixir-format
 msgid "Export path"
 msgstr "Путь экспорта"
@@ -1087,7 +1076,7 @@ msgid "Exporting..."
 msgstr "Экспорт..."
 
 #: lib/phoenix_kit_entities/web/entities_settings.ex:952
-#: lib/phoenix_kit_entities/web/entity_form.ex:2855
+#: lib/phoenix_kit_entities/web/entity_form.ex:2886
 #, elixir-autogen, elixir-format
 msgid "Exporting…"
 msgstr "Экспорт…"
@@ -1172,17 +1161,17 @@ msgstr "Не удалось обновить статус"
 msgid "Field Configuration:"
 msgstr "Настройка поля:"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:3024
+#: lib/phoenix_kit_entities/web/entity_form.ex:3055
 #, elixir-autogen, elixir-format
 msgid "Field Label"
 msgstr "Подпись поля"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:3029
+#: lib/phoenix_kit_entities/web/entity_form.ex:3060
 #, elixir-autogen, elixir-format
 msgid "Field Name"
 msgstr "Имя поля"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:3001
+#: lib/phoenix_kit_entities/web/entity_form.ex:3032
 #, elixir-autogen, elixir-format
 msgid "Field Type"
 msgstr "Тип поля"
@@ -1212,7 +1201,7 @@ msgstr "Ошибки валидации полей: %{errors}"
 msgid "Fields"
 msgstr "Поля"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:3099
+#: lib/phoenix_kit_entities/web/entity_form.ex:3130
 #, elixir-autogen, elixir-format
 msgid "File Upload Settings"
 msgstr "Настройки загрузки файлов"
@@ -1237,32 +1226,22 @@ msgstr "Загрузка файлов в формах администратор
 msgid "File uploads work in public forms (contact forms, etc.)"
 msgstr "Загрузка файлов работает в публичных формах (формы обратной связи и т.д.)"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1124
-#, elixir-autogen, elixir-format
-msgid "Filter by Status"
-msgstr "Фильтр по статусу"
-
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1117
-#, elixir-autogen, elixir-format
-msgid "Filters & Search"
-msgstr "Фильтры и поиск"
-
-#: lib/phoenix_kit_entities/web/entity_form.ex:2311
+#: lib/phoenix_kit_entities/web/entity_form.ex:2342
 #, elixir-autogen, elixir-format
 msgid "Form Description (Optional)"
 msgstr "Описание формы (необязательно)"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2357
+#: lib/phoenix_kit_entities/web/entity_form.ex:2388
 #, elixir-autogen, elixir-format
 msgid "Form Fields"
 msgstr "Поля формы"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2742
+#: lib/phoenix_kit_entities/web/entity_form.ex:2773
 #, elixir-autogen, elixir-format
 msgid "Form Statistics"
 msgstr "Статистика формы"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2296
+#: lib/phoenix_kit_entities/web/entity_form.ex:2327
 #, elixir-autogen, elixir-format
 msgid "Form Title"
 msgstr "Заголовок формы"
@@ -1291,18 +1270,18 @@ msgstr "Общие"
 
 #: lib/phoenix_kit_entities/web/data_form.ex:1538
 #: lib/phoenix_kit_entities/web/data_form.ex:1690
-#: lib/phoenix_kit_entities/web/entity_form.ex:1954
-#: lib/phoenix_kit_entities/web/entity_form.ex:3048
+#: lib/phoenix_kit_entities/web/entity_form.ex:1967
+#: lib/phoenix_kit_entities/web/entity_form.ex:3079
 #, elixir-autogen, elixir-format
 msgid "Generate"
 msgstr "Сгенерировать"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:1951
+#: lib/phoenix_kit_entities/web/entity_form.ex:1964
 #, elixir-autogen, elixir-format
 msgid "Generate from Entity Name"
 msgstr "Сгенерировать из названия сущности"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:3046
+#: lib/phoenix_kit_entities/web/entity_form.ex:3077
 #, elixir-autogen, elixir-format
 msgid "Generate from Field Label"
 msgstr "Сгенерировать из подписи поля"
@@ -1313,7 +1292,7 @@ msgstr "Сгенерировать из подписи поля"
 msgid "Generate from title"
 msgstr "Сгенерировать из заголовка"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1325
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1320
 #, elixir-autogen, elixir-format
 msgid "Get started by adding your first data record."
 msgstr "Начните с добавления вашей первой записи данных."
@@ -1329,12 +1308,12 @@ msgstr "Начните с создания первого пользовател
 msgid "Go to Data"
 msgstr "Перейти к данным"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2032
+#: lib/phoenix_kit_entities/web/entity_form.ex:2053
 #, elixir-autogen, elixir-format
 msgid "Heroicon name or click Browse"
 msgstr "Название Heroicon или нажмите «Обзор»"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2511
+#: lib/phoenix_kit_entities/web/entity_form.ex:2542
 #, elixir-autogen, elixir-format
 msgid "Honeypot Protection"
 msgstr "Защита Honeypot"
@@ -1345,7 +1324,7 @@ msgstr "Защита Honeypot"
 msgid "IDENTICAL"
 msgstr "ИДЕНТИЧНО"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:1993
+#: lib/phoenix_kit_entities/web/entity_form.ex:2014
 #, elixir-autogen, elixir-format
 msgid "Icon (Optional)"
 msgstr "Значок (необязательно)"
@@ -1428,7 +1407,7 @@ msgstr "Оставьте пустым для автоматической ген
 msgid "Leave empty to use the primary language slug"
 msgstr "Оставьте пустым для использования slug основного языка"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2672
+#: lib/phoenix_kit_entities/web/entity_form.ex:2703
 #, elixir-autogen, elixir-format
 msgid "Limit submissions to 5 per minute per IP address"
 msgstr "Ограничивать отправку до 5 заявок в минуту с одного IP-адреса"
@@ -1438,27 +1417,22 @@ msgstr "Ограничивать отправку до 5 заявок в мин�
 msgid "Live Sync"
 msgstr "Синхронизация в реальном времени"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:998
-#, elixir-autogen, elixir-format
-msgid "Live content"
-msgstr "Активный контент"
-
 #: lib/phoenix_kit_entities/web/entities.ex:210
 #, elixir-autogen, elixir-format
 msgid "Manage custom content types and field definitions"
 msgstr "Управляйте пользовательскими типами контента и определениями полей"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2084
+#: lib/phoenix_kit_entities/web/entity_form.ex:2115
 #, elixir-autogen, elixir-format
 msgid "Manual (custom order)"
 msgstr "Вручную (произвольный порядок)"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2090
+#: lib/phoenix_kit_entities/web/entity_form.ex:2121
 #, elixir-autogen, elixir-format
 msgid "Manual mode enables drag-and-drop reordering of records"
 msgstr "Ручной режим позволяет менять порядок записей перетаскиванием"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:3124
+#: lib/phoenix_kit_entities/web/entity_form.ex:3155
 #, elixir-autogen, elixir-format
 msgid "Max File Size (MB)"
 msgstr "Максимальный размер файла (МБ)"
@@ -1468,7 +1442,7 @@ msgstr "Максимальный размер файла (МБ)"
 msgid "Max files:"
 msgstr "Макс. файлов:"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:3117
+#: lib/phoenix_kit_entities/web/entity_form.ex:3148
 #, elixir-autogen, elixir-format
 msgid "Max number of files users can upload (1-20)"
 msgstr "Максимальное количество файлов, которые может загрузить пользователь (1-20)"
@@ -1478,12 +1452,12 @@ msgstr "Максимальное количество файлов, которы
 msgid "Max size:"
 msgstr "Макс. размер:"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:3104
+#: lib/phoenix_kit_entities/web/entity_form.ex:3135
 #, elixir-autogen, elixir-format
 msgid "Maximum Files"
 msgstr "Максимум файлов"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:3138
+#: lib/phoenix_kit_entities/web/entity_form.ex:3169
 #, elixir-autogen, elixir-format
 msgid "Maximum size per file in megabytes (1-100 MB)"
 msgstr "Максимальный размер одного файла в мегабайтах (1-100 МБ)"
@@ -1504,25 +1478,25 @@ msgstr "Зеркалирование и экспорт"
 msgid "Missing required keys: %{keys}"
 msgstr "Отсутствуют обязательные ключи: %{keys}"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2164
+#: lib/phoenix_kit_entities/web/entity_form.ex:2195
 #, elixir-autogen, elixir-format
 msgid "Move down"
 msgstr "Переместить вниз"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1248
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1243
 #, elixir-autogen, elixir-format
 msgid "Move the selected records to the trash? Restore from the Trash filter if needed."
 msgstr "Переместить выбранные записи в корзину? При необходимости их можно восстановить через фильтр «Корзина»."
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1551
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1566
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1750
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1765
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1546
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1561
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1745
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1760
 #, elixir-autogen, elixir-format
 msgid "Move to trash"
 msgstr "Переместить в корзину"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2154
+#: lib/phoenix_kit_entities/web/entity_form.ex:2185
 #, elixir-autogen, elixir-format
 msgid "Move up"
 msgstr "Переместить вверх"
@@ -1575,17 +1549,17 @@ msgstr "Новая запись"
 msgid "No"
 msgstr "Нет"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1386
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1381
 #, elixir-autogen, elixir-format
 msgid "No Data Records Found"
 msgstr "Записи данных не найдены"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1322
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1317
 #, elixir-autogen, elixir-format
 msgid "No Data Records Yet"
 msgstr "Пока нет записей данных"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1307
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1302
 #, elixir-autogen, elixir-format
 msgid "No Entities Created Yet"
 msgstr "Пока не создано ни одной сущности"
@@ -1595,7 +1569,7 @@ msgstr "Пока не создано ни одной сущности"
 msgid "No Entities Yet"
 msgstr "Сущностей пока нет"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2126
+#: lib/phoenix_kit_entities/web/entity_form.ex:2157
 #, elixir-autogen, elixir-format
 msgid "No Fields Yet"
 msgstr "Полей пока нет"
@@ -1605,7 +1579,7 @@ msgstr "Полей пока нет"
 msgid "No data records"
 msgstr "Нет записей данных"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1389
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1384
 #, elixir-autogen, elixir-format
 msgid "No data records match your current filters. Try adjusting your search criteria or clearing the filters."
 msgstr "Ни одна запись данных не соответствует текущим фильтрам. Попробуйте изменить критерии поиска или очистить фильтры."
@@ -1625,22 +1599,22 @@ msgstr "Не найдено сущностей для импорта"
 msgid "No entity linked to this project yet."
 msgstr "К этому проекту пока не привязана сущность."
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:3312
+#: lib/phoenix_kit_entities/web/entity_form.ex:3343
 #, elixir-autogen, elixir-format
 msgid "No icons found matching your search"
 msgstr "Значки, соответствующие запросу, не найдены"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:3205
+#: lib/phoenix_kit_entities/web/entity_form.ex:3236
 #, elixir-autogen, elixir-format
 msgid "No options added yet. Click \"Add Option\" to get started."
 msgstr "Варианты пока не добавлены. Нажмите \"Добавить вариант\", чтобы начать."
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1373
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1368
 #, elixir-autogen, elixir-format
 msgid "No published entities available. Publish an entity first to create data."
 msgstr "Нет доступных опубликованных сущностей. Сначала опубликуйте сущность, чтобы создавать данные."
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1102
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1089
 #, elixir-autogen, elixir-format
 msgid "No published entities available. Publish an entity first."
 msgstr "Нет доступных опубликованных сущностей. Сначала опубликуйте сущность."
@@ -1701,7 +1675,7 @@ msgstr "Числовой"
 msgid "Numeric input (integer or decimal)"
 msgstr "Числовой ввод (целое число или десятичная дробь)"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2060
+#: lib/phoenix_kit_entities/web/entity_form.ex:2090
 #, elixir-autogen, elixir-format
 msgid "Only published can be used"
 msgstr "Использовать можно только опубликованные"
@@ -1711,13 +1685,13 @@ msgstr "Использовать можно только опубликован�
 msgid "Open in Entities"
 msgstr "Открыть в «Сущностях»"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:3189
+#: lib/phoenix_kit_entities/web/entity_form.ex:3220
 #, elixir-autogen, elixir-format
 msgid "Option value"
 msgstr "Значение варианта"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2240
-#: lib/phoenix_kit_entities/web/entity_form.ex:3168
+#: lib/phoenix_kit_entities/web/entity_form.ex:2271
+#: lib/phoenix_kit_entities/web/entity_form.ex:3199
 #, elixir-autogen, elixir-format
 msgid "Options"
 msgstr "Варианты"
@@ -1741,13 +1715,13 @@ msgstr "Родитель"
 msgid "Paste an entity UUID into this tab's settings in the project's Modules & features panel."
 msgstr "Вставьте UUID сущности в настройки этой вкладки на панели «Модули и функции» проекта."
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1217
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1212
 #, elixir-autogen, elixir-format
 msgid "Permanently delete the selected records? This cannot be undone, and will fail if any are still referenced by other tables."
 msgstr "Удалить выбранные записи навсегда? Это действие необратимо и завершится ошибкой, если на них всё ещё ссылаются другие таблицы."
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1531
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1730
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1526
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1725
 #, elixir-autogen, elixir-format
 msgid "Permanently delete this record? This cannot be undone, and will fail if it's still referenced by other tables."
 msgstr "Удалить эту запись навсегда? Это действие необратимо и завершится ошибкой, если на неё всё ещё ссылаются другие таблицы."
@@ -1762,7 +1736,7 @@ msgstr "Выберите сущность, чтобы просмотреть е�
 msgid "Please take your time filling out the form."
 msgstr "Пожалуйста, не торопитесь при заполнении формы."
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:1922
+#: lib/phoenix_kit_entities/web/entity_form.ex:1930
 #, elixir-autogen, elixir-format
 msgid "Plural form (e.g., \"Brands\")"
 msgstr "Форма множественного числа (например, \"Бренды\")"
@@ -1772,7 +1746,7 @@ msgstr "Форма множественного числа (например, \"
 msgid "Positions saved, but sort mode could not be switched to manual — order may not survive a refresh."
 msgstr "Позиции сохранены, но не удалось переключить режим сортировки на ручной — порядок может не сохраниться после обновления страницы."
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2259
+#: lib/phoenix_kit_entities/web/entity_form.ex:2290
 #, elixir-autogen, elixir-format
 msgid "Public Form Configuration"
 msgstr "Настройка публичной формы"
@@ -1785,15 +1759,14 @@ msgstr "Публичная форма для этой сущности откл�
 #: lib/phoenix_kit_entities/web/data_form.ex:1594
 #: lib/phoenix_kit_entities/web/data_form.ex:1730
 #: lib/phoenix_kit_entities/web/data_navigator.ex:887
-#: lib/phoenix_kit_entities/web/data_navigator.ex:997
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1133
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1275
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1118
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1270
 #: lib/phoenix_kit_entities/web/entities_settings.ex:856
 #, elixir-autogen, elixir-format
 msgid "Published"
 msgstr "Опубликован"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2048
+#: lib/phoenix_kit_entities/web/entity_form.ex:2069
 #, elixir-autogen, elixir-format
 msgid "Published (active)"
 msgstr "Опубликован (активен)"
@@ -1813,17 +1786,17 @@ msgstr "Переключатели"
 msgid "Radio button group (single choice)"
 msgstr "Группа переключателей (один вариант)"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2669
+#: lib/phoenix_kit_entities/web/entity_form.ex:2700
 #, elixir-autogen, elixir-format
 msgid "Rate Limiting"
 msgstr "Ограничение частоты"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2452
+#: lib/phoenix_kit_entities/web/entity_form.ex:2483
 #, elixir-autogen, elixir-format
 msgid "Record IP address, browser, device info, and referrer for each submission"
 msgstr "Записывать IP-адрес, браузер, информацию об устройстве и источник перехода для каждой заявки"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2067
+#: lib/phoenix_kit_entities/web/entity_form.ex:2098
 #, elixir-autogen, elixir-format
 msgid "Record Ordering"
 msgstr "Порядок записей"
@@ -1875,21 +1848,21 @@ msgstr "Запись обновлена в другой сессии. Показ
 msgid "Records"
 msgstr "Записи"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2538
-#: lib/phoenix_kit_entities/web/entity_form.ex:2628
-#: lib/phoenix_kit_entities/web/entity_form.ex:2707
+#: lib/phoenix_kit_entities/web/entity_form.ex:2569
+#: lib/phoenix_kit_entities/web/entity_form.ex:2659
+#: lib/phoenix_kit_entities/web/entity_form.ex:2738
 #, elixir-autogen, elixir-format
 msgid "Reject silently (fake success)"
 msgstr "Отклонять без уведомления (имитация успеха)"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2547
-#: lib/phoenix_kit_entities/web/entity_form.ex:2619
-#: lib/phoenix_kit_entities/web/entity_form.ex:2698
+#: lib/phoenix_kit_entities/web/entity_form.ex:2578
+#: lib/phoenix_kit_entities/web/entity_form.ex:2650
+#: lib/phoenix_kit_entities/web/entity_form.ex:2729
 #, elixir-autogen, elixir-format
 msgid "Reject with error message"
 msgstr "Отклонять с сообщением об ошибке"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2770
+#: lib/phoenix_kit_entities/web/entity_form.ex:2801
 #, elixir-autogen, elixir-format
 msgid "Rejected"
 msgstr "Отклонено"
@@ -1899,39 +1872,39 @@ msgstr "Отклонено"
 msgid "Relation field requires a target entity"
 msgstr "Для поля связи требуется целевая сущность"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2182
+#: lib/phoenix_kit_entities/web/entity_form.ex:2213
 #, elixir-autogen, elixir-format
 msgid "Required"
 msgstr "Обязательное"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:3071
+#: lib/phoenix_kit_entities/web/entity_form.ex:3102
 #, elixir-autogen, elixir-format
 msgid "Required Field"
 msgstr "Обязательное поле"
 
 #: lib/phoenix_kit_entities/web/data_form.ex:1820
-#: lib/phoenix_kit_entities/web/entity_form.ex:2948
+#: lib/phoenix_kit_entities/web/entity_form.ex:2979
 #, elixir-autogen, elixir-format
 msgid "Reset Changes"
 msgstr "Сбросить изменения"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2827
+#: lib/phoenix_kit_entities/web/entity_form.ex:2858
 #, elixir-autogen, elixir-format
 msgid "Reset Statistics"
 msgstr "Сбросить статистику"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1209
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1240
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1544
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1743
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1204
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1235
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1539
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1738
 #: lib/phoenix_kit_entities/web/entities.ex:382
 #: lib/phoenix_kit_entities/web/entities.ex:510
 #, elixir-autogen, elixir-format
 msgid "Restore"
 msgstr "Восстановить"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1524
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1723
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1519
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1718
 #, elixir-autogen, elixir-format
 msgid "Restore from trash"
 msgstr "Восстановить из корзины"
@@ -1946,21 +1919,21 @@ msgstr "Редактор форматированного текста"
 msgid "Rich text editor (HTML supported)"
 msgstr "Редактор форматированного текста (поддерживается HTML)"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2565
-#: lib/phoenix_kit_entities/web/entity_form.ex:2646
-#: lib/phoenix_kit_entities/web/entity_form.ex:2725
+#: lib/phoenix_kit_entities/web/entity_form.ex:2596
+#: lib/phoenix_kit_entities/web/entity_form.ex:2677
+#: lib/phoenix_kit_entities/web/entity_form.ex:2756
 #, elixir-autogen, elixir-format
 msgid "Save and log warning"
 msgstr "Сохранять и записывать предупреждение в журнал"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2556
-#: lib/phoenix_kit_entities/web/entity_form.ex:2637
-#: lib/phoenix_kit_entities/web/entity_form.ex:2716
+#: lib/phoenix_kit_entities/web/entity_form.ex:2587
+#: lib/phoenix_kit_entities/web/entity_form.ex:2668
+#: lib/phoenix_kit_entities/web/entity_form.ex:2747
 #, elixir-autogen, elixir-format
 msgid "Save but mark as suspicious"
 msgstr "Сохранять, но помечать как подозрительное"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2929
+#: lib/phoenix_kit_entities/web/entity_form.ex:2960
 #, elixir-autogen, elixir-format
 msgid "Save the entity first to configure backup settings."
 msgstr "Сначала сохраните сущность, чтобы настроить параметры резервного копирования."
@@ -1968,35 +1941,30 @@ msgstr "Сначала сохраните сущность, чтобы наст�
 #: lib/phoenix_kit_entities/components/live_data_form.ex:758
 #: lib/phoenix_kit_entities/web/data_form.ex:1437
 #: lib/phoenix_kit_entities/web/data_form.ex:1828
-#: lib/phoenix_kit_entities/web/entity_form.ex:1798
-#: lib/phoenix_kit_entities/web/entity_form.ex:1808
-#: lib/phoenix_kit_entities/web/entity_form.ex:2957
-#: lib/phoenix_kit_entities/web/entity_form.ex:2967
+#: lib/phoenix_kit_entities/web/entity_form.ex:1806
+#: lib/phoenix_kit_entities/web/entity_form.ex:1816
+#: lib/phoenix_kit_entities/web/entity_form.ex:2988
+#: lib/phoenix_kit_entities/web/entity_form.ex:2998
 #, elixir-autogen, elixir-format
 msgid "Saving…"
 msgstr "Сохранение…"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1154
-#, elixir-autogen, elixir-format
-msgid "Search Records"
-msgstr "Поиск записей"
-
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1161
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1156
 #, elixir-autogen, elixir-format
 msgid "Search by title or slug..."
 msgstr "Поиск по названию или slug..."
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:3276
+#: lib/phoenix_kit_entities/web/entity_form.ex:3307
 #, elixir-autogen, elixir-format
 msgid "Search icons..."
 msgstr "Поиск значков…"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2429
+#: lib/phoenix_kit_entities/web/entity_form.ex:2460
 #, elixir-autogen, elixir-format
 msgid "Security"
 msgstr "Безопасность"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2781
+#: lib/phoenix_kit_entities/web/entity_form.ex:2812
 #, elixir-autogen, elixir-format
 msgid "Security Triggers"
 msgstr "Триггеры безопасности"
@@ -2006,18 +1974,18 @@ msgstr "Триггеры безопасности"
 msgid "Select Dropdown"
 msgstr "Выпадающий список"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1082
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1351
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1069
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1346
 #, elixir-autogen, elixir-format
 msgid "Select Entity Type"
 msgstr "Выберите тип сущности"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1415
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1410
 #, elixir-autogen, elixir-format
 msgid "Select all"
 msgstr "Выбрать все"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:3257
+#: lib/phoenix_kit_entities/web/entity_form.ex:3288
 #, elixir-autogen, elixir-format
 msgid "Select an Icon"
 msgstr "Выберите значок"
@@ -2027,7 +1995,7 @@ msgstr "Выберите значок"
 msgid "Select an option..."
 msgstr "Выберите вариант..."
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2359
+#: lib/phoenix_kit_entities/web/entity_form.ex:2390
 #, elixir-autogen, elixir-format
 msgid "Select which fields to include in the public form. Fields not selected will only be visible in the admin data viewer."
 msgstr "Выберите, какие поля включить в публичную форму. Невыбранные поля будут видны только в средстве просмотра данных админ-панели."
@@ -2037,7 +2005,7 @@ msgstr "Выберите, какие поля включить в публичн
 msgid "Settings reset to defaults (not saved yet)"
 msgstr "Настройки сброшены к значениям по умолчанию (ещё не сохранены)"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2477
+#: lib/phoenix_kit_entities/web/entity_form.ex:2508
 #, elixir-autogen, elixir-format
 msgid "Show detailed error messages when security checks fail (for troubleshooting only)"
 msgstr "Показывать подробные сообщения об ошибках при сбое проверок безопасности (только для отладки)"
@@ -2052,7 +2020,7 @@ msgstr "Показано %{shown} из %{total} — полный список д
 msgid "Single-line text input"
 msgstr "Однострочное текстовое поле"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:1902
+#: lib/phoenix_kit_entities/web/entity_form.ex:1910
 #, elixir-autogen, elixir-format
 msgid "Singular form (e.g., \"Brand\")"
 msgstr "Форма единственного числа (например, \"Бренд\")"
@@ -2069,8 +2037,8 @@ msgid "Skip All"
 msgstr "Пропустить все"
 
 #: lib/phoenix_kit_entities/web/entities_settings.ex:1294
-#: lib/phoenix_kit_entities/web/entity_form.ex:1938
-#: lib/phoenix_kit_entities/web/entity_form.ex:3041
+#: lib/phoenix_kit_entities/web/entity_form.ex:1946
+#: lib/phoenix_kit_entities/web/entity_form.ex:3072
 #, elixir-autogen, elixir-format
 msgid "Slug"
 msgstr "Slug"
@@ -2090,11 +2058,11 @@ msgstr "Что-то пошло не так. Пожалуйста, попробу
 
 #: lib/phoenix_kit_entities/web/data_form.ex:1578
 #: lib/phoenix_kit_entities/web/data_form.ex:1714
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1421
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1416
 #: lib/phoenix_kit_entities/web/entities.ex:274
 #: lib/phoenix_kit_entities/web/entities_settings.ex:1293
 #: lib/phoenix_kit_entities/web/entity_form.ex:1499
-#: lib/phoenix_kit_entities/web/entity_form.ex:2039
+#: lib/phoenix_kit_entities/web/entity_form.ex:2060
 #: lib/phoenix_kit_entities/web/project_data_live.ex:90
 #, elixir-autogen, elixir-format
 msgid "Status"
@@ -2105,40 +2073,35 @@ msgstr "Статус"
 msgid "Status updated to %{status}"
 msgstr "Статус изменён на %{status}"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1020
-#, elixir-autogen, elixir-format
-msgid "Stored content"
-msgstr "Сохранённый контент"
-
 #: lib/phoenix_kit_entities/components/entity_form.ex:41
 #: lib/phoenix_kit_entities/components/entity_form.ex:45
-#: lib/phoenix_kit_entities/web/entity_form.ex:2330
-#: lib/phoenix_kit_entities/web/entity_form.ex:2332
+#: lib/phoenix_kit_entities/web/entity_form.ex:2361
+#: lib/phoenix_kit_entities/web/entity_form.ex:2363
 #, elixir-autogen, elixir-format
 msgid "Submit"
 msgstr "Отправить"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2325
+#: lib/phoenix_kit_entities/web/entity_form.ex:2356
 #, elixir-autogen, elixir-format
 msgid "Submit Button Text"
 msgstr "Текст кнопки отправки"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2342
+#: lib/phoenix_kit_entities/web/entity_form.ex:2373
 #, elixir-autogen, elixir-format
 msgid "Success Message"
 msgstr "Сообщение об успехе"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2760
+#: lib/phoenix_kit_entities/web/entity_form.ex:2791
 #, elixir-autogen, elixir-format
 msgid "Successful"
 msgstr "Успешно"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2878
+#: lib/phoenix_kit_entities/web/entity_form.ex:2909
 #, elixir-autogen, elixir-format
 msgid "Sync Definition to File"
 msgstr "Синхронизировать определение с файлом"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2902
+#: lib/phoenix_kit_entities/web/entity_form.ex:2933
 #, elixir-autogen, elixir-format
 msgid "Sync Records to File"
 msgstr "Синхронизировать записи с файлом"
@@ -2148,7 +2111,7 @@ msgstr "Синхронизировать записи с файлом"
 msgid "Sync entity definitions and data to filesystem for version control and backup."
 msgstr "Синхронизируйте определения сущностей и данные с файловой системой для контроля версий и резервного копирования."
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:1987
+#: lib/phoenix_kit_entities/web/entity_form.ex:2008
 #, elixir-autogen, elixir-format
 msgid "System Settings"
 msgstr "Системные настройки"
@@ -2158,7 +2121,7 @@ msgstr "Системные настройки"
 msgid "System Status"
 msgstr "Статус системы"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1043
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1030
 #: lib/phoenix_kit_entities/web/entities.ex:231
 #, elixir-autogen, elixir-format
 msgid "Table view"
@@ -2179,8 +2142,8 @@ msgstr "Текст"
 msgid "Text Area"
 msgstr "Текстовая область"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2345
-#: lib/phoenix_kit_entities/web/entity_form.ex:2351
+#: lib/phoenix_kit_entities/web/entity_form.ex:2376
+#: lib/phoenix_kit_entities/web/entity_form.ex:2382
 #, elixir-autogen, elixir-format
 msgid "Thank you for your submission!"
 msgstr "Спасибо за вашу заявку!"
@@ -2196,7 +2159,7 @@ msgstr "При отправке формы произошла ошибка."
 msgid "There was an error submitting the form. Please try again."
 msgstr "При отправке формы произошла ошибка. Пожалуйста, попробуйте ещё раз."
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:1778
+#: lib/phoenix_kit_entities/web/entity_form.ex:1786
 #, elixir-autogen, elixir-format
 msgid "This entity is currently being edited by another user. You are in view-only mode."
 msgstr "Эта сущность сейчас редактируется другим пользователем. Вы находитесь в режиме только для просмотра."
@@ -2236,14 +2199,14 @@ msgstr "Эта запись не находится в корзине."
 msgid "This record was removed in another session."
 msgstr "Эта запись была удалена в другой сессии."
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2588
+#: lib/phoenix_kit_entities/web/entity_form.ex:2619
 #, elixir-autogen, elixir-format
 msgid "Time-based Validation"
 msgstr "Проверка по времени"
 
 #: lib/phoenix_kit_entities/web/data_form.ex:1505
 #: lib/phoenix_kit_entities/web/data_form.ex:1665
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1417
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1412
 #: lib/phoenix_kit_entities/web/entities_settings.ex:1295
 #: lib/phoenix_kit_entities/web/project_data_live.ex:89
 #, elixir-autogen, elixir-format
@@ -2255,18 +2218,13 @@ msgstr "Заголовок"
 msgid "Too many submissions. Please try again later."
 msgstr "Слишком много отправок. Пожалуйста, попробуйте позже."
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:986
-#, elixir-autogen, elixir-format
-msgid "Total Records"
-msgstr "Всего записей"
-
-#: lib/phoenix_kit_entities/web/entity_form.ex:2750
+#: lib/phoenix_kit_entities/web/entity_form.ex:2781
 #, elixir-autogen, elixir-format
 msgid "Total Submissions"
 msgstr "Всего заявок"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1144
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1253
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1139
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1248
 #, elixir-autogen, elixir-format
 msgid "Trash"
 msgstr "Корзина"
@@ -2313,19 +2271,19 @@ msgstr "Неизвестный файл"
 msgid "Update %{entity}"
 msgstr "Обновить %{entity}"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:1800
-#: lib/phoenix_kit_entities/web/entity_form.ex:2959
+#: lib/phoenix_kit_entities/web/entity_form.ex:1808
+#: lib/phoenix_kit_entities/web/entity_form.ex:2990
 #, elixir-autogen, elixir-format
 msgid "Update Entity"
 msgstr "Обновить сущность"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:3236
+#: lib/phoenix_kit_entities/web/entity_form.ex:3267
 #, elixir-autogen, elixir-format
 msgid "Update Field"
 msgstr "Обновить поле"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:1811
-#: lib/phoenix_kit_entities/web/entity_form.ex:2970
+#: lib/phoenix_kit_entities/web/entity_form.ex:1819
+#: lib/phoenix_kit_entities/web/entity_form.ex:3001
 #, elixir-autogen, elixir-format
 msgid "Update and Return"
 msgstr "Обновить и вернуться"
@@ -2346,7 +2304,7 @@ msgstr "Обновлён"
 msgid "Use lowercase letters, numbers, and hyphens only."
 msgstr "Используйте только строчные буквы, цифры и дефисы."
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:1838
+#: lib/phoenix_kit_entities/web/entity_form.ex:1846
 #, elixir-autogen, elixir-format
 msgid "Use the language tabs below to translate this entity's name, plural name, slug, and description. The primary language (marked with a star) is required. Other languages are optional — any empty fields will fall back to the primary language value."
 msgstr "Используйте вкладки языков ниже, чтобы перевести название, форму множественного числа, slug и описание этой сущности. Основной язык (отмечен звёздочкой) обязателен. Остальные языки необязательны — пустые поля будут заменены значением основного языка."
@@ -2361,8 +2319,8 @@ msgstr "Пользователи"
 msgid "Validation error — your data is preserved."
 msgstr "Ошибка валидации — ваши данные сохранены."
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1505
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1704
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1500
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1699
 #, elixir-autogen, elixir-format
 msgid "View"
 msgstr "Просмотреть"
@@ -2377,17 +2335,12 @@ msgstr "WYSIWYG-редактор HTML"
 msgid "Website URL with validation"
 msgstr "URL веб-сайта с проверкой"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2522
-#: lib/phoenix_kit_entities/web/entity_form.ex:2601
-#: lib/phoenix_kit_entities/web/entity_form.ex:2680
+#: lib/phoenix_kit_entities/web/entity_form.ex:2553
+#: lib/phoenix_kit_entities/web/entity_form.ex:2632
+#: lib/phoenix_kit_entities/web/entity_form.ex:2711
 #, elixir-autogen, elixir-format
 msgid "When triggered:"
 msgstr "При срабатывании:"
-
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1009
-#, elixir-autogen, elixir-format
-msgid "Work in progress"
-msgstr "В процессе"
 
 #: lib/phoenix_kit_entities/components/live_data_form.ex:911
 #, elixir-autogen, elixir-format
@@ -2430,7 +2383,7 @@ msgstr "запись не может быть родителем самой се
 msgid "auto-generated-slug"
 msgstr "auto-generated-slug"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:1939
+#: lib/phoenix_kit_entities/web/entity_form.ex:1947
 #, elixir-autogen, elixir-format
 msgid "brand"
 msgstr "brand"
@@ -2502,12 +2455,12 @@ msgstr "поле '%{label}' должно быть одним из: %{options}"
 msgid "field '%{label}' must be true or false"
 msgstr "поле '%{label}' должно быть true или false"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:3055
+#: lib/phoenix_kit_entities/web/entity_form.ex:3086
 #, elixir-autogen, elixir-format
 msgid "field_name"
 msgstr "field_name"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:1999
+#: lib/phoenix_kit_entities/web/entity_form.ex:2020
 #, elixir-autogen, elixir-format
 msgid "hero-document-text"
 msgstr "hero-document-text"
@@ -2591,12 +2544,12 @@ msgstr "родительская запись не существует"
 msgid "per file"
 msgstr "на файл"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:3061
+#: lib/phoenix_kit_entities/web/entity_form.ex:3092
 #, elixir-autogen, elixir-format
 msgid "snake_case identifier"
 msgstr "идентификатор в формате snake_case"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:1943
+#: lib/phoenix_kit_entities/web/entity_form.ex:1954
 #, elixir-autogen, elixir-format
 msgid "snake_case identifier used in the system"
 msgstr "идентификатор в формате snake_case, используемый в системе"
@@ -2620,26 +2573,26 @@ msgstr "— Нет (верхний уровень) —"
 
 #: lib/phoenix_kit_entities/components/field_input.ex:362
 #: lib/phoenix_kit_entities/components/field_input.ex:380
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1206
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1214
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1229
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1237
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1245
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1201
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1209
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1224
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1232
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1240
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1269
 #: lib/phoenix_kit_entities/web/data_navigator.ex:1274
 #: lib/phoenix_kit_entities/web/data_navigator.ex:1279
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1284
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1522
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1529
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1542
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1549
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1557
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1564
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1721
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1728
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1741
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1748
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1756
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1763
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1517
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1524
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1537
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1544
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1552
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1559
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1716
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1723
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1736
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1743
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1751
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1758
 #: lib/phoenix_kit_entities/web/entities.ex:380
 #: lib/phoenix_kit_entities/web/entities.ex:388
 #: lib/phoenix_kit_entities/web/entities.ex:508
@@ -2653,7 +2606,7 @@ msgstr "— Нет (верхний уровень) —"
 #: lib/phoenix_kit_entities/web/entities_settings.ex:1056
 #: lib/phoenix_kit_entities/web/entities_settings.ex:1069
 #: lib/phoenix_kit_entities/web/entities_settings.ex:1095
-#: lib/phoenix_kit_entities/web/entity_form.ex:2196
+#: lib/phoenix_kit_entities/web/entity_form.ex:2227
 #, elixir-autogen, elixir-format
 msgid "…"
 msgstr "…"
@@ -2671,7 +2624,7 @@ msgstr[2] "%{count} полей"
 msgid "%{key}: %{error}"
 msgstr "%{key}: %{error}"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1672
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1667
 #: lib/phoenix_kit_entities/web/entities.ex:526
 #, elixir-autogen, elixir-format
 msgid "Created %{date}"
@@ -2682,17 +2635,17 @@ msgstr "Создано %{date}"
 msgid "File Upload"
 msgstr "Загрузка файла"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2787
+#: lib/phoenix_kit_entities/web/entity_form.ex:2818
 #, elixir-autogen, elixir-format
 msgid "Honeypot: %{count}"
 msgstr "Honeypot: %{count}"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2811
+#: lib/phoenix_kit_entities/web/entity_form.ex:2842
 #, elixir-autogen, elixir-format
 msgid "Last submission: %{datetime}"
 msgstr "Последняя отправка: %{datetime}"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2799
+#: lib/phoenix_kit_entities/web/entity_form.ex:2830
 #, elixir-autogen, elixir-format
 msgid "Rate Limited: %{count}"
 msgstr "Ограничено по частоте: %{count}"
@@ -2702,17 +2655,12 @@ msgstr "Ограничено по частоте: %{count}"
 msgid "Section Heading"
 msgstr "Заголовок раздела"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:2793
+#: lib/phoenix_kit_entities/web/entity_form.ex:2824
 #, elixir-autogen, elixir-format
 msgid "Too Fast: %{count}"
 msgstr "Слишком быстро: %{count}"
 
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1143
-#, elixir-autogen, elixir-format
-msgid "Trash (%{count})"
-msgstr "Корзина (%{count})"
-
-#: lib/phoenix_kit_entities/web/data_navigator.ex:1682
+#: lib/phoenix_kit_entities/web/data_navigator.ex:1677
 #, elixir-autogen, elixir-format
 msgid "Updated %{date}"
 msgstr "Обновлено %{date}"
@@ -2727,7 +2675,7 @@ msgstr "от %{email}"
 msgid "entity_uuid must be present"
 msgstr "entity_uuid должен быть указан"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:3218
+#: lib/phoenix_kit_entities/web/entity_form.ex:3249
 #, elixir-autogen, elixir-format
 msgid "Allow a custom \"Other\" option"
 msgstr "Разрешить пользовательский вариант \"Другое\""
@@ -2808,7 +2756,7 @@ msgstr "Выбрать…"
 msgid "Managed by %{owner}"
 msgstr "Управляется модулем %{owner}"
 
-#: lib/phoenix_kit_entities/web/entity_form.ex:1765
+#: lib/phoenix_kit_entities/web/entity_form.ex:1773
 #, elixir-autogen, elixir-format
 msgid "Managed by the %{owner} module. Its slug, status and %{owner}-locked settings are protected — everything else is edited right here."
 msgstr "Управляется модулем %{owner}. Slug, статус и заблокированные модулем настройки защищены — всё остальное редактируется здесь."
@@ -2837,3 +2785,13 @@ msgstr "Выбрать видео"
 #, elixir-autogen, elixir-format
 msgid "The blueprint's slug, status and module-locked settings are protected — revert those changes to save."
 msgstr "Slug, статус и заблокированные модулем настройки защищены — отмените эти изменения, чтобы сохранить."
+
+#: lib/phoenix_kit_entities/web/entity_form.ex:2088
+#, elixir-autogen, elixir-format
+msgid "Locked — the owning module controls the lifecycle"
+msgstr "Заблокировано — жизненным циклом управляет владеющий модуль"
+
+#: lib/phoenix_kit_entities/web/entity_form.ex:1953
+#, elixir-autogen, elixir-format
+msgid "Locked — the owning module keys on this slug"
+msgstr "Заблокировано — владеющий модуль привязан к этому слагу"

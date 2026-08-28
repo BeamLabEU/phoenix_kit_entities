@@ -946,6 +946,40 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
 
   def format_data_preview(_), do: ""
 
+  # Nothing to filter on a brand-new entity: no records, no trash, no
+  # query, default status. The page is then just its title, Add, and the
+  # empty state — the case that used to render four giant zeros.
+  defp show_filters?(assigns) do
+    assigns.total_records > 0 or assigns.trashed_records > 0 or
+      assigns.search_term != "" or assigns.selected_status != "all"
+  end
+
+  attr(:status, :string, required: true)
+  attr(:label, :string, required: true)
+  attr(:count, :integer, required: true)
+  attr(:selected, :string, required: true)
+
+  # One status, its count, and the filtering it always should have done.
+  defp status_chip(assigns) do
+    ~H"""
+    <button
+      type="button"
+      phx-click="filter_by_status"
+      phx-value-status={@status}
+      aria-pressed={to_string(@selected == @status)}
+      class={["btn btn-sm gap-2", if(@selected == @status, do: "btn-primary", else: "btn-ghost")]}
+    >
+      {@label}
+      <span class={[
+        "badge badge-sm",
+        if(@selected == @status, do: "badge-neutral", else: "badge-ghost")
+      ]}>
+        {@count}
+      </span>
+    </button>
+    """
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -973,53 +1007,6 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
             </p>
           <% end %>
         </.admin_page_header>
-
-        <%!-- Stats Cards --%>
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div class="bg-primary text-primary-content rounded-2xl p-6 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105">
-            <div class="flex items-center justify-between mb-4">
-              <div class="p-2 bg-base-100/20 rounded-lg">
-                <.icon name="hero-circle-stack" class="w-6 h-6" />
-              </div>
-            </div>
-            <div class="text-3xl font-bold mb-2">{@total_records}</div>
-            <div class="opacity-90 font-medium">{gettext("Total Records")}</div>
-            <div class="opacity-70 text-xs mt-1">{gettext("All data records")}</div>
-          </div>
-
-          <div class="bg-success text-success-content rounded-2xl p-6 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105">
-            <div class="flex items-center justify-between mb-4">
-              <div class="p-2 bg-base-100/20 rounded-lg">
-                <.icon name="hero-bolt" class="w-6 h-6" />
-              </div>
-            </div>
-            <div class="text-3xl font-bold mb-2">{@published_records}</div>
-            <div class="opacity-90 font-medium">{gettext("Published")}</div>
-            <div class="opacity-70 text-xs mt-1">{gettext("Live content")}</div>
-          </div>
-
-          <div class="bg-warning text-warning-content rounded-2xl p-6 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105">
-            <div class="flex items-center justify-between mb-4">
-              <div class="p-2 bg-base-100/20 rounded-lg">
-                <.icon name="hero-pencil" class="w-6 h-6" />
-              </div>
-            </div>
-            <div class="text-3xl font-bold mb-2">{@draft_records}</div>
-            <div class="opacity-90 font-medium">{gettext("Drafts")}</div>
-            <div class="opacity-70 text-xs mt-1">{gettext("Work in progress")}</div>
-          </div>
-
-          <div class="bg-neutral text-neutral-content rounded-2xl p-6 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105">
-            <div class="flex items-center justify-between mb-4">
-              <div class="p-2 bg-base-100/20 rounded-lg">
-                <.icon name="hero-archive-box" class="w-6 h-6" />
-              </div>
-            </div>
-            <div class="text-3xl font-bold mb-2">{@archived_records}</div>
-            <div class="opacity-90 font-medium">{gettext("Archived")}</div>
-            <div class="opacity-70 text-xs mt-1">{gettext("Stored content")}</div>
-          </div>
-        </div>
 
         <%!-- Action Bar --%>
         <div class="flex flex-col sm:flex-row justify-end items-start sm:items-center mb-6 gap-4">
@@ -1110,63 +1097,71 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
           </div>
         </div>
 
-        <%!-- Filters Section --%>
-        <div class="card bg-base-100 shadow-xl mb-6">
-          <div class="card-body">
-            <h2 class="card-title text-xl mb-4">
-              <.icon name="hero-funnel" class="w-5 h-5" /> {gettext("Filters & Search")}
-            </h2>
-
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <%!-- Status Filter --%>
-              <div>
-                <label class="label">
-                  <span class="fieldset-legend">{gettext("Filter by Status")}</span>
-                </label>
-                <.form for={%{}} phx-change="filter_by_status">
-                  <label class="select w-full">
-                    <select name="status">
-                      <option value="all" selected={@selected_status == "all"}>
-                        {gettext("All Statuses")}
-                      </option>
-                      <option value="published" selected={@selected_status == "published"}>
-                        {gettext("Published")}
-                      </option>
-                      <option value="draft" selected={@selected_status == "draft"}>
-                        {gettext("Draft")}
-                      </option>
-                      <option value="archived" selected={@selected_status == "archived"}>
-                        {gettext("Archived")}
-                      </option>
-                      <option value="trashed" selected={@selected_status == "trashed"}>
-                        {if @trashed_records > 0,
-                          do: gettext("Trash (%{count})", count: @trashed_records),
-                          else: gettext("Trash")}
-                      </option>
-                    </select>
-                  </label>
-                </.form>
-              </div>
-
-              <%!-- Search --%>
-              <div>
-                <label class="label">
-                  <span class="fieldset-legend">{gettext("Search Records")}</span>
-                </label>
-                <.form for={%{}} phx-change="search" phx-submit="search" class="join w-full">
-                  <input
-                    type="text"
-                    name="search[term]"
-                    value={@search_term}
-                    placeholder={gettext("Search by title or slug...")}
-                    class="input join-item flex-1"
-                  />
-                  <button type="submit" class="btn btn-primary join-item">
-                    <.icon name="hero-magnifying-glass" class="w-4 h-4" />
-                  </button>
-                </.form>
-              </div>
+        <%!-- Filters. The counts used to be four 130px dashboard cards
+             above the fold restating this very control (Max/boss,
+             2026-08-28: clients see this page too). They are now ON the
+             filter: same numbers, one row, and clicking actually
+             filters. Statuses that are empty stay out of the way unless
+             they are the current view — a brand-new entity showed four
+             giant zeros. --%>
+        <div :if={show_filters?(assigns)} class="card bg-base-100 shadow-xl mb-6">
+          <div class="card-body gap-3">
+            <div class="flex flex-wrap items-center gap-2">
+              <.status_chip
+                status="all"
+                label={gettext("All")}
+                count={@total_records}
+                selected={@selected_status}
+              />
+              <.status_chip
+                status="published"
+                label={gettext("Published")}
+                count={@published_records}
+                selected={@selected_status}
+              />
+              <.status_chip
+                :if={@draft_records > 0 or @selected_status == "draft"}
+                status="draft"
+                label={gettext("Drafts")}
+                count={@draft_records}
+                selected={@selected_status}
+              />
+              <.status_chip
+                :if={@archived_records > 0 or @selected_status == "archived"}
+                status="archived"
+                label={gettext("Archived")}
+                count={@archived_records}
+                selected={@selected_status}
+              />
+              <.status_chip
+                :if={@trashed_records > 0 or @selected_status == "trashed"}
+                status="trashed"
+                label={gettext("Trash")}
+                count={@trashed_records}
+                selected={@selected_status}
+              />
             </div>
+
+            <.form
+              for={%{}}
+              id="data-navigator-search"
+              phx-change="search"
+              phx-submit="search"
+              class="join w-full"
+            >
+              <input
+                type="text"
+                name="search[term]"
+                value={@search_term}
+                placeholder={gettext("Search by title or slug...")}
+                phx-debounce="250"
+                autocomplete="off"
+                class="input join-item flex-1"
+              />
+              <button type="submit" class="btn btn-primary join-item">
+                <.icon name="hero-magnifying-glass" class="w-4 h-4" />
+              </button>
+            </.form>
 
             <%!-- Clear Filters --%>
             <%= if @selected_status != "all" || @search_term != "" do %>
