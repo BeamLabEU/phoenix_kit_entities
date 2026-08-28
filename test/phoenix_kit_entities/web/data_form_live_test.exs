@@ -473,14 +473,72 @@ defmodule PhoenixKitEntities.Web.DataFormLiveTest do
       refute has_element?(view, ~s|input[name="phoenix_kit_entity_data[title]"][phx-debounce]|)
     end
 
+    test "it keeps following once a slug already exists (the real payload)",
+         %{conn: conn} = ctx do
+      # The browser posts the WHOLE form, so after the first derivation
+      # every later keystroke arrives with the slug input's current value
+      # attached. A test that omits it passes for the wrong reason: the
+      # "" branch regenerates unconditionally.
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, "/en/admin/entities/#{ctx.entity.name}/data/new")
+
+      html =
+        render_change(view, "validate", %{
+          "phoenix_kit_entity_data" => %{"title" => "Walnut Oak", "slug" => ""}
+        })
+
+      assert html =~ ~s(value="walnut-oak")
+
+      html =
+        render_change(view, "validate", %{
+          "phoenix_kit_entity_data" => %{"title" => "Red", "slug" => "walnut-oak"}
+        })
+
+      assert html =~ ~s(value="red")
+      refute html =~ ~s(value="walnut-oak")
+    end
+
+    test "a STALE slug echo doesn't stop it (the bug live typing exposed)",
+         %{conn: conn} = ctx do
+      # With no debounce the client posts the slug it last rendered, which
+      # lags the server by a keystroke or two. Deciding "is this still
+      # auto-generated?" from that stale echo froze the slug after the
+      # first character on a real (remote) connection, while every
+      # tidy-params test passed.
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, "/en/admin/entities/#{ctx.entity.name}/data/new")
+
+      render_change(view, "validate", %{
+        "phoenix_kit_entity_data" => %{"title" => "W", "slug" => ""}
+      })
+
+      # Every subsequent post carries a slug from BEFORE the server's last
+      # derivation — "w" while the title has already reached "Walnut".
+      html =
+        render_change(view, "validate", %{
+          "phoenix_kit_entity_data" => %{"title" => "Walnut", "slug" => "w"}
+        })
+
+      assert html =~ ~s(value="walnut")
+
+      html =
+        render_change(view, "validate", %{
+          "phoenix_kit_entity_data" => %{"title" => "Walnut Oak", "slug" => "w"}
+        })
+
+      assert html =~ ~s(value="walnut-oak")
+    end
+
     test "a hand-typed slug stops following the title", %{conn: conn} = ctx do
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
       {:ok, view, _html} = live(conn, "/en/admin/entities/#{ctx.entity.name}/data/new")
 
       render_change(view, "validate", %{"phoenix_kit_entity_data" => %{"title" => "Walnut"}})
 
+      # Typing IN the slug field is what hands ownership over.
       html =
         render_change(view, "validate", %{
+          "_target" => ["phoenix_kit_entity_data", "slug"],
           "phoenix_kit_entity_data" => %{"title" => "Walnut", "slug" => "my-own-slug"}
         })
 
@@ -494,6 +552,30 @@ defmodule PhoenixKitEntities.Web.DataFormLiveTest do
 
       assert html =~ ~s(value="my-own-slug")
       refute html =~ ~s(value="walnut-door")
+    end
+
+    test "clearing the slug hands it back to the title", %{conn: conn} = ctx do
+      # The field's own hint says "Leave empty to auto-generate from
+      # title", so emptying it has to mean exactly that.
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, "/en/admin/entities/#{ctx.entity.name}/data/new")
+
+      render_change(view, "validate", %{
+        "_target" => ["phoenix_kit_entity_data", "slug"],
+        "phoenix_kit_entity_data" => %{"title" => "Walnut", "slug" => "mine"}
+      })
+
+      render_change(view, "validate", %{
+        "_target" => ["phoenix_kit_entity_data", "slug"],
+        "phoenix_kit_entity_data" => %{"title" => "Walnut", "slug" => ""}
+      })
+
+      html =
+        render_change(view, "validate", %{
+          "phoenix_kit_entity_data" => %{"title" => "Walnut Door", "slug" => ""}
+        })
+
+      assert html =~ ~s(value="walnut-door")
     end
   end
 

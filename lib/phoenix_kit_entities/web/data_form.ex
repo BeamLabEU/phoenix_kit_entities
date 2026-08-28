@@ -151,6 +151,9 @@ defmodule PhoenixKitEntities.Web.DataForm do
       |> assign(:project_title, project_title)
       |> assign(:entity, entity)
       |> assign(:data_record, data_record)
+      # Does the slug still follow the title? Server state — see
+      # track_slug_ownership/3.
+      |> assign(:slug_auto?, is_nil(data_record.uuid))
       |> assign(:changeset, changeset)
       |> assign(:current_user, current_user)
       |> assign(:form_record_key, form_record_key)
@@ -277,9 +280,11 @@ defmodule PhoenixKitEntities.Web.DataForm do
     {:noreply, handle_switch_language(socket, lang_code)}
   end
 
-  def handle_event("validate", %{"phoenix_kit_entity_data" => data_params}, socket) do
+  def handle_event("validate", %{"phoenix_kit_entity_data" => data_params} = params, socket) do
     if socket.assigns[:lock_owner?] do
-      do_validate(data_params, socket)
+      socket
+      |> track_slug_ownership(params, data_params)
+      |> then(&do_validate(data_params, &1))
     else
       # Spectator - ignore local changes, wait for broadcasts
       {:noreply, socket}
@@ -462,50 +467,52 @@ defmodule PhoenixKitEntities.Web.DataForm do
     current_data = Ecto.Changeset.apply_changes(socket.assigns.changeset)
     previous_title = current_data.title || ""
     title = data_params["title"] || previous_title
-    current_slug = data_params["slug"] || ""
-    lang = socket.assigns[:primary_language]
 
-    # Nothing to derive when the title is unchanged — and now that the
-    # title field fires on EVERY keystroke, this is the difference
-    # between two uniqueness queries per character typed ANYWHERE in the
-    # form and none at all (2026-08-28).
-    if title == previous_title do
-      data_params
-    else
-      derive_slug(
-        data_params,
-        entity_uuid,
-        record_uuid,
-        title,
-        previous_title,
-        current_slug,
-        lang
-      )
+    cond do
+      # The user owns the slug now — the title stops driving it.
+      not socket.assigns[:slug_auto?] ->
+        data_params
+
+      # Nothing to derive when the title is unchanged. With the title
+      # field firing on EVERY keystroke, this is the difference between
+      # a uniqueness query per character typed ANYWHERE in the form and
+      # none at all (2026-08-28).
+      title == previous_title and (data_params["slug"] || "") != "" ->
+        data_params
+
+      true ->
+        Map.put(
+          data_params,
+          "slug",
+          auto_generate_entity_slug(
+            entity_uuid,
+            record_uuid,
+            title,
+            socket.assigns[:primary_language]
+          )
+        )
     end
   end
 
-  # The stored slug is only replaced while it still looks auto-generated:
-  # once someone types their own, the title stops driving it.
-  defp derive_slug(
-         data_params,
-         entity_uuid,
-         record_uuid,
-         title,
-         previous_title,
-         current_slug,
-         lang
-       ) do
-    auto_generated_slug =
-      auto_generate_entity_slug(entity_uuid, record_uuid, previous_title, lang)
+  # Ownership of the slug is server state, deliberately NOT inferred from
+  # the slug value the client posts back.
+  #
+  # It used to be "regenerate while the posted slug still equals what the
+  # PREVIOUS title would generate". That reads fine and passes any test
+  # that posts tidy, in-order params — but with the debounce gone the
+  # client posts a slug it has not caught up on yet (the server is
+  # already a keystroke or two further along), so the comparison failed,
+  # the form decided the user had typed a custom slug, and the slug
+  # froze after the first character. Only touching the slug field itself
+  # ends auto mode now; emptying it starts it again, which is what the
+  # field's own hint promises.
+  defp track_slug_ownership(socket, params, data_params) do
+    case params["_target"] do
+      [_prefix, "slug"] ->
+        assign(socket, :slug_auto?, String.trim(data_params["slug"] || "") == "")
 
-    if current_slug == "" || current_slug == auto_generated_slug do
-      Map.put(
-        data_params,
-        "slug",
-        auto_generate_entity_slug(entity_uuid, record_uuid, title, lang)
-      )
-    else
-      data_params
+      _ ->
+        socket
     end
   end
 
