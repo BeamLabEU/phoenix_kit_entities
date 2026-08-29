@@ -951,10 +951,8 @@ defmodule PhoenixKitEntities.EntityData do
         "expected entity_uuid scope to be a binary UUID or nil, got: #{inspect(scope)}"
       )
 
-  # Audit-log a reorder failure so the user-initiated action is
-  # represented in the activity table even when the DB write rolls
-  # back. `db_pending: true` lets consumers distinguish from
-  # successful rows.
+  # Audit-log a completed reorder. `count` is the number of rows the
+  # transaction actually wrote, not the number of pairs submitted.
   defp log_data_reorder(uuid_position_pairs, written, entity_uuid, opts) do
     PhoenixKitEntities.ActivityLog.log(%{
       action: "entity_data.reordered",
@@ -969,6 +967,10 @@ defmodule PhoenixKitEntities.EntityData do
     })
   end
 
+  # Audit-log a reorder failure so the user-initiated action is
+  # represented in the activity table even when the DB write rolls
+  # back. `db_pending: true` lets consumers distinguish from
+  # successful rows.
   defp log_data_reorder_error(uuid_position_pairs, entity_uuid_scope, _reason, opts) do
     PhoenixKitEntities.ActivityLog.log(%{
       action: "entity_data.reordered",

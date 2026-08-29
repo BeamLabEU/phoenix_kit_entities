@@ -216,6 +216,12 @@ V108 for entities) that drives manual sort.
 - Both functions log on `:ok` AND `:error` branches; the error branch
   carries `db_pending: true` so the audit trail covers user-initiated
   intent even when the transaction rolls back.
+- The `:ok` row is emitted only when the transaction actually wrote a
+  row. `EntityData.reorder/3` counts rows written, not pairs submitted —
+  a uuid naming a record in another entity matches nothing (that is what
+  the scope is for), and neither does a concurrently deleted one — so a
+  save that moved nothing records nothing rather than logging a
+  non-event.
 - LV call sites (`Web.Entities`, `Web.DataNavigator`) thread
   `actor_opts(socket)` so the activity rows pin `actor_uuid`. The
   DataNavigator auto-flips `sort_mode` to `"manual"` on the first
@@ -230,7 +236,7 @@ V108 for entities) that drives manual sort.
 | `actor_uuid`           | from caller opts                  | same                    | same                          |
 | `resource_type`        | `entity` / `entity_data`         | same                    | same                          |
 | `resource_uuid`        | first uuid in list                | first uuid in list      | nil                           |
-| `metadata.count`       | n                                 | n                       | n                             |
+| `metadata.count`       | rows written                      | n (pairs)               | n (pairs)                     |
 | `metadata.entity_uuid` | data path only                    | data path only          | data path only                |
 | `metadata.db_pending`  | absent                            | `true`                  | `true`                        |
 | `metadata.rejected`    | absent                            | absent                  | `"too_many_uuids"`            |

@@ -66,10 +66,15 @@ defmodule PhoenixKitEntities.Web.DataForm do
     # gets written back and erases every translation in the row.
     entity = Entities.get_entity_by_name(entity_slug, lang: locale)
     data_record = EntityData.get!(uuid)
-    changeset = EntityData.change(data_record)
 
-    {:noreply,
-     hydrate_data_form(socket, entity, data_record, changeset, gettext("Edit Data"), locale)}
+    if owns_record?(entity, data_record) do
+      changeset = EntityData.change(data_record)
+
+      {:noreply,
+       hydrate_data_form(socket, entity, data_record, changeset, gettext("Edit Data"), locale)}
+    else
+      {:noreply, redirect_to_owning_entity(socket, data_record)}
+    end
   end
 
   def handle_params(%{"entity_id" => entity_uuid, "id" => id} = params, _uri, socket) do
@@ -79,10 +84,15 @@ defmodule PhoenixKitEntities.Web.DataForm do
     # entity_slug clause above for why `:lang` must not touch it.
     entity = Entities.get_entity!(entity_uuid, lang: locale)
     data_record = EntityData.get!(id)
-    changeset = EntityData.change(data_record)
 
-    {:noreply,
-     hydrate_data_form(socket, entity, data_record, changeset, gettext("Edit Data"), locale)}
+    if owns_record?(entity, data_record) do
+      changeset = EntityData.change(data_record)
+
+      {:noreply,
+       hydrate_data_form(socket, entity, data_record, changeset, gettext("Edit Data"), locale)}
+    else
+      {:noreply, redirect_to_owning_entity(socket, data_record)}
+    end
   end
 
   def handle_params(%{"entity_slug" => entity_slug} = params, _uri, socket) do
@@ -107,6 +117,37 @@ defmodule PhoenixKitEntities.Web.DataForm do
 
     {:noreply,
      hydrate_data_form(socket, entity, data_record, changeset, gettext("New Data"), locale)}
+  end
+
+  # The record is loaded by uuid, the entity comes from the URL, and until now
+  # nothing tied the two together: `/admin/entities/<other>/data/<uuid>/edit`
+  # happily rendered the record against a different blueprint's
+  # `fields_definition`. That was merely wrong on screen while the form posted
+  # the record's own `entity_uuid` back. It is not any more —
+  # `client_writable_params/2` now sets `entity_uuid` from the URL entity, on
+  # purpose, so that a crafted payload cannot re-parent a row. Which makes "the
+  # server knows which entity this form is for" a claim the server has to
+  # actually check: without this guard a plain Save on a mismatched URL moves
+  # the record to the blueprint the URL named.
+  defp owns_record?(%{uuid: entity_uuid}, %EntityData{entity_uuid: entity_uuid}), do: true
+  defp owns_record?(_entity, _data_record), do: false
+
+  # Send the admin to the same record under the blueprint it really belongs
+  # to, rather than 404ing a uuid that plainly exists.
+  defp redirect_to_owning_entity(socket, data_record) do
+    owner = Entities.get_entity!(data_record.entity_uuid)
+
+    socket
+    |> put_flash(
+      :info,
+      gettext("That record belongs to %{entity}.", entity: owner.display_name)
+    )
+    |> push_navigate(
+      to:
+        Routes.path("/admin/entities/#{owner.name}/data/#{data_record.uuid}/edit",
+          locale: socket.assigns.current_locale_base
+        )
+    )
   end
 
   defp hydrate_data_form(socket, entity, data_record, changeset, page_title, locale) do

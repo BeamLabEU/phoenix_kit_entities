@@ -160,7 +160,7 @@ defmodule PhoenixKitEntities.PresenceHelpers do
 
       case get_lock_owner(:entity, 5) do
         nil -> # No one editing
-        meta -> # meta.user, meta.joined_at, etc.
+        meta -> # meta.user_uuid, meta.joined_at, meta.pid
       end
   """
   def get_lock_owner(type, id) do

@@ -65,6 +65,40 @@ defmodule PhoenixKitEntities.Web.DataFormLiveTest do
     end
   end
 
+  describe "the URL's blueprint has to be the record's blueprint" do
+    test "editing a record under another entity's URL redirects to its own",
+         %{conn: conn} = ctx do
+      # The entity comes from the URL, the record comes from its uuid, and
+      # nothing checked that they belong together. Harmless while the form
+      # posted the record's own `entity_uuid` back — but the save path now
+      # sets `entity_uuid` from the URL entity on purpose (so a crafted
+      # payload cannot re-parent a row), which turns a mismatched URL into a
+      # plain Save that MOVES the record.
+      {:ok, other_entity} =
+        Entities.create_entity(
+          %{
+            name: "df_elsewhere",
+            display_name: "DF Elsewhere",
+            display_name_plural: "DF Elsewheres",
+            fields_definition: [],
+            status: "published",
+            created_by_uuid: ctx.actor_uuid
+          },
+          actor_uuid: ctx.actor_uuid
+        )
+
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+
+      assert {:error, {:live_redirect, %{to: to}}} =
+               live(conn, edit_url(other_entity, ctx.record))
+
+      assert to =~ "/admin/entities/#{ctx.entity.name}/data/#{ctx.record.uuid}/edit"
+
+      # And the record did not move on the way.
+      assert EntityData.get(ctx.record.uuid).entity_uuid == ctx.entity.uuid
+    end
+  end
+
   describe "a crafted save payload cannot write fields the form never renders" do
     test "created_by_uuid, date_created, metadata and position are ignored",
          %{conn: conn} = ctx do
