@@ -109,6 +109,40 @@ tests, both unconditional.
 - Several "missing gettext" and "commented-out code" flags: prose comments and
   data-driven field labels, correctly not translated.
 
+## What an external panel found in the fixes
+
+Four models reviewed the PR after the fixes were in; three independently
+found the same hole in the mass-assignment fix. Verified before acting:
+
+- **`entity_uuid` was in the allowlist** — the field with the widest blast
+  radius, and the one the function's own comment named. The blueprint decides
+  a record's URL, its sitemap entry and which navigator it appears in;
+  `changeset/2` casts it and `validate_entity_reference/1` checks only that
+  the target exists. The hidden input binds the browser, not the socket. The
+  server knows which entity the form is for, so the server sets it.
+- **`status` accepted `"trashed"`**, a valid status the select never offers.
+  Writing it directly skips `trash/2`, where `metadata["trashed_from_status"]`
+  is stashed: the row soft-deleted without recording what it had been, logged
+  `entity_data.updated`, and would restore to "draft" whatever its real
+  status was. The reverse — writing "published" onto a trashed row — skips
+  `restore_from_trash/2` the same way.
+- **The deleted presence helpers were public API.** `get_spectators/2` and
+  `count_editors/2` had no callers in this repo, but core's
+  `making-pages-live.md` lists `get_spectators/2` among this module's
+  functions, so a host following that guide would have taken an
+  UndefinedFunctionError from a patch release. Both restored on the trimmed
+  meta; the security fix is untouched.
+- **The reorder audit row counted the wrong thing** — the raw pair list while
+  the transaction wrote from the deduped one, and `update_all` results were
+  discarded, so a pair naming a row in another entity counted despite
+  updating nothing. Now the rows actually written, and an empty payload
+  writes no row at all.
+- **Recorded, not fixed:** `alive_presence?/1` filters on `Process.alive?/1`,
+  which is false for a live process on another node — so on a multi-node
+  deployment each node discards the other's presences and two people can both
+  be told they hold the lock. It predates this branch; a note now sits beside
+  it saying why it is there.
+
 ## Open — needs a decision
 
 1. **Public submissions are hardcoded `status: "published"`.**
