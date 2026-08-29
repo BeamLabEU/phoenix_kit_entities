@@ -346,7 +346,7 @@ defmodule PhoenixKitEntities.ContextExtrasTest do
         actor_uuid: actor_uuid,
         resource_type: "entity",
         resource_uuid: ctx.published.uuid,
-        metadata: %{"count" => 2}
+        metadata_has: %{"count" => 2}
       )
     end
 

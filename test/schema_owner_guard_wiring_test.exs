@@ -332,7 +332,7 @@ defmodule PhoenixKitEntities.SchemaOwnerGuardWiringTest do
       db_name
     ]
 
-    {output, 0} =
+    output =
       try do
         System.cmd("pg_dump", args,
           env: [{"PGPASSWORD", admin_opts[:password]}],
@@ -347,6 +347,19 @@ defmodule PhoenixKitEntities.SchemaOwnerGuardWiringTest do
         # ErlangError instead of a diagnosable message.
         ErlangError ->
           flunk("pg_dump not found on PATH — install the postgresql-client tools")
+      end
+      |> case do
+        {output, 0} ->
+          output
+
+        # A version manager's shim is PRESENT and executable, so the rescue
+        # above never fires for it — it runs, prints "No version is set for
+        # command pg_dump", and exits 126. Matching `{output, 0}` directly
+        # turned that into a bare MatchError on a tuple, which says nothing
+        # about the cause; the whole point of the guard beside it is that
+        # "pg_dump is unusable here" should be readable from the failure.
+        {output, status} ->
+          flunk("pg_dump exited #{status} — this test cannot run:\n#{output}")
       end
 
     # PG17's pg_dump emits a `\restrict <random-token>` / `\unrestrict

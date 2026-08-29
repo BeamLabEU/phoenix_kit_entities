@@ -26,15 +26,21 @@ defmodule PhoenixKitEntities.PresenceHelpers do
   def track_editing_session(type, id, socket, user) do
     topic = editing_topic(type, id)
 
+    # Only what the presence logic actually reads. Phoenix.Presence
+    # broadcasts these metas in a `presence_diff` to every other
+    # collaborator's LiveView, and this used to carry the whole
+    # `%PhoenixKit.Users.Auth.User{}` — including `hashed_password`, since
+    # `redact: true` only suppresses Inspect, not term serialization — plus
+    # the user's email. The only reader of either was
+    # `populate_presence_info/3`, whose three assigns nothing rendered: the
+    # credentials went across the cluster to feed dead code.
+    #
+    # `user_uuid` decides ownership, `joined_at` orders the queue, `pid`
+    # detects a dead session. Resolve display names from the DB instead.
     Presence.track(self(), topic, socket.id, %{
       user_uuid: user.uuid,
-      user_email: user.email,
-      user: user,
       joined_at: System.system_time(:millisecond),
-      phx_ref: socket.id,
-      # For diagnostics and dead process detection
-      pid: self(),
-      transport_pid: socket.transport_pid
+      pid: self()
     })
   end
 
@@ -110,9 +116,41 @@ defmodule PhoenixKitEntities.PresenceHelpers do
 
   defp alive_presence?(meta) do
     case Map.get(meta, :pid) do
+      # NOTE: `Process.alive?/1` answers only for pids on THIS node — it is
+      # `false` for a live process on another one. On a multi-node
+      # deployment each node therefore discards the other's presences, and
+      # two people can both be told they hold the lock. Phoenix.Presence
+      # already reaps dead processes through its tracker, so this filter is
+      # a local optimisation with a distributed cost. Left alone here: it
+      # predates this branch and changing lock ownership semantics is not a
+      # sweep-sized change. Recorded in dev_docs/QUALITY_SWEEP_2026-08-28.md.
       pid when is_pid(pid) -> Process.alive?(pid)
       _ -> true
     end
+  end
+
+  @doc """
+  All presences except the lock owner, in join order.
+
+  Kept because it is public API — core's `making-pages-live.md` lists it
+  among this module's functions, so "no callers here" was never the whole
+  question. Its metadata shape did change: a meta is now `user_uuid` /
+  `joined_at` / `pid`, not the whole `%User{}`, because the struct carried
+  `hashed_password` to every subscriber of the topic. Read `user_uuid` and
+  load what you need.
+  """
+  def get_spectators(type, id) do
+    case get_sorted_presences(type, id) do
+      [] -> []
+      [_owner | spectators] -> Enum.map(spectators, fn {_socket_id, meta} -> meta end)
+    end
+  end
+
+  @doc """
+  How many sessions currently have this resource open for editing.
+  """
+  def count_editors(type, id) do
+    get_sorted_presences(type, id) |> length()
   end
 
   @doc """
@@ -130,33 +168,6 @@ defmodule PhoenixKitEntities.PresenceHelpers do
       [{_socket_id, meta} | _] -> meta
       [] -> nil
     end
-  end
-
-  @doc """
-  Gets all spectators (everyone except the first person).
-
-  Returns a list of metadata for spectators only.
-
-  ## Examples
-
-      get_spectators(:entity, "019...")
-      # => [
-      #   %{user_uuid: "019...", user_email: "user@example.com", joined_at: 123458, ...},
-      #   %{user_uuid: "019...", user_email: "other@example.com", joined_at: 123460, ...}
-      # ]
-  """
-  def get_spectators(type, id) do
-    case get_sorted_presences(type, id) do
-      [] -> []
-      [_owner | spectators] -> Enum.map(spectators, fn {_id, meta} -> meta end)
-    end
-  end
-
-  @doc """
-  Counts total number of people editing (owner + spectators).
-  """
-  def count_editors(type, id) do
-    get_sorted_presences(type, id) |> length()
   end
 
   @doc """

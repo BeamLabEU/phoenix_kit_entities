@@ -189,8 +189,6 @@ defmodule PhoenixKitEntities.Web.EntityForm do
       socket
       |> assign(:lock_owner?, true)
       |> assign(:readonly?, false)
-      |> assign(:lock_owner_user, nil)
-      |> assign(:spectators, [])
     end
   end
 
@@ -203,14 +201,12 @@ defmodule PhoenixKitEntities.Web.EntityForm do
         socket
         |> assign(:lock_owner?, true)
         |> assign(:readonly?, false)
-        |> populate_presence_info(:entity, entity_uuid)
 
       {:spectator, _owner_meta, _presences} ->
         # Different user is the owner - I'm read-only
         socket
         |> assign(:lock_owner?, false)
         |> assign(:readonly?, true)
-        |> populate_presence_info(:entity, entity_uuid)
     end
   end
 
@@ -1704,42 +1700,6 @@ defmodule PhoenixKitEntities.Web.EntityForm do
 
   defp manual_key_target?(["field", "key"]), do: true
   defp manual_key_target?(_), do: false
-
-  defp populate_presence_info(socket, type, id) do
-    # Get all presences sorted by joined_at (FIFO order)
-    presences = PresenceHelpers.get_sorted_presences(type, id)
-
-    # Extract owner (first in list) and spectators (rest of list)
-    {lock_owner_user, lock_info, spectators} =
-      case presences do
-        [] ->
-          {nil, nil, []}
-
-        [{owner_socket_id, owner_meta} | spectator_list] ->
-          # Build owner info - IMPORTANT: use socket_id from KEY not phx_ref
-          lock_info = %{
-            socket_id: owner_socket_id,
-            user_uuid: owner_meta.user_uuid
-          }
-
-          # Map spectators to expected format with correct socket IDs
-          spectators =
-            Enum.map(spectator_list, fn {spectator_socket_id, meta} ->
-              %{
-                socket_id: spectator_socket_id,
-                user: meta.user,
-                user_uuid: meta.user_uuid
-              }
-            end)
-
-          {owner_meta.user, lock_info, spectators}
-      end
-
-    socket
-    |> assign(:lock_owner_user, lock_owner_user)
-    |> assign(:lock_info, lock_info)
-    |> assign(:spectators, spectators)
-  end
 
   # True for an EXISTING blueprint owned by another module — the fields
   # the write guard would refuse render disabled (with hidden twins so
