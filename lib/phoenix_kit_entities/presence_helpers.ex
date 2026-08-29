@@ -116,9 +116,41 @@ defmodule PhoenixKitEntities.PresenceHelpers do
 
   defp alive_presence?(meta) do
     case Map.get(meta, :pid) do
+      # NOTE: `Process.alive?/1` answers only for pids on THIS node — it is
+      # `false` for a live process on another one. On a multi-node
+      # deployment each node therefore discards the other's presences, and
+      # two people can both be told they hold the lock. Phoenix.Presence
+      # already reaps dead processes through its tracker, so this filter is
+      # a local optimisation with a distributed cost. Left alone here: it
+      # predates this branch and changing lock ownership semantics is not a
+      # sweep-sized change. Recorded in dev_docs/QUALITY_SWEEP_2026-08-28.md.
       pid when is_pid(pid) -> Process.alive?(pid)
       _ -> true
     end
+  end
+
+  @doc """
+  All presences except the lock owner, in join order.
+
+  Kept because it is public API — core's `making-pages-live.md` lists it
+  among this module's functions, so "no callers here" was never the whole
+  question. Its metadata shape did change: a meta is now `user_uuid` /
+  `joined_at` / `pid`, not the whole `%User{}`, because the struct carried
+  `hashed_password` to every subscriber of the topic. Read `user_uuid` and
+  load what you need.
+  """
+  def get_spectators(type, id) do
+    case get_sorted_presences(type, id) do
+      [] -> []
+      [_owner | spectators] -> Enum.map(spectators, fn {_socket_id, meta} -> meta end)
+    end
+  end
+
+  @doc """
+  How many sessions currently have this resource open for editing.
+  """
+  def count_editors(type, id) do
+    get_sorted_presences(type, id) |> length()
   end
 
   @doc """

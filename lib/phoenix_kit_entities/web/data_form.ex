@@ -679,7 +679,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
 
         params =
           data_params
-          |> client_writable_params()
+          |> client_writable_params(socket.assigns.entity.uuid)
           |> Map.put("data", final_data)
           |> maybe_add_creator_uuid(socket.assigns.current_user, socket.assigns.data_record)
 
@@ -1337,8 +1337,40 @@ defmodule PhoenixKitEntities.Web.DataForm do
   #
   # `data` is rebuilt server-side by the caller and the creator is applied by
   # `maybe_add_creator_uuid/3`, so neither belongs in the allowlist.
-  defp client_writable_params(data_params) do
-    Map.take(data_params, ["title", "slug", "status", "parent_uuid", "entity_uuid"])
+  #
+  # `entity_uuid` is NOT in the list. It was, and that left the very hole this
+  # function was written to close: the blueprint a record belongs to decides
+  # its URL, its sitemap entry and which navigator it appears in, and
+  # `changeset/2` casts it while `validate_entity_reference/1` checks only
+  # that the target exists. A crafted save on
+  # `/admin/entities/products/data/<uuid>/edit` naming another entity's uuid
+  # re-parented the row — it vanished from one blueprint and appeared under
+  # another. The form renders it as a hidden input, but a LiveView event is
+  # not bound by the markup that produced it: the server knows which entity
+  # this form is for, so the server sets it.
+  #
+  # `status` is filtered to what the select offers. `"trashed"` is a valid
+  # status the form never shows, and writing it directly skips `trash/2`,
+  # which is where `metadata["trashed_from_status"]` is stashed — so the row
+  # would soft-delete without recording where it came from, log
+  # `entity_data.updated` instead of `entity_data.trashed`, and later restore
+  # to "draft" whatever it had been. The reverse (writing "published" onto a
+  # trashed row) skips `restore_from_trash/2` the same way.
+  defp client_writable_params(data_params, entity_uuid) do
+    data_params
+    |> Map.take(["title", "slug", "status", "parent_uuid"])
+    |> filter_status()
+    |> Map.put("entity_uuid", entity_uuid)
+  end
+
+  @client_settable_statuses ~w(draft published archived)
+
+  defp filter_status(params) do
+    case Map.fetch(params, "status") do
+      {:ok, status} when status in @client_settable_statuses -> params
+      {:ok, _other} -> Map.delete(params, "status")
+      :error -> params
+    end
   end
 
   defp save_data_record(socket, data_params) do

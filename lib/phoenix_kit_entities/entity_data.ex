@@ -955,7 +955,7 @@ defmodule PhoenixKitEntities.EntityData do
   # represented in the activity table even when the DB write rolls
   # back. `db_pending: true` lets consumers distinguish from
   # successful rows.
-  defp log_data_reorder(uuid_position_pairs, entity_uuid, opts) do
+  defp log_data_reorder(uuid_position_pairs, written, entity_uuid, opts) do
     PhoenixKitEntities.ActivityLog.log(%{
       action: "entity_data.reordered",
       mode: "manual",
@@ -964,7 +964,7 @@ defmodule PhoenixKitEntities.EntityData do
       resource_uuid: first_uuid_from_pairs(uuid_position_pairs),
       metadata: %{
         "entity_uuid" => entity_uuid,
-        "count" => length(uuid_position_pairs)
+        "count" => written
       }
     })
   end
@@ -1682,24 +1682,37 @@ defmodule PhoenixKitEntities.EntityData do
       repo().transaction(fn ->
         now = UtilsDate.utc_now()
 
-        Enum.each(pairs, fn {uuid, position} ->
-          uuid
-          |> position_update_query(entity_uuid_scope)
-          |> repo().update_all(set: [position: position, date_updated: now])
+        # Counts the rows actually written, not the pairs submitted. A pair
+        # naming a row in another entity updates nothing (that is what the
+        # scope is for) and a concurrently deleted row updates nothing
+        # either, so "how many did you send" is not "how many moved".
+        Enum.reduce(pairs, 0, fn {uuid, position}, written ->
+          {count, _} =
+            uuid
+            |> position_update_query(entity_uuid_scope)
+            |> repo().update_all(set: [position: position, date_updated: now])
+
+          written + count
         end)
       end)
 
     case result do
-      {:ok, _} ->
+      {:ok, written} ->
         entity_uuid =
-          entity_uuid_scope || resolve_entity_uuid_from_pairs(uuid_position_pairs)
+          entity_uuid_scope || resolve_entity_uuid_from_pairs(pairs)
 
         # The SUCCESS path logged nothing, while both the failure and the
         # rejected-payload paths did — so the activity table contained only
         # reorders that went wrong, and an auditor reading it would conclude
         # reordering was rare rather than invisible. The actor was already
         # being threaded here and then dropped.
-        log_data_reorder(uuid_position_pairs, entity_uuid, opts)
+        #
+        # Logged from the DEDUPED pairs and the written count: a stale DOM
+        # double-drop sends the same uuid twice, and recording the raw length
+        # made the audit row claim more movement than the transaction
+        # performed. Nothing written means nothing happened, and an audit
+        # trail that records non-events is worth less than one that does not.
+        if written > 0, do: log_data_reorder(pairs, written, entity_uuid, opts)
         notify_reorder_event(entity_uuid)
         :ok
 

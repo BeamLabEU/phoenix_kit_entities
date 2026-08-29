@@ -103,6 +103,69 @@ defmodule PhoenixKitEntities.Web.DataFormLiveTest do
       assert after_save.metadata == before.metadata
       assert after_save.position == before.position
     end
+
+    test "entity_uuid cannot move the record to another blueprint",
+         %{conn: conn} = ctx do
+      # The one field the first version of that allowlist let through, and
+      # the one with the widest blast radius: the blueprint decides the
+      # record's URL, its sitemap entry and which navigator it appears in.
+      # `changeset/2` casts `:entity_uuid` and `validate_entity_reference/1`
+      # only checks that the target EXISTS, so a valid other uuid is
+      # accepted. The form renders it as a hidden input — which binds the
+      # browser, not the socket.
+      {:ok, other_entity} =
+        Entities.create_entity(
+          %{
+            name: "df_other",
+            display_name: "DF Other",
+            display_name_plural: "DF Others",
+            fields_definition: [],
+            status: "published",
+            created_by_uuid: ctx.actor_uuid
+          },
+          actor_uuid: ctx.actor_uuid
+        )
+
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, edit_url(ctx.entity, ctx.record))
+
+      render_submit(view, "save", %{
+        "phoenix_kit_entity_data" => %{
+          "title" => "Still here",
+          "entity_uuid" => other_entity.uuid,
+          # `validate_parent_same_entity/1` compares against the SUBMITTED
+          # entity, so clearing the parent is what makes the forged move
+          # pass validation.
+          "parent_uuid" => nil
+        }
+      })
+
+      after_save = EntityData.get(ctx.record.uuid)
+
+      assert after_save.title == "Still here"
+      assert after_save.entity_uuid == ctx.entity.uuid
+      refute after_save.entity_uuid == other_entity.uuid
+    end
+
+    test "status cannot be set to the internal trashed state", %{conn: conn} = ctx do
+      # The select offers draft / published / archived. `"trashed"` is a
+      # valid status it never shows, and writing it directly skips
+      # `EntityData.trash/2` — where `metadata["trashed_from_status"]` is
+      # stashed. The row would soft-delete without recording what it had
+      # been, log `entity_data.updated` rather than `entity_data.trashed`,
+      # and restore later to "draft" whatever its real status was.
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, edit_url(ctx.entity, ctx.record))
+
+      render_submit(view, "save", %{
+        "phoenix_kit_entity_data" => %{"title" => "Kept", "status" => "trashed"}
+      })
+
+      after_save = EntityData.get(ctx.record.uuid)
+
+      assert after_save.title == "Kept"
+      assert after_save.status == "published"
+    end
   end
 
   describe "the edit form loads the record raw (no :lang)" do
