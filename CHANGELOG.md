@@ -1,3 +1,63 @@
+## 0.4.8 - 2026-08-29
+
+### Fixed
+
+- **Signed-in public form submissions were stored as anonymous** — the
+  submission controller read `conn.assigns[:current_user]`, a key nothing
+  assigns; core's `fetch_phoenix_kit_current_user` plug assigns
+  `:phoenix_kit_current_user`. On a pre-V169 core, where the column is NOT
+  NULL, the explicit nil turned every submission into a validation failure
+  (#40).
+- **Collaborative-editing presence no longer broadcasts user credentials** —
+  the Presence meta carried the whole `%PhoenixKit.Users.Auth.User{}`,
+  `hashed_password` included (`redact: true` suppresses `Inspect`, not term
+  serialization), plus the email, in a `presence_diff` to every other
+  collaborator. The meta is now `user_uuid` / `joined_at` / `pid`; read
+  `user_uuid` and load what you need to display (#40).
+- **The admin data form's save path allowlists what the client may write** —
+  `EntityData.changeset/2` casts `created_by_uuid`, `date_created`,
+  `metadata` and `position`, none of which the form renders, so a crafted
+  `save` could forge authorship, back-date the audit timestamp, or rewrite
+  the `ip_address` / `user_agent` / `security_warnings` metadata a flagged
+  public submission was stored with. `status` is filtered to the three the
+  select offers, so `"trashed"` can't be written directly and bypass
+  `trash/2` (#40).
+- **A record can no longer be moved between blueprints by editing it under
+  the wrong URL.** The entity comes from the URL and the record from its
+  uuid, and nothing checked they belong together; now that the server sets
+  `entity_uuid` from the URL entity, a plain Save on a mismatched URL would
+  have re-parented the row. The edit form redirects to the record's own
+  blueprint instead.
+- **Per-field validation errors are visible on save**, not just in the
+  concatenated flash — the save path's changeset arrived with `action: nil`,
+  which is what `<.input>` gates error display on (#40).
+- **The slug mirrors the title live on single-language installs** — the
+  hook attributes were only on the multilang branch of the form, so the
+  default install fell back to a 300 ms round trip (#40).
+- **Reorders are audited when they succeed**, not only when they fail — the
+  activity table previously recorded reordering exclusively when it went
+  wrong. `count` is rows written, not pairs submitted (#40).
+- **`EntityData.search_by_title/3` escapes LIKE wildcards** — searching
+  `50%` matched every record and `a_b` matched `axb`. The sibling
+  `entity_uuids_matching_title/3` already escaped; the two had drifted (#40).
+- **Unreachable-database guards now catch exits, not just raises** — a dead
+  connection pool exits, so the `rescue` clauses in `entities_children/1`,
+  `SitemapSource` and `UrlResolver` stopped one step short of the case they
+  exist for. In `entities_children/1` that took out every admin page render,
+  since core calls it as its `dynamic_children` callback (#40).
+- **The Data Navigator subscribed to entity events twice** — the `on_mount`
+  hook already subscribes, and `Phoenix.PubSub` uses a duplicate-key
+  registry, so every entity event ran the ~4-query refresh twice (#40).
+
+### Changed
+
+- `list_entities_with_mirror_status/0` runs one grouped count and one
+  directory listing instead of one count and one `File.exists?` per entity.
+  The settings LiveView re-runs it on every entity and data broadcast, so
+  autosave on a record drove 1+N counts and N filesystem stats per debounced
+  keystroke (#40).
+- Dependency bump: routine `mix.lock` refresh.
+
 ## 0.4.7 - 2026-08-28
 
 ### Added
