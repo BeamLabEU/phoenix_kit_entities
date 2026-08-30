@@ -159,14 +159,36 @@ defmodule PhoenixKitEntities.DecimalFieldTest do
       assert render_decimal(field(%{"scale" => 2}), nil) =~ ~s(step="0.01")
     end
 
-    # Spinner granularity is a UX choice, storage scale a contract: a money
-    # field wants cent arrows without giving up 4-place typed entry
-    # (2026-08-30 — supplier unit_cost stepped 0.0001 at a time).
-    test "an explicit step prop overrides the scale-derived one" do
-      assert render_decimal(field(%{"scale" => 4, "step" => "0.01"}), nil) =~ ~s(step="0.01")
-      # Numeric form is accepted too; junk falls back to the scale.
-      assert render_decimal(field(%{"scale" => 4, "step" => 0.5}), nil) =~ ~s(step="0.5")
-      assert render_decimal(field(%{"scale" => 4, "step" => ""}), nil) =~ ~s(step="0.0001")
+    # 2026-08-30 — supplier unit_cost arrows crawled 0.0001 at a time, so
+    # a field may override the step. It is honoured only while it still
+    # admits every value the scale allows.
+    test "an explicit step that admits the declared scale is honoured" do
+      assert render_decimal(field(%{"scale" => 2, "step" => "0.01"}), nil) =~ ~s(step="0.01")
+      # Finer than the scale is safe too, in string or numeric form.
+      assert render_decimal(field(%{"scale" => 2, "step" => 0.001}), nil) =~ ~s(step="0.001")
+      # No declared scale, no promise to keep.
+      assert render_decimal(field(%{"step" => "0.5"}), nil) =~ ~s(step="0.5")
+    end
+
+    # step is not just spinner granularity: the browser validates against
+    # it, and a phx-submit form never reaches LiveView while an input is
+    # step-mismatched. A cent step on a 4-place field would block 12.3456
+    # on submit — the very bug the scale-derived step exists to prevent.
+    test "a step coarser than the scale falls back to the scale" do
+      assert render_decimal(field(%{"scale" => 4, "step" => "0.01"}), nil) =~ ~s(step="0.0001")
+      assert render_decimal(field(%{"scale" => 4, "step" => 0.5}), nil) =~ ~s(step="0.0001")
+    end
+
+    # "any" is the supported way to stop the arrows crawling: no stepping
+    # at all, so they walk by 1 and all four places stay typeable.
+    test "an explicit \"any\" turns stepping off" do
+      assert render_decimal(field(%{"scale" => 4, "step" => "any"}), nil) =~ ~s(step="any")
+    end
+
+    test "junk, zero and negative steps fall back to the scale" do
+      for junk <- ["", " ", "abc", "0", "-0.01", "0,01", "0.0001x", "Infinity", 0, -1] do
+        assert render_decimal(field(%{"scale" => 4, "step" => junk}), nil) =~ ~s(step="0.0001")
+      end
     end
 
     test "renders both a Decimal and the stored string without exponent notation" do

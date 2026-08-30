@@ -1,3 +1,38 @@
+## 0.4.9 - 2026-08-30
+
+### Added
+
+- **Decimal fields accept a `"step"` prop** to override the stepping the
+  declared `scale` implies — `"any"` turns stepping off entirely, which is
+  the way to stop a 4-place money field's spinner arrows crawling
+  0.0001 at a time while keeping every place typeable (#41).
+
+### Fixed
+
+- **An explicit decimal `"step"` can no longer block saving the record.**
+  As merged, any `"step"` was passed through to the input, but `step` is a
+  browser validation constraint, not just spinner granularity: a form's
+  `submit` event fires only after native validation passes, so `"0.01"` on a
+  4-place field left the browser refusing `12.3456` and the admin unable to
+  save — the exact failure the scale-derived step exists to prevent. An
+  override is now honoured only when it still admits every value the scale
+  allows (`"any"`, or a step dividing `10^-scale`); a coarser one falls back
+  to the scale (#41).
+- **Junk, zero and negative decimal steps fall back to the scale.** The
+  explicit-step branch only rejected `""`, so `"0"`, `"-0.5"`, `"abc"` and
+  `"0,01"` reached the attribute — and a browser that cannot parse `step`
+  uses `1`, rejecting every decimal the type exists for. The value is now
+  parsed and must be finite and positive (#41).
+- **A float `"step"` renders without exponent notation**, through `Decimal`
+  rather than `to_string/1` (`to_string(0.00001)` is `"1.0e-5"`) — the rule
+  `decimal_input_value/1` already followed (#41).
+
+### Changed
+
+- **README field types are current again** — the list and registry count said
+  12, four types after `decimal`, `image`, `video` and `heading` were added;
+  the Numeric row now documents `decimal`'s `scale` and `step`.
+
 ## 0.4.8 - 2026-08-29
 
 ### Fixed

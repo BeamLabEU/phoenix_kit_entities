@@ -24,7 +24,7 @@ Dynamic content types for PhoenixKit. Define custom entities (like "Product", "T
 ## What this provides
 
 - Dynamic entity definitions with JSONB field schemas (no migrations per entity)
-- 12 field types: text, textarea, email, url, rich_text, number, boolean, date, select, radio, checkbox, file
+- 16 field types: text, textarea, email, url, rich_text, heading, number, decimal, boolean, date, select, radio, checkbox, file, image, video
 - Complete admin UI (LiveView) for managing entity definitions and data records
 - Multi-language support (auto-enabled when 2+ languages are active)
 - Collaborative editing with FIFO locking and presence tracking
@@ -123,7 +123,7 @@ lib/
   phoenix_kit_entities/
     entity_data.ex                     # Data record schema and CRUD
     field_type.ex                      # Field type struct
-    field_types.ex                     # Field type registry (12 types)
+    field_types.ex                     # Field type registry (16 types)
     form_builder.ex                    # Dynamic form generation + validation
     events.ex                          # PubSub broadcast/subscribe
     presence.ex                        # Phoenix.Presence for editing
@@ -235,12 +235,12 @@ The DataNavigator admin LV auto-flips an entity to `"manual"` on the first drag 
 
 | Category | Types | Notes |
 |----------|-------|-------|
-| Basic | `text`, `textarea`, `email`, `url`, `rich_text` | Rich text is HTML-sanitized |
-| Numeric | `number` | Accepts integers and floats |
+| Basic | `text`, `textarea`, `email`, `url`, `rich_text`, `heading` | Rich text is HTML-sanitized; `heading` is display-only |
+| Numeric | `number`, `decimal` | `number` casts through floats; `decimal` is exact (money) — `scale` sets the places (default 4), `step` the input's stepping |
 | Boolean | `boolean` | Toggle/checkbox |
 | Date | `date` | Date picker |
 | Choice | `select`, `radio`, `checkbox` | Require `options` array |
-| Media | `file`, `image` | Coming soon |
+| Media | `file`, `image`, `video` | `file` uploads; `image`/`video` store a media-library reference |
 | Relations | `relation` | Coming soon |
 
 Each field definition is a map with:
