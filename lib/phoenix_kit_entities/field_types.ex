@@ -142,7 +142,13 @@ defmodule PhoenixKitEntities.FieldTypes do
         "max" => nil,
         # 4 places matches phoenix_kit_cat_item_supplier_info.unit_cost
         # NUMERIC(14,4), the first consumer.
-        "scale" => 4
+        "scale" => 4,
+        # Display step for the number input's spinner arrows, decoupled
+        # from `scale`: nil derives from scale (the pre-existing
+        # behaviour), while e.g. "0.01" makes the arrows walk in cents on
+        # a 4-place field — typed values keep the full scale either way,
+        # since LiveView never runs the browser's step validation.
+        "step" => nil
       }
     },
     "boolean" => %{
@@ -767,19 +773,30 @@ defmodule PhoenixKitEntities.FieldTypes do
   end
 
   @doc """
-  The `step` for a decimal field's numeric input, derived from its
+  The `step` for a decimal field's numeric input. An explicit `"step"`
+  prop wins (spinner granularity is a UX choice — cents on a money field
+  — while `scale` is a storage contract); otherwise derived from its
   declared `scale`. Without this the browser rejects the extra decimal
   places the type exists to preserve, because `<input type="number">`
   defaults to `step="1"`.
   """
   @spec decimal_step(map()) :: String.t()
   def decimal_step(field) do
-    case field["scale"] do
-      scale when is_integer(scale) and scale > 0 ->
-        "0." <> String.duplicate("0", scale - 1) <> "1"
+    case field["step"] do
+      step when is_binary(step) and step != "" ->
+        step
+
+      step when is_number(step) and step > 0 ->
+        to_string(step)
 
       _ ->
-        "any"
+        case field["scale"] do
+          scale when is_integer(scale) and scale > 0 ->
+            "0." <> String.duplicate("0", scale - 1) <> "1"
+
+          _ ->
+            "any"
+        end
     end
   end
 

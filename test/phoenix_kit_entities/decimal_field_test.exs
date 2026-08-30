@@ -159,6 +159,16 @@ defmodule PhoenixKitEntities.DecimalFieldTest do
       assert render_decimal(field(%{"scale" => 2}), nil) =~ ~s(step="0.01")
     end
 
+    # Spinner granularity is a UX choice, storage scale a contract: a money
+    # field wants cent arrows without giving up 4-place typed entry
+    # (2026-08-30 — supplier unit_cost stepped 0.0001 at a time).
+    test "an explicit step prop overrides the scale-derived one" do
+      assert render_decimal(field(%{"scale" => 4, "step" => "0.01"}), nil) =~ ~s(step="0.01")
+      # Numeric form is accepted too; junk falls back to the scale.
+      assert render_decimal(field(%{"scale" => 4, "step" => 0.5}), nil) =~ ~s(step="0.5")
+      assert render_decimal(field(%{"scale" => 4, "step" => ""}), nil) =~ ~s(step="0.0001")
+    end
+
     test "renders both a Decimal and the stored string without exponent notation" do
       assert render_decimal(field(), Decimal.new("5.1000")) =~ ~s(value="5.1000")
       assert render_decimal(field(), "5.1000") =~ ~s(value="5.1000")
