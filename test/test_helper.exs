@@ -16,7 +16,8 @@
 # - PhoenixKitEntities.ActivityLogAssertions
 #   (test/support/activity_log_assertions.ex)
 # - Schema setup runs core's versioned migrations directly via
-#   `PhoenixKit.Migration` — no module-owned test DDL.
+#   `PhoenixKit.Migration`, then this module's own V1 chain via
+#   `PhoenixKitEntities.Test.Migration` (test/support/test_migration.ex).
 
 require Logger
 
@@ -77,8 +78,9 @@ repo_available =
 
       # Build the schema directly from core's versioned migrations — same
       # call the host app makes in production. The entities tables come from
-      # core (V17 creates them; V40/V58/V67/V74/V81 evolve them). No
-      # module-owned DDL anywhere.
+      # core (V17 creates them; V40/V58/V67/V74/V81 evolve them), and this
+      # module's own V1 chain then ADOPTS them (see the Ecto.Migrator.up/4
+      # call below).
       #
       # `ensure_current/2` (core 1.7.105+ / phoenix_kit#515) re-applies
       # any newly-shipped Vxxx migrations on every boot by passing a
@@ -90,6 +92,20 @@ repo_available =
       # story (clock-skew window, schema_migrations row accumulation,
       # prefix forwarding).
       PhoenixKit.Migration.ensure_current(TestRepo, log: false)
+
+      # Then this module's own chain, through the same coordinator a real host
+      # runs via `mix phoenix_kit.update` — so the suite can never pass against
+      # a schema that differs from what installs get, and a statement that
+      # merely looks right but does not parse fails here instead of on a host.
+      # The wall-clock version makes the wrapper re-run on every boot rather
+      # than being short-circuited by a stale `schema_migrations` row; the
+      # coordinator is idempotent, so a re-run is a no-op.
+      Ecto.Migrator.up(
+        TestRepo,
+        :os.system_time(:microsecond),
+        PhoenixKitEntities.Test.Migration,
+        log: false
+      )
 
       # Migrations for this run succeeded — stamp ownership so a future run
       # against this same DB (still opted in via PGDATABASE) can tell it's

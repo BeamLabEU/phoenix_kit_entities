@@ -175,6 +175,11 @@ and Settings.
   guarded by `Code.ensure_loaded?/1` and a rescue so logging failures
   never crash the primary mutation. See "Activity Logging Pattern"
   below.
+- **`PhoenixKitEntities.Migrations`**
+  (`lib/phoenix_kit_entities/migrations.ex`) — Module-owned migration
+  chain (`current_version/0`, `migrated_version_runtime/1`, `up/1`,
+  `down/1`), registered via `migration_module/0`. V1 adopts the
+  core-created tables; see "Database & Migrations" below.
 - **`PhoenixKitEntities.Errors`**
   (`lib/phoenix_kit_entities/errors.ex`) — Atom-to-gettext dispatcher.
   Public-API error returns use atoms (`:cannot_remove_primary`,
@@ -192,10 +197,11 @@ and Settings.
 - `phoenix_kit_entity_data` — Data records (instances) with JSONB
   `data` and `metadata` field values
 - Both use UUIDv7 primary keys
-- Migrations are owned by core PhoenixKit (`V17` creates the tables;
-  `V40` / `V58` / `V67` / `V74` / `V81` / `V108` evolve them). No
-  module-owned DDL anywhere — the host app runs
-  `PhoenixKit.Migrations.up()` and gets everything.
+- Core PhoenixKit created both tables (`V17`; `V40` / `V58` / `V67` /
+  `V74` / `V81` / `V108` / `V169` evolve them) and still ships them in
+  its squashed baseline. Since PR #42 this module ALSO owns a
+  migration chain (`PhoenixKitEntities.Migrations`) whose V1 *adopts*
+  that shape — see "Database & Migrations" below.
 
 ### Drag-and-drop reorder API
 
@@ -520,16 +526,44 @@ CSS classes from our templates.
 
 ## Database & Migrations
 
-This module owns **no** DDL. The two tables it relies on
-(`phoenix_kit_entities` and `phoenix_kit_entity_data`) are created and
-maintained by core PhoenixKit's versioned migrations: `V17` creates
-them; `V40` / `V58` / `V67` / `V74` / `V81` evolve them (UUID PK
-addition, timestamp columns, FK conversions, `position` column).
+The two tables (`phoenix_kit_entities` and `phoenix_kit_entity_data`)
+were created by core PhoenixKit's versioned migrations: `V17` creates
+them; `V40` / `V58` / `V67` / `V74` / `V81` / `V169` evolve them (UUID
+PK addition, timestamp columns, FK conversions, `position` column,
+nullable `created_by_uuid`). They still ship in core's squashed
+baseline, so on every existing install they exist before this module's
+chain first runs.
 
-The host app runs `PhoenixKit.Migrations.up()` once and gets the full
-schema. The test suite does the same against an isolated test repo
-(see `test/test_helper.exs`) — same call, same migrations, no chance
-of drift.
+`PhoenixKitEntities.Migrations` (PR #42) is this module's own
+versioned chain, registered via `migration_module/0` and discovered by
+`mix phoenix_kit.status` / `mix phoenix_kit.update`. **V1 is purely
+adoptive**: every statement is `IF NOT EXISTS`-guarded and
+name-identical to core's objects, so it changes no shape — it only
+stamps the `pkn_schema:<N>` marker as a `COMMENT ON TABLE
+phoenix_kit_entities`. From then on this package owns the tables'
+future shape. `down/1` only unstamps the marker; it never drops a
+table or a row.
+
+Consequences, from the protocol in the `phoenix_kit_hello_world`
+README ("Adopting a table core already creates (extraction)"):
+
+- **Never edit V1.** A host that ran it never runs it again; the first
+  shape change is a V2 step.
+- **The first V2 shape change is when core has to move** — its
+  `ExpectedSchema` manifest still audits these tables, so the altered
+  objects must land in core's `@excluded_exact` and the core floor
+  must be raised before that release, or `mix phoenix_kit.repair`
+  restores the old shape after every run.
+- V1's statements are pinned in
+  `test/phoenix_kit_entities/migrations_test.exs`, including a drift
+  guard that derives the expected object inventory from core's
+  `ExpectedSchema` manifest rather than a hand-copied list.
+
+The host app runs `PhoenixKit.Migrations.up()` (core) plus
+`mix phoenix_kit.update` (modules) and gets the full schema. The test
+suite runs both against an isolated test repo (see
+`test/test_helper.exs`) — same calls, same migrations, no chance of
+drift.
 
 UUIDv7 primary keys throughout. The `uuid_generate_v7()` Postgres
 function is created by core's V40.
@@ -594,14 +628,21 @@ Without this, all DB calls through `PhoenixKit.RepoHelper` crash with
   `assert_activity_logged/2` and `refute_activity_logged/2` that
   query `phoenix_kit_activities` directly with action / actor_uuid /
   resource_uuid / metadata-subset matching)
+- `test/support/test_migration.ex` —
+  `PhoenixKitEntities.Test.Migration` (the checked-in equivalent of
+  the migration `mix phoenix_kit.update` generates in a host app, so
+  `Ecto.Migrator` can run the module's own chain in the test boot)
 - `test/support/hooks.ex` — `PhoenixKitEntities.Test.Hooks` (on_mount
   hook for injecting `phoenix_kit_current_scope` into LiveView mount
   via session, with `LiveCase.put_test_scope/2` + `fake_scope/1`
   helpers)
 
-Schema setup runs core's versioned migrations directly via
-`Ecto.Migrator.run(TestRepo, [{0, PhoenixKit.Migration}], :up, ...)`
-in `test_helper.exs` — no module-owned test DDL.
+Schema setup runs core's versioned migrations via
+`PhoenixKit.Migration.ensure_current/2` and then this module's own
+chain via `Ecto.Migrator.up(TestRepo, <wall clock>,
+PhoenixKitEntities.Test.Migration, ...)` in `test_helper.exs` — the
+same two steps a host performs, so the suite can never pass against a
+schema an install would not get.
 
 ### Running tests
 
