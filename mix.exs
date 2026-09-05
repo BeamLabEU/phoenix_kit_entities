@@ -119,9 +119,7 @@ defmodule PhoenixKitEntities.MixProject do
       # 1.7.214+ required: Scope.can_access_admin_area?/1 (the rename of the
       # now-`@deprecated` Scope.admin?/1) — an older core has no such function,
       # so this is an UndefinedFunctionError at runtime, not a warning.
-      # 2.14.0 floor: `Routes.admin_area_path?/1` (used by the entity form's
-      # referer allowlist) became public API in that release.
-      pk_dep(:phoenix_kit, "~> 2.14"),
+      pk_dep(:phoenix_kit, "~> 2.0"),
 
       # mdex_native (pulled in transitively through phoenix_kit's mdex dep)
       # builds from source when MDEX_NATIVE_BUILD=1 is set in the
