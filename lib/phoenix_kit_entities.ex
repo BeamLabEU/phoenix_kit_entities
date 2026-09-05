@@ -1146,6 +1146,9 @@ defmodule PhoenixKitEntities do
   def module_key, do: "entities"
 
   @impl PhoenixKit.Module
+  def migration_module, do: PhoenixKitEntities.Migrations
+
+  @impl PhoenixKit.Module
   @spec module_name() :: String.t()
   def module_name, do: "Entities"
 
