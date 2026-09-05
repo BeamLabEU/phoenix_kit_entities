@@ -91,14 +91,24 @@ defmodule PhoenixKitEntities.Web.EntityForm do
 
   defp referer_to_return_path(_), do: nil
 
-  # An "admin path" lives under <url_prefix>/.../admin/. We don't trust
-  # arbitrary site paths — only the admin area. The trailing "/" in
-  # "/admin/" matters: without it, lookalike paths like "/admin-tools/foo"
-  # would slip through. Reject protocol-relative paths up front for the
-  # same reason `safe_referer_path/2` does.
+  # We don't trust arbitrary site paths as a redirect target — only PhoenixKit's
+  # admin area. Two questions, and neither implies the other, so a
+  # client-supplied path needs both:
+  #
+  #   * `local_path?/1` — does it point off-site at all? Rejects `//evil.com`,
+  #     `/\evil.com`, and ASCII control characters (browsers strip tab/CR/LF,
+  #     so `"/\t/evil.com"` lands as `//evil.com`).
+  #   * `admin_area_path?/1` — does it land in the admin area? Strips the mount
+  #     prefix, allows a locale segment, and compares by SEGMENT.
+  #
+  # This was hand-rolled as `String.contains?(path, "/admin/")`, which was wrong
+  # three ways: it claimed `/administrators`, it claimed a host's own page at
+  # `/shop/admin`, and it matched nothing at all once a host renamed the admin
+  # area with `config :phoenix_kit, admin_path:` — silently dropping the "and
+  # Return" destination it exists to preserve. Core exposed
+  # `admin_area_path?/1` in 2.14.0 for exactly this; don't re-roll it.
   defp internal_admin_path?(path) do
-    String.starts_with?(path, "/") and not String.starts_with?(path, "//") and
-      String.contains?(path, "/admin/")
+    Routes.local_path?(path) and Routes.admin_area_path?(path)
   end
 
   # If the referrer is the same page we're rendering (e.g. user reloaded
