@@ -1,3 +1,11 @@
+## 0.4.11 - 2026-09-07
+
+### Fixed
+
+- **Removed duplicate page headings** on the Entities Settings page and the
+  entity edit form — each repeated the page title already shown in the top
+  breadcrumb bar.
+
 ## 0.4.10 - 2026-09-05
 
 ### Added

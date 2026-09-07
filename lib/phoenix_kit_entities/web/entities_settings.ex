@@ -14,6 +14,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
   require Logger
 
   alias PhoenixKit.Settings
+  alias PhoenixKit.Utils.Routes
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.EntityData
   alias PhoenixKitEntities.Events
@@ -33,7 +34,7 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
       |> assign(:page_title, gettext("Entities Settings"))
       |> assign(:page_subtitle, gettext("Configure the entities system behavior and preferences"))
       |> assign(:page_section, gettext("Modules"))
-      |> assign(:page_section_path, PhoenixKit.Utils.Routes.path("/admin/modules"))
+      |> assign(:page_section_path, Routes.path("/admin/modules"))
       |> assign(:project_title, nil)
       |> assign(:settings, %{})
       |> assign(:changeset, nil)
