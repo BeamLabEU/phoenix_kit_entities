@@ -31,10 +31,10 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
 
     socket =
       socket
-      |> assign(:page_title, gettext("Entities Settings"))
+      |> assign(:page_title, gettext("Entities"))
       |> assign(:page_subtitle, gettext("Configure the entities system behavior and preferences"))
-      |> assign(:page_section, gettext("Modules"))
-      |> assign(:page_section_path, Routes.path("/admin/modules"))
+      |> assign(:page_section, gettext("Settings"))
+      |> assign(:page_section_path, Routes.path("/admin/settings"))
       |> assign(:project_title, nil)
       |> assign(:settings, %{})
       |> assign(:changeset, nil)

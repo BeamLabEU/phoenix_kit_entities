@@ -1,3 +1,14 @@
+## 0.4.12 - 2026-09-07
+
+### Fixed
+
+- The Entities Settings page's breadcrumb linked its second segment to
+  "Modules" → `/admin/modules` instead of "Settings" → `/admin/settings`,
+  even though the page lives under the Settings sidebar group
+  (`settings_tabs/0` registers it at `/admin/settings/entities`) — the
+  wrong link, not just a mislabeled one. Page title also shortened from
+  "Entities Settings" to "Entities" to match the sidebar label.
+
 ## 0.4.11 - 2026-09-07
 
 ### Fixed
