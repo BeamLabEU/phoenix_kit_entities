@@ -81,6 +81,11 @@ in a fresh process) and `mix test.js` (`node --test` over
 `test/js/*.test.cjs`; skipped when node is absent — the Elixir suite is the
 gate).
 
+Repo-local aliases:
+
+- `mix quality` — `format` + `credo --strict` + `dialyzer` (applies formatting).
+- `mix quality.ci` — `format --check-formatted` + `credo --strict` + `dialyzer`: it CHECKS formatting rather than applying it, so run `mix format` first.
+
 ## Conventions
 
 - **Module key** is `"entities"` in every callback; tab ids are prefixed
