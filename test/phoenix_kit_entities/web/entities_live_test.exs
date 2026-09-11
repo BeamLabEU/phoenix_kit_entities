@@ -253,6 +253,7 @@ defmodule PhoenixKitEntities.Web.EntitiesLiveTest do
         Regex.run(~r/<div id="entity-menu-#{managed.uuid}".*?<\/div>/s, html)
         |> List.first()
 
+      assert is_binary(menu_html), "expected dropdown markup for entity-menu-#{managed.uuid}"
       refute menu_html =~ "Open in"
     end
 
@@ -270,17 +271,26 @@ defmodule PhoenixKitEntities.Web.EntitiesLiveTest do
         Regex.run(~r/<div id="entity-menu-#{managed.uuid}".*?<\/div>/s, html)
         |> List.first()
 
+      assert is_binary(menu_html), "expected dropdown markup for entity-menu-#{managed.uuid}"
       refute menu_html =~ "Open in"
       refute menu_html =~ "evil.example"
     end
 
     # MAJOR (2026-09-11 review): `String.starts_with?(path, "/")` alone
     # accepts `//evil.example/x` too — a PROTOCOL-RELATIVE URL, not a
-    # same-app path. With the core mounted at the site root (`url_prefix`
-    # "/"), `PhoenixKit.Utils.Routes.path/1` passes a `//`-prefixed path
-    # through unchanged, so the rendered `href` leaves the admin for
-    # another host. The `https://evil.example/x` case above never
-    # exercised this: `starts_with?(path, "/")` was already false for it.
+    # same-app path. `PhoenixKit.Utils.Routes.path/1` only prefixes the
+    # locale/mount segments; it does not itself refuse a path shaped like
+    # that. Whether the rendered `href` actually leaves the admin's origin
+    # depends on that prefixing: with core mounted at the site root
+    # (`url_prefix` "/") AND no locale segment inserted, `path/1` passes
+    # `//evil.example/x` through unchanged, a real open redirect — but a
+    # locale segment (the common case; this suite's own mount emits one)
+    # lands it at e.g. `/phoenix_kit/en//evil.example/x`, which is still
+    # same-origin. The shape is rejected here unconditionally regardless of
+    # mount, since the owning module's settings shouldn't get to depend on
+    # deployment specifics for safety. The `https://evil.example/x` case
+    # above never exercised this: `starts_with?(path, "/")` was already
+    # false for it.
     test "omits the link when managed_path is a protocol-relative URL",
          %{conn: conn} = ctx do
       {:ok, managed} =
@@ -295,6 +305,7 @@ defmodule PhoenixKitEntities.Web.EntitiesLiveTest do
         Regex.run(~r/<div id="entity-menu-#{managed.uuid}".*?<\/div>/s, html)
         |> List.first()
 
+      assert is_binary(menu_html), "expected dropdown markup for entity-menu-#{managed.uuid}"
       refute menu_html =~ "Open in"
       refute menu_html =~ "evil.example"
     end
@@ -313,6 +324,7 @@ defmodule PhoenixKitEntities.Web.EntitiesLiveTest do
         Regex.run(~r/<div id="entity-menu-#{managed.uuid}".*?<\/div>/s, html)
         |> List.first()
 
+      assert is_binary(menu_html), "expected dropdown markup for entity-menu-#{managed.uuid}"
       refute menu_html =~ "Open in"
       refute menu_html =~ "evil.example"
     end

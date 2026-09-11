@@ -134,6 +134,13 @@ defmodule PhoenixKitEntities.Managed do
   @spec validate_data_mutation(struct() | nil, struct(), map(), keyword()) ::
           :ok | {:error, :locked_key}
   def validate_data_mutation(owning_entity, data_record, attrs, opts \\ []) do
+    # WARNING for future maintainers: `EntityData.validate_managed_slug/3`
+    # calls this function only when `renames_data_slug?/2` already says the
+    # slug changed — a cheap pre-check that assumes slug-rename is the ONLY
+    # reason this `cond` ever needs the owning entity. A clause added here
+    # that guards some other field, unconditional on the slug, would be
+    # silently skipped by that pre-check for every save that leaves the
+    # slug alone. Update the pre-check in lockstep with any such clause.
     cond do
       not managed?(owning_entity) -> :ok
       Keyword.get(opts, :on_behalf_of) == owner(owning_entity) -> :ok

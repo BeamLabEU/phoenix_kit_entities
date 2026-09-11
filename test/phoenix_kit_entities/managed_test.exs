@@ -158,10 +158,18 @@ defmodule PhoenixKitEntities.ManagedTest do
     # MAJOR (2026-09-11 review): the old check was `is_binary(new_slug) and
     # new_slug != data_record.slug` — an explicit `slug: nil` in `attrs`
     # is not a binary, so it read as "untouched" and walked straight past
-    # the guard, silently erasing an existing slug. Reachable generically
-    # via `Mirror.Importer`'s `:overwrite` strategy: a JSON record with no
-    # `"slug"` key produces `record_data["slug"] == nil`, written as
-    # `attrs.slug` without ever going through `on_behalf_of`.
+    # the guard, silently erasing an existing slug.
+    #
+    # This hardens `renames_data_slug?/2`'s contract for ANY caller, not a
+    # fix for a known exploit: no caller in this codebase reaches
+    # `validate_data_mutation/4` with a present-but-nil slug today.
+    # `Mirror.Importer`'s `:overwrite` strategy looks like a candidate but
+    # isn't — `import_data_record/3` (mirror/importer.ex) sends a JSON
+    # record with no `"slug"` key straight to `create_data_from_import`,
+    # never to `handle_data_conflict/3`, because a nil/`""` slug can never
+    # be matched to an existing record in the first place. See the `@doc`
+    # on `renames_data_slug?/2` for the same rationale at the function's
+    # own boundary.
     test "an explicit nil slug on a record that HAS one is a rename, not a no-op" do
       owning = managed_entity()
 

@@ -743,9 +743,17 @@ defmodule PhoenixKitEntities.Web.DataFormLiveTest do
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
       {:ok, view, _html} = live(conn, new_url(ctx.managed_entity))
 
-      render_submit(view, "save", %{
+      # `form/3` + `render_submit/1` (rather than `render_submit(view, "save",
+      # params)`) actually walk the rendered markup: a `disabled` slug input is
+      # excluded from what gets submitted, same as a real browser. That is the
+      # scenario this test guards — `managed_blueprint?/2` wrongly locking the
+      # slug field on CREATE — so it must go through the disabled check to be
+      # able to fail when that regresses.
+      view
+      |> form("#entity-data-form", %{
         "phoenix_kit_entity_data" => %{"title" => "Maple", "slug" => "maple"}
       })
+      |> render_submit()
 
       created = EntityData.get_by_slug(ctx.managed_entity.uuid, "maple")
       assert created
