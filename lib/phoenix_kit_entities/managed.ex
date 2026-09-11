@@ -142,15 +142,8 @@ defmodule PhoenixKitEntities.Managed do
   @spec validate_data_mutation(struct() | nil, struct(), map(), keyword()) ::
           :ok | {:error, :locked_key}
   def validate_data_mutation(owning_entity, data_record, attrs, opts \\ []) do
-    # WARNING for future maintainers: `EntityData.validate_managed_slug/3`
-    # calls this function only when `renames_data_slug?/2`,
-    # `renames_translated_slug?/2`, or `moves_data_record?/2` already says
-    # something changed — a cheap pre-check that assumes those are the
-    # ONLY reasons this `cond` ever needs the owning entity. A clause
-    # added here that guards some other field, unconditional on all
-    # three, would be silently skipped by that pre-check for every save
-    # that leaves them alone. Update the pre-check in lockstep with any
-    # such clause.
+    # Any clause added below that guards a new field must also be added
+    # to `data_mutation_needs_owner?/2` right below — see its @doc.
     cond do
       not managed?(owning_entity) -> :ok
       Keyword.get(opts, :on_behalf_of) == owner(owning_entity) -> :ok
@@ -159,6 +152,27 @@ defmodule PhoenixKitEntities.Managed do
       moves_data_record?(data_record, attrs) -> {:error, :locked_key}
       true -> :ok
     end
+  end
+
+  @doc """
+  True when `attrs` touches a field `validate_data_mutation/4` guards —
+  today, any of `renames_data_slug?/2`, `renames_translated_slug?/2`, or
+  `moves_data_record?/2`.
+
+  `EntityData.validate_managed_slug/3` calls this FIRST to decide whether
+  an ordinary save is even worth the owning-entity lookup (a `SELECT`
+  plus `preload(:creator)`) that `validate_data_mutation/4` would
+  otherwise need before it could return `:ok` for an unmanaged blueprint
+  or a save that touches none of the guarded fields. Deliberately kept
+  beside `validate_data_mutation/4`'s `cond` rather than in `EntityData`:
+  a clause added there for a newly guarded field belongs here too, in
+  the same module, in the same diff.
+  """
+  @spec data_mutation_needs_owner?(struct(), map()) :: boolean()
+  def data_mutation_needs_owner?(data_record, attrs) do
+    renames_data_slug?(data_record, attrs) or
+      renames_translated_slug?(data_record, attrs) or
+      moves_data_record?(data_record, attrs)
   end
 
   @doc """
