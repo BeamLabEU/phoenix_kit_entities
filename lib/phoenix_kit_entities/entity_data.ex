@@ -2829,7 +2829,20 @@ defmodule PhoenixKitEntities.EntityData do
     # Wrap the activity-log call OUTSIDE the transaction so a logging
     # failure can't be misclassified as `:referenced_by_external`.
     case run_bulk_delete_txn(uuids) do
-      {:ok, {count, _} = result} ->
+      {:ok, {count, deleted}} ->
+        # Parity with the single-record path (`notify_data_event/3`'s
+        # `:deleted` clause): a bulk hard-delete is the ordinary way to
+        # remove a value permanently (emptying the trash — see
+        # `web/data_navigator.ex`'s "Delete forever"), so the owner's
+        # own safety net (a subscriber that prunes dangling slug
+        # references) needs the same `:data_deleted` event per row this
+        # emits for a single delete. Per-record activity rows are still
+        # NOT logged here — only the operation-level row below — same
+        # as `bulk_update_status/3` and `bulk_trash/2`.
+        Enum.each(deleted, fn {data_uuid, entity_uuid} ->
+          Events.broadcast_data_deleted(entity_uuid, data_uuid)
+        end)
+
         PhoenixKitEntities.ActivityLog.log(%{
           action: "entity_data.bulk_deleted",
           mode: "manual",
@@ -2841,7 +2854,7 @@ defmodule PhoenixKitEntities.EntityData do
           }
         })
 
-        result
+        {count, nil}
 
       {:error, :has_children} ->
         log_data_error_activity(:bulk_deleted, opts)
@@ -2866,7 +2879,12 @@ defmodule PhoenixKitEntities.EntityData do
       # deleting, so the self-FK doesn't block.
       nullify_trashed_children(uuids)
 
-      from(d in __MODULE__, where: d.uuid in ^uuids)
+      # `select` gets the deleted rows' uuid/entity_uuid back atomically
+      # with the delete — no separate SELECT, no race with a concurrent
+      # delete of the same rows between two queries. (`delete_all/2` has
+      # no `:returning` option — `select` in the query is how Ecto
+      # returns data from a `DELETE`, same as `update_all/3`.)
+      from(d in __MODULE__, where: d.uuid in ^uuids, select: {d.uuid, d.entity_uuid})
       |> repo().delete_all()
     end)
   rescue
