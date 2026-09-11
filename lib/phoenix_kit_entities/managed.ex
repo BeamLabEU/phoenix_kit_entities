@@ -130,27 +130,32 @@ defmodule PhoenixKitEntities.Managed do
 
   Re-pointing the record at another blueprint (`entity_uuid`) is guarded
   the same way as a slug rename — see `moves_data_record?/2` — since it
-  detaches the record from the owner's set just as thoroughly.
+  detaches the record from the owner's set just as thoroughly. A
+  secondary language's `_slug` override inside `data` is guarded the
+  same way too — see `renames_translated_slug?/2`.
 
-  Only the record's `slug` and `entity_uuid` are protected — `title`,
-  `status`, `data`, etc. go through unguarded, same as for an unmanaged
-  blueprint's records.
+  Only the record's `slug`, `entity_uuid`, and any per-language `_slug`
+  override are protected — `title`, `status`, and everything else in
+  `data` go through unguarded, same as for an unmanaged blueprint's
+  records.
   """
   @spec validate_data_mutation(struct() | nil, struct(), map(), keyword()) ::
           :ok | {:error, :locked_key}
   def validate_data_mutation(owning_entity, data_record, attrs, opts \\ []) do
     # WARNING for future maintainers: `EntityData.validate_managed_slug/3`
-    # calls this function only when `renames_data_slug?/2` or
-    # `moves_data_record?/2` already says the slug/entity_uuid changed — a
-    # cheap pre-check that assumes those are the ONLY reasons this `cond`
-    # ever needs the owning entity. A clause added here that guards some
-    # other field, unconditional on both, would be silently skipped by
-    # that pre-check for every save that leaves slug and entity_uuid
-    # alone. Update the pre-check in lockstep with any such clause.
+    # calls this function only when `renames_data_slug?/2`,
+    # `renames_translated_slug?/2`, or `moves_data_record?/2` already says
+    # something changed — a cheap pre-check that assumes those are the
+    # ONLY reasons this `cond` ever needs the owning entity. A clause
+    # added here that guards some other field, unconditional on all
+    # three, would be silently skipped by that pre-check for every save
+    # that leaves them alone. Update the pre-check in lockstep with any
+    # such clause.
     cond do
       not managed?(owning_entity) -> :ok
       Keyword.get(opts, :on_behalf_of) == owner(owning_entity) -> :ok
       renames_data_slug?(data_record, attrs) -> {:error, :locked_key}
+      renames_translated_slug?(data_record, attrs) -> {:error, :locked_key}
       moves_data_record?(data_record, attrs) -> {:error, :locked_key}
       true -> :ok
     end
@@ -318,6 +323,49 @@ defmodule PhoenixKitEntities.Managed do
     case Map.fetch(attrs, :entity_uuid) do
       {:ok, value} -> {:ok, value}
       :error -> Map.fetch(attrs, "entity_uuid")
+    end
+  end
+
+  @doc """
+  True when `attrs["data"]` (or `:data`) changes any language's `"_slug"`
+  override away from what `data_record.data` already has for that
+  language — the secondary-language mirror of `renames_data_slug?/2`, one
+  level down inside the JSONB `data` column (multilang stores per-language
+  overrides at `data[lang]["_slug"]`, see `PhoenixKit.Utils.Multilang`).
+  `web/data_form.ex`'s `translatable_field` disables this input on a
+  secondary tab for the same reason it disables the primary slug field,
+  but a LiveView event is not bound by that markup — same class of gap as
+  `generate_slug` (see `do_generate_slug/1`'s guard).
+
+  A language absent from `attrs["data"]`, or present without a `"_slug"`
+  key, is not a rename — multilang only stores overrides, so most
+  languages never carry their own `"_slug"` at all.
+  """
+  @spec renames_translated_slug?(struct(), map()) :: boolean()
+  def renames_translated_slug?(data_record, attrs) do
+    case fetch_data(attrs) do
+      {:ok, new_data} when is_map(new_data) ->
+        old_data = Map.get(data_record, :data)
+        old_data = if is_map(old_data), do: old_data, else: %{}
+
+        Enum.any?(new_data, fn
+          {lang, %{"_slug" => new_slug}} when is_binary(lang) ->
+            old_slug = get_in(old_data, [lang, "_slug"])
+            normalize_slug(new_slug) != normalize_slug(old_slug)
+
+          _ ->
+            false
+        end)
+
+      _ ->
+        false
+    end
+  end
+
+  defp fetch_data(attrs) do
+    case Map.fetch(attrs, :data) do
+      {:ok, value} -> {:ok, value}
+      :error -> Map.fetch(attrs, "data")
     end
   end
 
