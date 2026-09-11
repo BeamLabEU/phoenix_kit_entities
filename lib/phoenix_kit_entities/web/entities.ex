@@ -15,6 +15,7 @@ defmodule PhoenixKitEntities.Web.Entities do
 
   alias PhoenixKit.Settings
   alias PhoenixKit.Users.Auth.Scope
+  alias PhoenixKit.Utils.Routes
   alias PhoenixKitEntities, as: Entities
 
   @impl true
@@ -208,16 +209,27 @@ defmodule PhoenixKitEntities.Web.Entities do
 
   # `String.starts_with?(path, "/")` alone still accepts `//evil.example/x`
   # (and the backslash variant a browser normalizes the same way): a
-  # PROTOCOL-RELATIVE URL, not a same-app path. `PhoenixKit.Utils.Routes.path/1`
-  # only prefixes the locale/mount segments — it does not itself refuse a
-  # path shaped like that — so a `managed_path` this permissive still
-  # renders an `href` that leaves the admin for another host (reachable via
-  # `Mirror.Importer`'s `:merge` strategy, which deep-merges settings from
-  # an imported JSON file untouched by the write guard's marker checks).
-  defp root_relative_path?("//" <> _), do: false
-  defp root_relative_path?("/\\" <> _), do: false
-  defp root_relative_path?("/" <> _), do: true
-  defp root_relative_path?(_), do: false
+  # PROTOCOL-RELATIVE URL, not a same-app path. Rejecting only those two
+  # literal shapes is still not enough — per WHATWG, a browser strips ASCII
+  # tab/newline/CR from a URL before parsing it, so `"/\t/evil.example"`
+  # (or `\n`, `\r`) collapses to `//evil.example` by the time it reaches
+  # `window.location`, the same host-switching URL under a different
+  # spelling. `PhoenixKit.Utils.Routes.path/1` only prefixes the
+  # locale/mount segments — it does not itself refuse a path shaped like
+  # that — so a `managed_path` this permissive can still produce a
+  # protocol-relative `href` (reachable via `Mirror.Importer`'s `:merge`
+  # strategy, which deep-merges settings from an imported JSON file
+  # untouched by the write guard's marker checks). Whether that `href`
+  # actually leaves the admin's origin depends on how the host mounts
+  # core and on locale routing — see the test for the concrete case.
+  #
+  # Delegates to `PhoenixKit.Utils.Routes.local_path?/1` rather than
+  # re-deriving the same check here: it is core's own open-redirect guard
+  # for exactly this shape of value (a same-app-relative path read back
+  # from stored settings/params), already rejects every ASCII control
+  # character rather than only tab/newline/CR, and keeps this module in
+  # sync with core's guard instead of maintaining a second copy of it.
+  defp root_relative_path?(path), do: Routes.local_path?(path)
 
   attr(:entity, :map, required: true)
 
