@@ -1901,11 +1901,17 @@ defmodule PhoenixKitEntities.EntityData do
 
   # A managed blueprint's owner keys its own relations on a value record's
   # slug (e.g. the catalogue's `selected_value_slugs`). `client_writable_params/2`
-  # (data_form.ex) always includes `"slug"` in a save's params — as does
-  # `Mirror.Importer` — so nearly every save on ANY blueprint (managed or
-  # not) reaches this function with the key present; skipping the
-  # owning-entity lookup on absence alone barely fires. What actually
-  # saves the common case is `Managed.renames_data_slug?/2`: a save that
+  # (data_form.ex) does a `Map.take/2` — it keeps `"slug"` only when the
+  # incoming params already carry it, not unconditionally — but the admin
+  # data form's own template always posts that key (an enabled input, or a
+  # disabled field's hidden mirror), so a save from THAT form reaches this
+  # function with the key present every time, same as a `Mirror.Importer`
+  # save. Not every caller does, though:
+  # `components/live_data_form.ex`'s embedded record editor saves only
+  # `%{"data" => ...}`, no slug key at all, and takes the skip-on-absence
+  # path below instead. Either way, skipping the owning-entity lookup on
+  # absence alone isn't where most of the saving here comes from anyway.
+  # What actually saves the common case is `Managed.renames_data_slug?/2`: a save that
   # resubmits the record's own unchanged slug (the ordinary case — a
   # disabled field's hidden mirror, or a title-only edit that round-trips
   # the current value) is cheap to detect without ever reading the
