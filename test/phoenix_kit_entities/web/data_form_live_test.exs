@@ -317,6 +317,24 @@ defmodule PhoenixKitEntities.Web.DataFormLiveTest do
     end
   end
 
+  # KNOWN GAP (2026-09-11 review): every test in this file runs with the
+  # Languages module off, so `@show_multilang_tabs` is always false and
+  # the "multilang: unified card with language tabs" template branch in
+  # data_form.ex (the `<%= if @show_multilang_tabs do %>` arm) never
+  # renders here — only its "non-multilang: separate cards" sibling does.
+  # Turning Languages on for one test isn't a safe way to close this:
+  # `PhoenixKit.Modules.Languages.enable_system/0` writes through
+  # `PhoenixKit.Cache`, an ETS table outside the SQL sandbox transaction
+  # this test's `on_exit` rollback doesn't touch — the "enabled" config
+  # would leak into every test that runs after it in the suite. Closing
+  # this needs either a cache-reset hook run around such a test or a
+  # render/1-level unit test that hand-builds `assigns` (fragile against
+  # unrelated assign changes elsewhere in the LiveView). Until then, the
+  # two branches are kept structurally identical by hand (see
+  # `managed_blueprint?/2` and its 8 call sites, and the hidden slug
+  # mirror's `|| ""`, in data_form.ex) so a fix applied to one is applied
+  # to both.
+
   describe "switch_language event" do
     test "ignores unknown language without crashing", %{conn: conn} = ctx do
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
@@ -696,6 +714,85 @@ defmodule PhoenixKitEntities.Web.DataFormLiveTest do
       after_save = EntityData.get(ctx.record.uuid)
       assert after_save.slug == "hello-renamed"
     end
+
+    # CRITICAL (2026-09-11 review): `managed_blueprint?/1` used to lock the
+    # slug field on `/data/new` too, disabling it and hiding Generate —
+    # the same treatment as an EXISTING record. But on creation there is
+    # no prior slug to protect, and the disabled field's hidden mirror
+    # always posts `""` (nothing has been typed yet): the record was
+    # created with `slug: nil`, permanently, since `changeset/2` never
+    # derives a slug from the title. `managed_blueprint?/2` now also
+    # checks `@data_record.uuid` — locking only an EXISTING record.
+    test "the slug field and Generate are available when CREATING a managed value record",
+         %{conn: conn} = ctx do
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, _view, html} = live(conn, new_url(ctx.managed_entity))
+
+      refute html =~ "Locked — the owning module keys on this slug"
+      assert html =~ ~s(phx-click="generate_slug")
+
+      slug_input =
+        Regex.run(~r/<input[^>]*id="phoenix_kit_entity_data_slug"[^>]*>/, html) |> List.first()
+
+      assert is_binary(slug_input)
+      refute slug_input =~ "disabled"
+    end
+
+    test "creating a managed value record with a slug persists it (not nil)",
+         %{conn: conn} = ctx do
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, new_url(ctx.managed_entity))
+
+      render_submit(view, "save", %{
+        "phoenix_kit_entity_data" => %{"title" => "Maple", "slug" => "maple"}
+      })
+
+      created = EntityData.get_by_slug(ctx.managed_entity.uuid, "maple")
+      assert created
+      assert created.title == "Maple"
+    end
+
+    # CRITICAL (2026-09-11 review): `renames_data_slug?/2` treated an
+    # empty new slug as a rename whenever the record's slug wasn't
+    # already `""` (it compared `is_binary("") and "" != nil`, which is
+    # `true`) — so a record that legitimately has `slug: nil` (created
+    # without one; possible even after the CREATE-path fix above, since
+    # a blank slug has always been valid) could never be saved again:
+    # the disabled field's hidden mirror resubmits `""`, and every save
+    # — even a title-only edit — was refused as a locked-key rename.
+    test "a managed value record created without a slug can still be saved again",
+         %{conn: conn} = ctx do
+      {:ok, no_slug_record} =
+        EntityData.create(
+          %{
+            entity_uuid: ctx.managed_entity.uuid,
+            title: "Birch",
+            slug: nil,
+            status: "published",
+            data: %{},
+            created_by_uuid: ctx.actor_uuid
+          },
+          actor_uuid: ctx.actor_uuid
+        )
+
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, html} = live(conn, edit_url(ctx.managed_entity, no_slug_record))
+
+      # The hidden mirror posts back `""`, matching the DB's `nil` — not a
+      # rename.
+      assert html =~
+               ~r/<input\s+type="hidden"\s+name="phoenix_kit_entity_data\[slug\]"\s+value=""/
+
+      render_submit(view, "save", %{
+        "phoenix_kit_entity_data" => %{"title" => "Birch (renamed)", "slug" => ""}
+      })
+
+      refute render(view) =~ "locked by its owning module"
+
+      after_save = EntityData.get(no_slug_record.uuid)
+      assert after_save.title == "Birch (renamed)"
+      assert is_nil(after_save.slug)
+    end
   end
 
   describe "live slug derivation (2026-08-28: no typing pause)" do
@@ -990,6 +1087,8 @@ defmodule PhoenixKitEntities.Web.DataFormLiveTest do
 
   defp edit_url(entity, record),
     do: "/en/admin/entities/#{entity.name}/data/#{record.uuid}/edit"
+
+  defp new_url(entity), do: "/en/admin/entities/#{entity.name}/data/new"
 
   # The form's `data` JSONB as the LV currently holds it. Read off the
   # socket rather than the rendered HTML: without the Languages module

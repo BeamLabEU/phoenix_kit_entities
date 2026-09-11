@@ -549,12 +549,21 @@ defmodule PhoenixKitEntities.Web.DataForm do
   defp slug_auto_attrs(auto?), do: %{"data-slug-auto" => to_string(auto? == true)}
 
   # True when this record's owning blueprint (`@entity`) belongs to another
-  # module — its records' slug is the relation key that module's write-path
-  # guard protects (`Managed.validate_data_mutation/4`). The UI locks the
-  # field here too so the guard isn't the only thing stopping a silent
-  # change; mirrors `managed_blueprint?/1` in entity_form.ex, which guards
-  # the blueprint's own slug the same way.
-  defp managed_blueprint?(entity), do: PhoenixKitEntities.Managed.managed?(entity)
+  # module AND the record already exists — its slug is the relation key
+  # that module's write-path guard protects
+  # (`Managed.validate_data_mutation/4`), but that guard only fires on
+  # `EntityData.update/3`. On `/data/new` there is no slug to key on yet,
+  # so locking the field there only prevented the FIRST slug from ever
+  # being set (the disabled field's hidden mirror posts back "", and
+  # `changeset/2` never derives a slug from the title): the record was
+  # created with `slug: nil`. The UI locks the field here too so the guard
+  # isn't the only thing stopping a silent change on an EXISTING record;
+  # mirrors `managed_blueprint?/1` in entity_form.ex, which guards the
+  # blueprint's own slug (and gates the same way on an existing `uuid`).
+  defp managed_blueprint?(entity, %{uuid: uuid}) when not is_nil(uuid),
+    do: PhoenixKitEntities.Managed.managed?(entity)
+
+  defp managed_blueprint?(_entity, _new_record), do: false
 
   # Ownership of the slug is server state, deliberately NOT inferred from
   # the slug value the client posts back.
@@ -1673,12 +1682,12 @@ defmodule PhoenixKitEntities.Web.DataForm do
                       lang_data={lang_data}
                       label={gettext("Slug (URL-friendly identifier)")}
                       placeholder={gettext("auto-generated-slug")}
-                      disabled={@readonly? or managed_blueprint?(@entity)}
+                      disabled={@readonly? or managed_blueprint?(@entity, @data_record)}
                       class="w-full"
                       pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
                       title={gettext("Use lowercase letters, numbers, and hyphens only.")}
                       hint={
-                        if managed_blueprint?(@entity),
+                        if managed_blueprint?(@entity, @data_record),
                           do: gettext("Locked — the owning module keys on this slug"),
                           else: gettext("Leave empty to auto-generate from title")
                       }
@@ -1687,7 +1696,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
                     >
                       <:label_extra>
                         <button
-                          :if={not managed_blueprint?(@entity)}
+                          :if={not managed_blueprint?(@entity, @data_record)}
                           type="button"
                           class="btn btn-ghost btn-xs ml-2"
                           phx-click="generate_slug"
@@ -1702,10 +1711,10 @@ defmodule PhoenixKitEntities.Web.DataForm do
                          params so validation (and the write-path guard) stays
                          whole. --%>
                     <input
-                      :if={managed_blueprint?(@entity)}
+                      :if={managed_blueprint?(@entity, @data_record)}
                       type="hidden"
                       name="phoenix_kit_entity_data[slug]"
-                      value={Ecto.Changeset.get_field(@changeset, :slug)}
+                      value={Ecto.Changeset.get_field(@changeset, :slug) || ""}
                     />
                   </div>
                 </div>
@@ -1857,7 +1866,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
                     <.label for="phoenix_kit_entity_data_slug">
                       {gettext("Slug (URL-friendly identifier)")}
                       <button
-                        :if={not managed_blueprint?(@entity)}
+                        :if={not managed_blueprint?(@entity, @data_record)}
                         type="button"
                         class="btn btn-ghost btn-xs ml-2"
                         phx-click="generate_slug"
@@ -1877,21 +1886,21 @@ defmodule PhoenixKitEntities.Web.DataForm do
                       pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
                       title={gettext("Use lowercase letters, numbers, and hyphens only.")}
                       phx-debounce="0"
-                      disabled={@readonly? or managed_blueprint?(@entity)}
+                      disabled={@readonly? or managed_blueprint?(@entity, @data_record)}
                       {slug_auto_attrs(@slug_auto?)}
                     />
                     <%!-- A disabled input doesn't submit; keep the slug in the
                          params so validation (and the write-path guard) stays
                          whole. --%>
                     <input
-                      :if={managed_blueprint?(@entity)}
+                      :if={managed_blueprint?(@entity, @data_record)}
                       type="hidden"
                       name="phoenix_kit_entity_data[slug]"
                       value={Ecto.Changeset.get_field(@changeset, :slug) || ""}
                     />
                     <.label class="label">
                       <span class="fieldset-label">
-                        <%= if managed_blueprint?(@entity) do %>
+                        <%= if managed_blueprint?(@entity, @data_record) do %>
                           {gettext("Locked — the owning module keys on this slug")}
                         <% else %>
                           {gettext("Leave empty to auto-generate from title")}
