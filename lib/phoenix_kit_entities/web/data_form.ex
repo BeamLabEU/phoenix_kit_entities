@@ -66,10 +66,15 @@ defmodule PhoenixKitEntities.Web.DataForm do
     # gets written back and erases every translation in the row.
     entity = Entities.get_entity_by_name(entity_slug, lang: locale)
     data_record = EntityData.get!(uuid)
-    changeset = EntityData.change(data_record)
 
-    {:noreply,
-     hydrate_data_form(socket, entity, data_record, changeset, gettext("Edit Data"), locale)}
+    if owns_record?(entity, data_record) do
+      changeset = EntityData.change(data_record)
+
+      {:noreply,
+       hydrate_data_form(socket, entity, data_record, changeset, gettext("Edit Data"), locale)}
+    else
+      {:noreply, redirect_to_owning_entity(socket, data_record)}
+    end
   end
 
   def handle_params(%{"entity_id" => entity_uuid, "id" => id} = params, _uri, socket) do
@@ -79,10 +84,15 @@ defmodule PhoenixKitEntities.Web.DataForm do
     # entity_slug clause above for why `:lang` must not touch it.
     entity = Entities.get_entity!(entity_uuid, lang: locale)
     data_record = EntityData.get!(id)
-    changeset = EntityData.change(data_record)
 
-    {:noreply,
-     hydrate_data_form(socket, entity, data_record, changeset, gettext("Edit Data"), locale)}
+    if owns_record?(entity, data_record) do
+      changeset = EntityData.change(data_record)
+
+      {:noreply,
+       hydrate_data_form(socket, entity, data_record, changeset, gettext("Edit Data"), locale)}
+    else
+      {:noreply, redirect_to_owning_entity(socket, data_record)}
+    end
   end
 
   def handle_params(%{"entity_slug" => entity_slug} = params, _uri, socket) do
@@ -107,6 +117,37 @@ defmodule PhoenixKitEntities.Web.DataForm do
 
     {:noreply,
      hydrate_data_form(socket, entity, data_record, changeset, gettext("New Data"), locale)}
+  end
+
+  # The record is loaded by uuid, the entity comes from the URL, and until now
+  # nothing tied the two together: `/admin/entities/<other>/data/<uuid>/edit`
+  # happily rendered the record against a different blueprint's
+  # `fields_definition`. That was merely wrong on screen while the form posted
+  # the record's own `entity_uuid` back. It is not any more —
+  # `client_writable_params/2` now sets `entity_uuid` from the URL entity, on
+  # purpose, so that a crafted payload cannot re-parent a row. Which makes "the
+  # server knows which entity this form is for" a claim the server has to
+  # actually check: without this guard a plain Save on a mismatched URL moves
+  # the record to the blueprint the URL named.
+  defp owns_record?(%{uuid: entity_uuid}, %EntityData{entity_uuid: entity_uuid}), do: true
+  defp owns_record?(_entity, _data_record), do: false
+
+  # Send the admin to the same record under the blueprint it really belongs
+  # to, rather than 404ing a uuid that plainly exists.
+  defp redirect_to_owning_entity(socket, data_record) do
+    owner = Entities.get_entity!(data_record.entity_uuid)
+
+    socket
+    |> put_flash(
+      :info,
+      gettext("That record belongs to %{entity}.", entity: owner.display_name)
+    )
+    |> push_navigate(
+      to:
+        Routes.path("/admin/entities/#{owner.name}/data/#{data_record.uuid}/edit",
+          locale: socket.assigns.current_locale_base
+        )
+    )
   end
 
   defp hydrate_data_form(socket, entity, data_record, changeset, page_title, locale) do
@@ -225,8 +266,6 @@ defmodule PhoenixKitEntities.Web.DataForm do
     socket
     |> assign(:lock_owner?, true)
     |> assign(:readonly?, false)
-    |> assign(:lock_owner_user, nil)
-    |> assign(:spectators, [])
   end
 
   defp assign_editing_role(socket, data_uuid) do
@@ -238,14 +277,12 @@ defmodule PhoenixKitEntities.Web.DataForm do
         socket
         |> assign(:lock_owner?, true)
         |> assign(:readonly?, false)
-        |> populate_presence_info(:data, data_uuid)
 
       {:spectator, _owner_meta, _presences} ->
         # Different user is the owner - I'm read-only
         socket
         |> assign(:lock_owner?, false)
         |> assign(:readonly?, true)
-        |> populate_presence_info(:data, data_uuid)
     end
   end
 
@@ -681,9 +718,9 @@ defmodule PhoenixKitEntities.Web.DataForm do
             socket.assigns
           )
 
-        # Add metadata to params
         params =
           data_params
+          |> client_writable_params(socket.assigns.entity.uuid)
           |> Map.put("data", final_data)
           |> maybe_add_creator_uuid(socket.assigns.current_user, socket.assigns.data_record)
 
@@ -717,6 +754,13 @@ defmodule PhoenixKitEntities.Web.DataForm do
           socket.assigns.data_record
           |> EntityData.change(error_params)
           |> add_form_errors(errors)
+          # `EntityData.change/2` never touches repo.insert/update, so this
+          # changeset arrives with `action: nil` — and `<.input>` gates error
+          # display on `changeset.action != nil`. Every per-field error
+          # add_form_errors/2 just attached was invisible, leaving the user
+          # only the concatenated flash below. The `validate` handler above
+          # already does this; the save path was the outlier.
+          |> Map.put(:action, :validate)
 
         error_list =
           Enum.map_join(errors, "; ", fn {k, v} -> "#{k}: #{Enum.join(v, ", ")}" end)
@@ -1322,6 +1366,54 @@ defmodule PhoenixKitEntities.Web.DataForm do
     |> Enum.into(%{}, fn {key, value} -> {to_string(key), value} end)
   end
 
+  # The fields this form actually renders. `data_params` is whatever the
+  # client submitted under `phoenix_kit_entity_data`, and
+  # `EntityData.changeset/2` casts rather more than that — `created_by_uuid`,
+  # `date_created`, `metadata` and `position` are all castable and none has an
+  # input. So a crafted `save` payload could forge authorship, back-date the
+  # audit timestamp, or rewrite the `ip_address` / `user_agent` /
+  # `security_warnings` metadata that a flagged public submission was stored
+  # with. Admin access is required to reach this, but these are the columns
+  # that exist to survive an admin.
+  #
+  # `data` is rebuilt server-side by the caller and the creator is applied by
+  # `maybe_add_creator_uuid/3`, so neither belongs in the allowlist.
+  #
+  # `entity_uuid` is NOT in the list. It was, and that left the very hole this
+  # function was written to close: the blueprint a record belongs to decides
+  # its URL, its sitemap entry and which navigator it appears in, and
+  # `changeset/2` casts it while `validate_entity_reference/1` checks only
+  # that the target exists. A crafted save on
+  # `/admin/entities/products/data/<uuid>/edit` naming another entity's uuid
+  # re-parented the row — it vanished from one blueprint and appeared under
+  # another. The form renders it as a hidden input, but a LiveView event is
+  # not bound by the markup that produced it: the server knows which entity
+  # this form is for, so the server sets it.
+  #
+  # `status` is filtered to what the select offers. `"trashed"` is a valid
+  # status the form never shows, and writing it directly skips `trash/2`,
+  # which is where `metadata["trashed_from_status"]` is stashed — so the row
+  # would soft-delete without recording where it came from, log
+  # `entity_data.updated` instead of `entity_data.trashed`, and later restore
+  # to "draft" whatever it had been. The reverse (writing "published" onto a
+  # trashed row) skips `restore_from_trash/2` the same way.
+  defp client_writable_params(data_params, entity_uuid) do
+    data_params
+    |> Map.take(["title", "slug", "status", "parent_uuid"])
+    |> filter_status()
+    |> Map.put("entity_uuid", entity_uuid)
+  end
+
+  @client_settable_statuses ~w(draft published archived)
+
+  defp filter_status(params) do
+    case Map.fetch(params, "status") do
+      {:ok, status} when status in @client_settable_statuses -> params
+      {:ok, _other} -> Map.delete(params, "status")
+      :error -> params
+    end
+  end
+
   defp save_data_record(socket, data_params) do
     opts = actor_opts(socket)
 
@@ -1413,42 +1505,6 @@ defmodule PhoenixKitEntities.Web.DataForm do
       %EntityData{uuid: uuid} ->
         is_nil(current_record_uuid) || uuid != current_record_uuid
     end
-  end
-
-  defp populate_presence_info(socket, type, id) do
-    # Get all presences sorted by joined_at (FIFO order)
-    presences = PresenceHelpers.get_sorted_presences(type, id)
-
-    # Extract owner (first in list) and spectators (rest of list)
-    {lock_owner_user, lock_info, spectators} =
-      case presences do
-        [] ->
-          {nil, nil, []}
-
-        [{owner_socket_id, owner_meta} | spectator_list] ->
-          # Build owner info
-          lock_info = %{
-            socket_id: owner_socket_id,
-            user_uuid: owner_meta.user_uuid
-          }
-
-          # Map spectators to expected format
-          spectators =
-            Enum.map(spectator_list, fn {spectator_socket_id, meta} ->
-              %{
-                socket_id: spectator_socket_id,
-                user: meta.user,
-                user_uuid: meta.user_uuid
-              }
-            end)
-
-          {owner_meta.user, lock_info, spectators}
-      end
-
-    socket
-    |> assign(:lock_owner_user, lock_owner_user)
-    |> assign(:lock_info, lock_info)
-    |> assign(:spectators, spectators)
   end
 
   @impl true
@@ -1738,6 +1794,13 @@ defmodule PhoenixKitEntities.Web.DataForm do
                   <%!-- Title --%>
                   <div>
                     <.label for="phoenix_kit_entity_data_title">{gettext("Title")} *</.label>
+                    <%!-- The hook attrs belong on THIS branch too. They were
+                         only on the multilang one, so on a single-language
+                         install — the default — the slug never derived itself
+                         in the browser and fell back to a 300ms round trip.
+                         Being raw inputs rather than <.translatable_field>,
+                         these also work against the released core, which does
+                         not yet forward :global attrs to its input. --%>
                     <input
                       type="text"
                       name="phoenix_kit_entity_data[title]"
@@ -1746,7 +1809,9 @@ defmodule PhoenixKitEntities.Web.DataForm do
                       placeholder={gettext("Enter a title for this record")}
                       class="input w-full"
                       required
+                      phx-debounce="0"
                       disabled={@readonly?}
+                      {slug_mirror_attrs()}
                     />
                   </div>
 
@@ -1773,8 +1838,9 @@ defmodule PhoenixKitEntities.Web.DataForm do
                       class="input w-full"
                       pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
                       title={gettext("Use lowercase letters, numbers, and hyphens only.")}
-                      phx-debounce="300"
+                      phx-debounce="0"
                       disabled={@readonly?}
+                      {slug_auto_attrs(@slug_auto?)}
                     />
                     <.label class="label">
                       <span class="fieldset-label">

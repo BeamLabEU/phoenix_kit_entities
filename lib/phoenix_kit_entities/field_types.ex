@@ -142,7 +142,13 @@ defmodule PhoenixKitEntities.FieldTypes do
         "max" => nil,
         # 4 places matches phoenix_kit_cat_item_supplier_info.unit_cost
         # NUMERIC(14,4), the first consumer.
-        "scale" => 4
+        "scale" => 4,
+        # Stepping override for the number input: nil derives it from
+        # `scale`, "any" turns stepping off (whole-unit arrows, every
+        # place still typeable). A step coarser than `scale` is refused
+        # — the browser validates against it and would block the submit
+        # — see `decimal_step/1`.
+        "step" => nil
       }
     },
     "boolean" => %{
@@ -771,17 +777,63 @@ defmodule PhoenixKitEntities.FieldTypes do
   declared `scale`. Without this the browser rejects the extra decimal
   places the type exists to preserve, because `<input type="number">`
   defaults to `step="1"`.
+
+  A field may override it with an explicit `"step"` prop, but `step` is
+  not only the spinner's granularity — the browser validates against it,
+  and a `phx-submit` form never reaches LiveView while an input is
+  step-mismatched (the submit event fires only after native constraint
+  validation passes). So an override is honoured only when it still
+  admits every value `scale` promises to keep:
+
+    * `"any"` — no stepping at all, which is the cure for a 4-place
+      field whose arrows crawl 0.0001 at a time: the arrows then walk by
+      1 and typed entry keeps all four places.
+    * a step at least as fine as the scale, i.e. one that divides
+      `10^-scale` (`"0.0001"`, `"0.00005"` on a 4-place field).
+
+  A coarser step — `"0.01"` on a 4-place field — would have the browser
+  refuse `12.3456` on submit, reintroducing exactly the bug this
+  function exists to prevent, so it falls back to the scale-derived
+  step. So does anything unparseable, zero or negative. With no declared
+  `scale` there is no promise to keep and the explicit step stands.
   """
   @spec decimal_step(map()) :: String.t()
   def decimal_step(field) do
-    case field["scale"] do
-      scale when is_integer(scale) and scale > 0 ->
-        "0." <> String.duplicate("0", scale - 1) <> "1"
+    scale = field["scale"]
 
-      _ ->
-        "any"
+    case field["step"] do
+      "any" -> "any"
+      step when is_binary(step) or is_number(step) -> explicit_step(step, scale)
+      _ -> scale_step(scale)
     end
   end
+
+  defp scale_step(scale) when is_integer(scale) and scale > 0,
+    do: "0." <> String.duplicate("0", scale - 1) <> "1"
+
+  defp scale_step(_scale), do: "any"
+
+  # Rendered back through Decimal rather than `to_string/1` for the same
+  # reason `decimal_input_value/1` is: a small float stringifies as
+  # "1.0e-7".
+  defp explicit_step(step, scale) do
+    with {%Decimal{} = value, ""} <- Decimal.parse(to_string(step)),
+         true <- Decimal.positive?(value) and not Decimal.inf?(value),
+         true <- admits_scale?(value, scale) do
+      Decimal.to_string(value, :normal)
+    else
+      _ -> scale_step(scale)
+    end
+  end
+
+  # Every value `scale` allows is a multiple of 10^-scale, so a step
+  # admits them all exactly when it divides that unit.
+  defp admits_scale?(step, scale) when is_integer(scale) and scale > 0 do
+    unit = Decimal.new(1, 1, -scale)
+    Decimal.equal?(Decimal.rem(unit, step), 0)
+  end
+
+  defp admits_scale?(_step, _scale), do: true
 
   @doc """
   Renders a stored decimal for an input's `value`. Values arrive as a

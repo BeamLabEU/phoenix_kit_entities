@@ -215,6 +215,11 @@ defmodule PhoenixKitEntities.UrlResolver do
     ] ->
       Logger.debug("UrlResolver.safe_get_setting/1 falling back: #{Exception.message(e)}")
       nil
+  catch
+    # The rescue list names the DB-availability exceptions deliberately — but
+    # an unreachable pool EXITS rather than raising, so the guard stopped one
+    # step short of the case it was written for. These resolve public URLs.
+    :exit, _ -> nil
   end
 
   defp safe_get_setting(key, default) do
@@ -230,6 +235,8 @@ defmodule PhoenixKitEntities.UrlResolver do
     ] ->
       Logger.debug("UrlResolver.safe_get_setting/2 falling back: #{Exception.message(e)}")
       default
+  catch
+    :exit, _ -> default
   end
 
   @doc """
@@ -294,6 +301,8 @@ defmodule PhoenixKitEntities.UrlResolver do
       Logger.debug("UrlResolver.safe_get_boolean_setting/2 falling back: #{Exception.message(e)}")
 
       default
+  catch
+    :exit, _ -> default
   end
 
   @doc """
@@ -417,6 +426,8 @@ defmodule PhoenixKitEntities.UrlResolver do
           )
 
           nil
+      catch
+        :exit, _ -> nil
       end
 
     case primary do
@@ -440,6 +451,8 @@ defmodule PhoenixKitEntities.UrlResolver do
     not Languages.enabled?() or length(Languages.get_enabled_languages()) <= 1
   rescue
     _ -> true
+  catch
+    :exit, _ -> true
   end
 
   @doc """

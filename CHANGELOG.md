@@ -1,3 +1,162 @@
+## 0.4.12 - 2026-09-07
+
+### Fixed
+
+- The Entities Settings page's breadcrumb linked its second segment to
+  "Modules" → `/admin/modules` instead of "Settings" → `/admin/settings`,
+  even though the page lives under the Settings sidebar group
+  (`settings_tabs/0` registers it at `/admin/settings/entities`) — the
+  wrong link, not just a mislabeled one. Page title also shortened from
+  "Entities Settings" to "Entities" to match the sidebar label.
+
+## 0.4.11 - 2026-09-07
+
+### Fixed
+
+- **Removed duplicate page headings** on the Entities Settings page and the
+  entity edit form — each repeated the page title already shown in the top
+  breadcrumb bar.
+
+## 0.4.10 - 2026-09-05
+
+### Added
+
+- **A module-owned migration chain** (`PhoenixKitEntities.Migrations`),
+  registered through `migration_module/0` and discovered by
+  `mix phoenix_kit.status` / `mix phoenix_kit.update`. V1 is purely
+  *adoptive*: `phoenix_kit_entities` and `phoenix_kit_entity_data` were
+  created by core and still ship in its squashed baseline, so every
+  statement is `IF NOT EXISTS`-guarded and name-identical to core's
+  objects, and the only new object is the `pkn_schema:1` marker stamped
+  as a `COMMENT ON TABLE`. Nothing about the schema changes; what changes
+  is that this package now owns the two tables' future shape instead of
+  waiting on a core release. `down/1` only unstamps the marker — it never
+  drops a table or a row (#42).
+
+### Fixed
+
+- **A map-shaped `down/1` rolled back to the wrong version.** The target
+  was read only from a keyword list, while the prefix was read from either
+  a keyword list or a map (the shape core's own migrator threads through
+  its chain), so `down(%{prefix: "public", version: 1})` validated its
+  prefix, discarded its version and unstamped to `0` (#42).
+- **`migrated_version_runtime/1` survives a dead connection pool.** It
+  guarded against exceptions only, but an unreachable database *exits*
+  rather than raising on a dead or unstarted pool, which reported this
+  module as errored to `mix phoenix_kit.status` where every sibling module
+  reports "not installed". An unusable prefix still raises, deliberately:
+  "not installed" and "I cannot query that prefix" must not look alike to
+  the update task (#42).
+
+### Changed
+
+- **The test suite now runs the migration chain it ships.** Schema setup
+  applies core's versioned migrations and then this module's own chain
+  through `PhoenixKitEntities.Test.Migration` — the checked-in equivalent
+  of the migration `mix phoenix_kit.update` generates in a host app — so
+  the suite exercises exactly the DDL an install gets rather than asserting
+  on statement strings that no database has ever parsed (#42).
+- **The adopted object inventory is pinned to core's own manifest.** A new
+  test derives what V1 must contain from
+  `PhoenixKit.Migrations.ExpectedSchema` (43 required objects across the
+  two tables) instead of a hand-copied list, so an object core adds and
+  this chain misses fails the suite (#42).
+
+## 0.4.9 - 2026-08-30
+
+### Added
+
+- **Decimal fields accept a `"step"` prop** to override the stepping the
+  declared `scale` implies — `"any"` turns stepping off entirely, which is
+  the way to stop a 4-place money field's spinner arrows crawling
+  0.0001 at a time while keeping every place typeable (#41).
+
+### Fixed
+
+- **An explicit decimal `"step"` can no longer block saving the record.**
+  As merged, any `"step"` was passed through to the input, but `step` is a
+  browser validation constraint, not just spinner granularity: a form's
+  `submit` event fires only after native validation passes, so `"0.01"` on a
+  4-place field left the browser refusing `12.3456` and the admin unable to
+  save — the exact failure the scale-derived step exists to prevent. An
+  override is now honoured only when it still admits every value the scale
+  allows (`"any"`, or a step dividing `10^-scale`); a coarser one falls back
+  to the scale (#41).
+- **Junk, zero and negative decimal steps fall back to the scale.** The
+  explicit-step branch only rejected `""`, so `"0"`, `"-0.5"`, `"abc"` and
+  `"0,01"` reached the attribute — and a browser that cannot parse `step`
+  uses `1`, rejecting every decimal the type exists for. The value is now
+  parsed and must be finite and positive (#41).
+- **A float `"step"` renders without exponent notation**, through `Decimal`
+  rather than `to_string/1` (`to_string(0.00001)` is `"1.0e-5"`) — the rule
+  `decimal_input_value/1` already followed (#41).
+
+### Changed
+
+- **README field types are current again** — the list and registry count said
+  12, four types after `decimal`, `image`, `video` and `heading` were added;
+  the Numeric row now documents `decimal`'s `scale` and `step`.
+
+## 0.4.8 - 2026-08-29
+
+### Fixed
+
+- **Signed-in public form submissions were stored as anonymous** — the
+  submission controller read `conn.assigns[:current_user]`, a key nothing
+  assigns; core's `fetch_phoenix_kit_current_user` plug assigns
+  `:phoenix_kit_current_user`. On a pre-V169 core, where the column is NOT
+  NULL, the explicit nil turned every submission into a validation failure
+  (#40).
+- **Collaborative-editing presence no longer broadcasts user credentials** —
+  the Presence meta carried the whole `%PhoenixKit.Users.Auth.User{}`,
+  `hashed_password` included (`redact: true` suppresses `Inspect`, not term
+  serialization), plus the email, in a `presence_diff` to every other
+  collaborator. The meta is now `user_uuid` / `joined_at` / `pid`; read
+  `user_uuid` and load what you need to display (#40).
+- **The admin data form's save path allowlists what the client may write** —
+  `EntityData.changeset/2` casts `created_by_uuid`, `date_created`,
+  `metadata` and `position`, none of which the form renders, so a crafted
+  `save` could forge authorship, back-date the audit timestamp, or rewrite
+  the `ip_address` / `user_agent` / `security_warnings` metadata a flagged
+  public submission was stored with. `status` is filtered to the three the
+  select offers, so `"trashed"` can't be written directly and bypass
+  `trash/2` (#40).
+- **A record can no longer be moved between blueprints by editing it under
+  the wrong URL.** The entity comes from the URL and the record from its
+  uuid, and nothing checked they belong together; now that the server sets
+  `entity_uuid` from the URL entity, a plain Save on a mismatched URL would
+  have re-parented the row. The edit form redirects to the record's own
+  blueprint instead.
+- **Per-field validation errors are visible on save**, not just in the
+  concatenated flash — the save path's changeset arrived with `action: nil`,
+  which is what `<.input>` gates error display on (#40).
+- **The slug mirrors the title live on single-language installs** — the
+  hook attributes were only on the multilang branch of the form, so the
+  default install fell back to a 300 ms round trip (#40).
+- **Reorders are audited when they succeed**, not only when they fail — the
+  activity table previously recorded reordering exclusively when it went
+  wrong. `count` is rows written, not pairs submitted (#40).
+- **`EntityData.search_by_title/3` escapes LIKE wildcards** — searching
+  `50%` matched every record and `a_b` matched `axb`. The sibling
+  `entity_uuids_matching_title/3` already escaped; the two had drifted (#40).
+- **Unreachable-database guards now catch exits, not just raises** — a dead
+  connection pool exits, so the `rescue` clauses in `entities_children/1`,
+  `SitemapSource` and `UrlResolver` stopped one step short of the case they
+  exist for. In `entities_children/1` that took out every admin page render,
+  since core calls it as its `dynamic_children` callback (#40).
+- **The Data Navigator subscribed to entity events twice** — the `on_mount`
+  hook already subscribes, and `Phoenix.PubSub` uses a duplicate-key
+  registry, so every entity event ran the ~4-query refresh twice (#40).
+
+### Changed
+
+- `list_entities_with_mirror_status/0` runs one grouped count and one
+  directory listing instead of one count and one `File.exists?` per entity.
+  The settings LiveView re-runs it on every entity and data broadcast, so
+  autosave on a record drove 1+N counts and N filesystem stats per debounced
+  keystroke (#40).
+- Dependency bump: routine `mix.lock` refresh.
+
 ## 0.4.7 - 2026-08-28
 
 ### Added

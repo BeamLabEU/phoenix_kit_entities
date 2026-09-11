@@ -975,7 +975,10 @@ PresenceHelpers.track_editing_session(:entity, entity.uuid, socket, current_user
 
 # Get sorted presences (FIFO order)
 presences = PresenceHelpers.get_sorted_presences(:entity, entity.uuid)
-# => [{socket_id, %{user: %User{}, joined_at: timestamp}}, ...]
+# => [{socket_id, %{user_uuid: "019...", joined_at: timestamp, pid: #PID<...>}}, ...]
+# The meta carries no %User{} — it is broadcast to every other collaborator,
+# and the struct took `hashed_password` and the email along with it. Read
+# `user_uuid` and load what you need to display.
 
 # Determine if current socket is owner or spectator
 case PresenceHelpers.get_editing_role(:entity, entity.uuid, socket.id, current_user.uuid) do

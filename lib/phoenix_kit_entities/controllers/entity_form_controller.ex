@@ -346,7 +346,14 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
     # submission has no author" and stores NULL, which is what the column means
     # from core V169 on. Omitting the key would instead trigger the auto-fill and
     # attribute an anonymous submission to the first admin.
-    current_user = conn.assigns[:current_user]
+    # `:phoenix_kit_current_user` is the key core's `:phoenix_kit_auto_setup`
+    # pipeline actually assigns (fetch_phoenix_kit_current_user). Reading
+    # `:current_user` — which nothing sets on the conn — made this always nil,
+    # so a SIGNED-IN submitter was stored as anonymous and the careful
+    # explicit-nil reasoning above never got the chance to matter. Worse on a
+    # pre-V169 core, where the column is NOT NULL and an explicit nil turns
+    # every submission into a validation failure.
+    current_user = conn.assigns[:phoenix_kit_current_user]
     title = generate_submission_title(entity, filtered_data)
 
     # Capture submission metadata if enabled (default is true)

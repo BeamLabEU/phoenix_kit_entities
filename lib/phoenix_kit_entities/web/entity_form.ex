@@ -91,14 +91,43 @@ defmodule PhoenixKitEntities.Web.EntityForm do
 
   defp referer_to_return_path(_), do: nil
 
-  # An "admin path" lives under <url_prefix>/.../admin/. We don't trust
-  # arbitrary site paths — only the admin area. The trailing "/" in
-  # "/admin/" matters: without it, lookalike paths like "/admin-tools/foo"
-  # would slip through. Reject protocol-relative paths up front for the
-  # same reason `safe_referer_path/2` does.
+  # We don't trust arbitrary site paths as a redirect target — only PhoenixKit's
+  # admin area. Two questions, and neither implies the other, so a
+  # client-supplied path needs both:
+  #
+  #   * `local_path?/1` — does it point off-site at all? Rejects `//evil.com`,
+  #     `/\evil.com`, and ASCII control characters (browsers strip tab/CR/LF,
+  #     so `"/\t/evil.com"` lands as `//evil.com`).
+  #   * `admin_area_path?/1` — does it land in the admin area? Strips the mount
+  #     prefix, allows a locale segment, and compares by SEGMENT.
+  #
+  # This was hand-rolled as `String.contains?(path, "/admin/")`, which was wrong
+  # three ways: it claimed `/administrators`, it claimed a host's own page at
+  # `/shop/admin`, and it matched nothing at all once a host renamed the admin
+  # area with `config :phoenix_kit, admin_path:` — silently dropping the "and
+  # Return" destination it exists to preserve. Core exposed
+  # `admin_area_path?/1` in 2.14.0 for exactly this; don't re-roll it.
   defp internal_admin_path?(path) do
-    String.starts_with?(path, "/") and not String.starts_with?(path, "//") and
+    Routes.local_path?(path) and admin_area_path?(path)
+  end
+
+  # `Routes.admin_area_path?/1` is public from core 2.14.1. The `:phoenix_kit`
+  # requirement stays a two-segment `~> 2.0` on purpose — narrowing it to a
+  # single core minor breaks `mix deps.get` for every host running this module
+  # alongside a different one, with no degraded mode (see
+  # `test/core_pin_conformance_test.exs`). So the newer API is used when it is
+  # there and the previous check stands in when it is not, rather than being
+  # pinned into existence.
+  #
+  # `Code.ensure_loaded?/1` alongside `function_exported?/3` because the latter
+  # answers false for a module that simply has not been loaded yet, which under
+  # a release is the normal state.
+  defp admin_area_path?(path) do
+    if Code.ensure_loaded?(Routes) and function_exported?(Routes, :admin_area_path?, 1) do
+      Routes.admin_area_path?(path)
+    else
       String.contains?(path, "/admin/")
+    end
   end
 
   # If the referrer is the same page we're rendering (e.g. user reloaded
@@ -189,8 +218,6 @@ defmodule PhoenixKitEntities.Web.EntityForm do
       socket
       |> assign(:lock_owner?, true)
       |> assign(:readonly?, false)
-      |> assign(:lock_owner_user, nil)
-      |> assign(:spectators, [])
     end
   end
 
@@ -203,14 +230,12 @@ defmodule PhoenixKitEntities.Web.EntityForm do
         socket
         |> assign(:lock_owner?, true)
         |> assign(:readonly?, false)
-        |> populate_presence_info(:entity, entity_uuid)
 
       {:spectator, _owner_meta, _presences} ->
         # Different user is the owner - I'm read-only
         socket
         |> assign(:lock_owner?, false)
         |> assign(:readonly?, true)
-        |> populate_presence_info(:entity, entity_uuid)
     end
   end
 
@@ -1705,42 +1730,6 @@ defmodule PhoenixKitEntities.Web.EntityForm do
   defp manual_key_target?(["field", "key"]), do: true
   defp manual_key_target?(_), do: false
 
-  defp populate_presence_info(socket, type, id) do
-    # Get all presences sorted by joined_at (FIFO order)
-    presences = PresenceHelpers.get_sorted_presences(type, id)
-
-    # Extract owner (first in list) and spectators (rest of list)
-    {lock_owner_user, lock_info, spectators} =
-      case presences do
-        [] ->
-          {nil, nil, []}
-
-        [{owner_socket_id, owner_meta} | spectator_list] ->
-          # Build owner info - IMPORTANT: use socket_id from KEY not phx_ref
-          lock_info = %{
-            socket_id: owner_socket_id,
-            user_uuid: owner_meta.user_uuid
-          }
-
-          # Map spectators to expected format with correct socket IDs
-          spectators =
-            Enum.map(spectator_list, fn {spectator_socket_id, meta} ->
-              %{
-                socket_id: spectator_socket_id,
-                user: meta.user,
-                user_uuid: meta.user_uuid
-              }
-            end)
-
-          {owner_meta.user, lock_info, spectators}
-      end
-
-    socket
-    |> assign(:lock_owner_user, lock_owner_user)
-    |> assign(:lock_info, lock_info)
-    |> assign(:spectators, spectators)
-  end
-
   # True for an EXISTING blueprint owned by another module — the fields
   # the write guard would refuse render disabled (with hidden twins so
   # the form params stay whole; disabled controls don't submit).
@@ -1755,8 +1744,15 @@ defmodule PhoenixKitEntities.Web.EntityForm do
       <div class="container flex flex-col mx-auto px-4 py-6">
         <%!-- Header Section --%>
         <.admin_page_header back={PhoenixKit.Utils.Routes.path("/admin/entities")}>
-          <h1 class="text-xl sm:text-2xl lg:text-3xl font-bold text-base-content">
-            {if @entity.uuid, do: gettext("Edit Entity"), else: gettext("Create New Entity")}
+          <%!-- Edit mode's title duplicates the page_title assign already
+          shown in the breadcrumb bar ("Edit Entity") — only the create
+          mode's heading ("Create New Entity" vs. its distinct "New Entity"
+          page_title) still needs to render here. --%>
+          <h1
+            :if={is_nil(@entity.uuid)}
+            class="text-xl sm:text-2xl lg:text-3xl font-bold text-base-content"
+          >
+            {gettext("Create New Entity")}
           </h1>
           <p class="text-sm text-base-content/60 mt-0.5">
             {gettext("Define your custom content type with dynamic fields")}

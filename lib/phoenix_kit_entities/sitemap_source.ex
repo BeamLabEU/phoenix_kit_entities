@@ -246,6 +246,12 @@ defmodule PhoenixKitEntities.SitemapSource do
     error ->
       Logger.warning("Sitemap: failed to build sub_sitemaps for entities: #{inspect(error)}")
       nil
+  catch
+    # `enabled?/0` in this same file already has this, with the reasoning:
+    # a dead pool EXITS rather than raising, and a dead pool is the most
+    # likely production cause of a sitemap failure. Without it the guard
+    # missed exactly the case it exists for.
+    :exit, _ -> nil
   end
 
   # Defensive boot resilience — `enabled?/0` runs from sitemap generation
@@ -279,6 +285,8 @@ defmodule PhoenixKitEntities.SitemapSource do
     error ->
       Logger.warning("Entities sitemap source failed to collect: #{inspect(error)}")
       []
+  catch
+    :exit, _ -> []
   end
 
   defp do_collect(opts) do
@@ -421,6 +429,8 @@ defmodule PhoenixKitEntities.SitemapSource do
     error ->
       Logger.warning("Failed to collect records for entity #{entity.name}: #{inspect(error)}")
       []
+  catch
+    :exit, _ -> []
   end
 
   defp do_collect_entity_records(
@@ -508,6 +518,8 @@ defmodule PhoenixKitEntities.SitemapSource do
     error ->
       Logger.warning("Failed to collect index for entity #{entity.name}: #{inspect(error)}")
       nil
+  catch
+    :exit, _ -> nil
   end
 
   # Check if entity requires auth using cached routes
@@ -577,6 +589,8 @@ defmodule PhoenixKitEntities.SitemapSource do
     Sitemap.include_entities?()
   rescue
     _ -> true
+  catch
+    :exit, _ -> true
   end
 
   # True when `record` is a multilang record carrying an explicit translation
