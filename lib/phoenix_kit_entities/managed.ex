@@ -138,6 +138,15 @@ defmodule PhoenixKitEntities.Managed do
   override are protected — `title`, `status`, and everything else in
   `data` go through unguarded, same as for an unmanaged blueprint's
   records.
+
+  `owning_entity` is trusted to actually be the blueprint `data_record`
+  belongs to — every real caller resolves it from `data_record.entity_uuid`
+  right before calling this. If the two disagree (both carry a uuid and
+  they differ), this refuses the mutation rather than deciding
+  `managed?/1` off a blueprint that isn't the record's own: passing an
+  unrelated, UNMANAGED blueprint here would otherwise let the first
+  `cond` clause below wave the mutation through without ever consulting
+  the record's real owner.
   """
   @spec validate_data_mutation(struct() | nil, struct(), map(), keyword()) ::
           :ok | {:error, :locked_key}
@@ -145,6 +154,7 @@ defmodule PhoenixKitEntities.Managed do
     # Any clause added below that guards a new field must also be added
     # to `data_mutation_needs_owner?/2` right below — see its @doc.
     cond do
+      mismatched_owner?(owning_entity, data_record) -> {:error, :locked_key}
       not managed?(owning_entity) -> :ok
       Keyword.get(opts, :on_behalf_of) == owner(owning_entity) -> :ok
       renames_data_slug?(data_record, attrs) -> {:error, :locked_key}
@@ -152,6 +162,24 @@ defmodule PhoenixKitEntities.Managed do
       moves_data_record?(data_record, attrs) -> {:error, :locked_key}
       true -> :ok
     end
+  end
+
+  # MINOR-4 (2026-09-11 review): only flags a mismatch when BOTH uuids
+  # are present and differ, so a nil `owning_entity` (dangling
+  # entity_uuid — treated as unmanaged, see `not managed?/1` above) and
+  # every existing test's plain-map fixtures (which don't set `:uuid` /
+  # `:entity_uuid` at all) are untouched. A REAL caller always resolves
+  # `owning_entity` from `data_record.entity_uuid`, so the two uuids can
+  # never legitimately disagree; a mismatch only happens when a caller
+  # passes the wrong blueprint, which is a bug this fails closed against
+  # rather than trusts.
+  defp mismatched_owner?(nil, _data_record), do: false
+
+  defp mismatched_owner?(owning_entity, data_record) do
+    entity_uuid = Map.get(data_record, :entity_uuid)
+    owning_uuid = Map.get(owning_entity, :uuid)
+
+    is_binary(entity_uuid) and is_binary(owning_uuid) and entity_uuid != owning_uuid
   end
 
   @doc """
