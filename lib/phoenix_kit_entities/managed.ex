@@ -55,6 +55,30 @@ defmodule PhoenixKitEntities.Managed do
   Registration is process-independent (persistent_term), set up in the
   owning module's application start. A managed blueprint with no
   registered guard refuses deletion outright — fail closed.
+
+  ## Known gaps — value records (blueprint guards above are complete)
+
+  - **Creation is unguarded.** `EntityData.create/2` never consults this
+    module, so a generic caller can create a value record under a managed
+    blueprint with a duplicate `slug` freely — there is no unique index on
+    `(entity_uuid, slug)` either. This is the direct, accepted consequence
+    of the CREATE-path deviation documented on `validate_data_mutation/4`:
+    the slug field is deliberately unlocked on `/data/new` (there is no
+    prior slug to protect there yet), and nothing closes the write path
+    to match.
+  - **Deletion is unguarded.** There is no data-record analogue of
+    `validate_delete/1` above: `EntityData.trash/2` and `EntityData.delete/2`
+    both succeed on a record whose blueprint is managed, and the generic
+    admin (`web/data_navigator.ex`, "Delete forever" / trash) offers both
+    actions on these rows with no `managed` check at all.
+
+  Both are scope decisions, not oversights (2026-09-11 review, MAJOR-2 /
+  MAJOR-3) — the design puts the safety net on the owner's side instead
+  (a subscriber that prunes dangling `slug` references on the
+  `:data_deleted` PubSub event — see `EntityData.delete/2` and
+  `EntityData.bulk_delete/2`). Closing either gap here would need a
+  maintainer decision on where a create/delete write-path guard for
+  value records belongs, not just a mechanical addition.
   """
 
   @pt_key {__MODULE__, :delete_guards}
