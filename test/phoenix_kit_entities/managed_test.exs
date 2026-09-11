@@ -350,6 +350,34 @@ defmodule PhoenixKitEntities.ManagedTest do
     end
   end
 
+  describe "data_mutation_needs_owner?/2" do
+    test "false for a save that touches none of the guarded fields" do
+      record = multilang_record(%{entity_uuid: "entity-a"})
+
+      refute Managed.data_mutation_needs_owner?(record, %{"title" => "Renamed"})
+    end
+
+    test "true when the top-level slug changes" do
+      record = data_record()
+
+      assert Managed.data_mutation_needs_owner?(record, %{"slug" => "renamed"})
+    end
+
+    test "true when a translated slug override changes" do
+      record = multilang_record()
+
+      assert Managed.data_mutation_needs_owner?(record, %{
+               "data" => %{"et" => %{"_slug" => "forged-tamm"}}
+             })
+    end
+
+    test "true when entity_uuid changes" do
+      record = data_record(%{entity_uuid: "entity-a"})
+
+      assert Managed.data_mutation_needs_owner?(record, %{"entity_uuid" => "entity-b"})
+    end
+  end
+
   describe "validate_creation/2" do
     test "generic creates cannot claim a managed_by owner" do
       attrs = %{settings: %{"managed_by" => "catalogue"}, name: "catalogue_set_forged"}
