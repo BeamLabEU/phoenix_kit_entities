@@ -29,6 +29,21 @@ defmodule PhoenixKitEntities.ManagedTest do
     Map.merge(%{slug: "oak", title: "Oak", status: "published"}, overrides)
   end
 
+  defp multilang_record(overrides \\ %{}) do
+    data_record(
+      Map.merge(
+        %{
+          data: %{
+            "_primary_language" => "en",
+            "en" => %{"_title" => "Oak", "_slug" => "oak"},
+            "et" => %{"_title" => "Tamm", "_slug" => "tamm"}
+          }
+        },
+        overrides
+      )
+    )
+  end
+
   describe "validate_mutation/3" do
     test "unmanaged entities are untouched" do
       assert :ok = Managed.validate_mutation(%{settings: %{}}, %{"name" => "x"})
@@ -259,6 +274,79 @@ defmodule PhoenixKitEntities.ManagedTest do
       record = data_record(%{entity_uuid: "entity-a"})
 
       refute Managed.moves_data_record?(record, %{"title" => "Oak"})
+    end
+  end
+
+  describe "renames_translated_slug?/2" do
+    test "a secondary language's unchanged _slug is not a rename" do
+      record = multilang_record()
+
+      refute Managed.renames_translated_slug?(record, %{
+               "data" => %{"et" => %{"_title" => "Tamm", "_slug" => "tamm"}}
+             })
+    end
+
+    test "a secondary language's changed _slug IS a rename" do
+      record = multilang_record()
+
+      assert Managed.renames_translated_slug?(record, %{
+               "data" => %{"et" => %{"_title" => "Tamm", "_slug" => "forged-tamm"}}
+             })
+    end
+
+    test "a language present without a _slug key is not a rename — overrides only" do
+      record = multilang_record()
+
+      refute Managed.renames_translated_slug?(record, %{
+               "data" => %{"et" => %{"_title" => "Tamm (renamed)"}}
+             })
+    end
+
+    test "a brand-new language's _slug is a rename against the implicit nil" do
+      record = multilang_record()
+
+      assert Managed.renames_translated_slug?(record, %{
+               "data" => %{"fr" => %{"_title" => "Chêne", "_slug" => "chene"}}
+             })
+    end
+
+    test "attrs without a data key is not a rename" do
+      record = multilang_record()
+
+      refute Managed.renames_translated_slug?(record, %{"title" => "Oak"})
+    end
+
+    test "a record with no prior data treats any _slug as a rename" do
+      record = data_record()
+
+      assert Managed.renames_translated_slug?(record, %{
+               "data" => %{"et" => %{"_slug" => "tamm"}}
+             })
+    end
+  end
+
+  describe "validate_data_mutation/4 — translated slug" do
+    test "generic writes cannot rename a secondary language's slug override" do
+      owning = managed_entity()
+      record = multilang_record()
+
+      assert {:error, :locked_key} =
+               Managed.validate_data_mutation(owning, record, %{
+                 "data" => %{"et" => %{"_slug" => "forged-tamm"}}
+               })
+    end
+
+    test "the owner passes unconditionally via on_behalf_of, even renaming a translated slug" do
+      owning = managed_entity()
+      record = multilang_record()
+
+      assert :ok =
+               Managed.validate_data_mutation(
+                 owning,
+                 record,
+                 %{"data" => %{"et" => %{"_slug" => "forged-tamm"}}},
+                 on_behalf_of: "catalogue"
+               )
     end
   end
 
