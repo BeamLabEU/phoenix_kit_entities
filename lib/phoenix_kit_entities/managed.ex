@@ -128,23 +128,30 @@ defmodule PhoenixKitEntities.Managed do
   unchanged slug back (so validation and this guard both see a whole
   payload), and that must not read as a rename.
 
-  Only the record's `slug` is protected — `title`, `status`, `data`, etc.
-  go through unguarded, same as for an unmanaged blueprint's records.
+  Re-pointing the record at another blueprint (`entity_uuid`) is guarded
+  the same way as a slug rename — see `moves_data_record?/2` — since it
+  detaches the record from the owner's set just as thoroughly.
+
+  Only the record's `slug` and `entity_uuid` are protected — `title`,
+  `status`, `data`, etc. go through unguarded, same as for an unmanaged
+  blueprint's records.
   """
   @spec validate_data_mutation(struct() | nil, struct(), map(), keyword()) ::
           :ok | {:error, :locked_key}
   def validate_data_mutation(owning_entity, data_record, attrs, opts \\ []) do
     # WARNING for future maintainers: `EntityData.validate_managed_slug/3`
-    # calls this function only when `renames_data_slug?/2` already says the
-    # slug changed — a cheap pre-check that assumes slug-rename is the ONLY
-    # reason this `cond` ever needs the owning entity. A clause added here
-    # that guards some other field, unconditional on the slug, would be
-    # silently skipped by that pre-check for every save that leaves the
-    # slug alone. Update the pre-check in lockstep with any such clause.
+    # calls this function only when `renames_data_slug?/2` or
+    # `moves_data_record?/2` already says the slug/entity_uuid changed — a
+    # cheap pre-check that assumes those are the ONLY reasons this `cond`
+    # ever needs the owning entity. A clause added here that guards some
+    # other field, unconditional on both, would be silently skipped by
+    # that pre-check for every save that leaves slug and entity_uuid
+    # alone. Update the pre-check in lockstep with any such clause.
     cond do
       not managed?(owning_entity) -> :ok
       Keyword.get(opts, :on_behalf_of) == owner(owning_entity) -> :ok
       renames_data_slug?(data_record, attrs) -> {:error, :locked_key}
+      moves_data_record?(data_record, attrs) -> {:error, :locked_key}
       true -> :ok
     end
   end
@@ -285,6 +292,34 @@ defmodule PhoenixKitEntities.Managed do
 
   defp normalize_slug(""), do: nil
   defp normalize_slug(slug), do: slug
+
+  @doc """
+  True when `attrs` supplies an `:entity_uuid` (or `"entity_uuid"`) that
+  differs from `data_record.entity_uuid` — re-pointing a value record at
+  another blueprint. This detaches the record from the owner's set
+  exactly as thoroughly as renaming its `slug` does (`renames_data_slug?/2`):
+  the owner's `list_values_for/1` stops returning it, and its slug becomes
+  a ghost in whatever relation keys on it (e.g. the catalogue's
+  `selected_value_slugs`), because `list_values_for/1` filters by
+  `entity_uuid`, not by `slug`.
+
+  Presence-based like `renames_data_slug?/2`, for the same reason: an
+  explicit `entity_uuid: nil` reads as a move, not a no-op.
+  """
+  @spec moves_data_record?(struct(), map()) :: boolean()
+  def moves_data_record?(data_record, attrs) do
+    case fetch_entity_uuid(attrs) do
+      :error -> false
+      {:ok, new_entity_uuid} -> new_entity_uuid != Map.get(data_record, :entity_uuid)
+    end
+  end
+
+  defp fetch_entity_uuid(attrs) do
+    case Map.fetch(attrs, :entity_uuid) do
+      {:ok, value} -> {:ok, value}
+      :error -> Map.fetch(attrs, "entity_uuid")
+    end
+  end
 
   # The marker keys ARE the protection — a generic settings write that
   # rewrites or drops "managed_by"/"locked_keys" would un-manage the
