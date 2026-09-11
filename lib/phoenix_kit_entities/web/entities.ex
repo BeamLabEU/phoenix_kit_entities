@@ -191,6 +191,21 @@ defmodule PhoenixKitEntities.Web.Entities do
     (socket.assigns[:url_path] || "") |> URI.parse() |> Map.get(:path) || "/"
   end
 
+  # The owning module's own admin URL for a managed blueprint — read
+  # straight off `settings["managed_path"]`, a value the owner module wrote
+  # there itself (see `PhoenixKitEntities.Managed`). No runtime registry and
+  # no catalogue-specific knowledge here: only a same-app-relative path is
+  # ever rendered, so a managed blueprint's settings can't be used to point
+  # this link off-site.
+  defp managed_admin_path(%{settings: settings}) when is_map(settings) do
+    case settings["managed_path"] do
+      path when is_binary(path) -> if String.starts_with?(path, "/"), do: path
+      _ -> nil
+    end
+  end
+
+  defp managed_admin_path(_), do: nil
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -373,22 +388,44 @@ defmodule PhoenixKitEntities.Web.Entities do
                             label={gettext("Edit")}
                           />
                           <.table_row_menu_divider />
-                          <%= if entity.status == "archived" do %>
-                            <.table_row_menu_button
-                              phx-click="restore_entity"
-                              phx-value-uuid={entity.uuid}
-                              phx-disable-with={gettext("…")}
-                              icon="hero-arrow-path"
-                              label={gettext("Restore")}
+                          <%= if PhoenixKitEntities.Managed.managed?(entity) do %>
+                            <li
+                              role="none"
+                              class="flex items-center gap-2 px-3 py-2 text-sm text-base-content/60"
+                            >
+                              <.icon name="hero-lock-closed" class="w-4 h-4 shrink-0 opacity-70" />
+                              {gettext("Managed by %{owner}",
+                                owner: PhoenixKitEntities.Managed.owner(entity)
+                              )}
+                            </li>
+                            <.table_row_menu_link
+                              :if={path = managed_admin_path(entity)}
+                              href={PhoenixKit.Utils.Routes.path(path)}
+                              icon="hero-arrow-top-right-on-square"
+                              label={
+                                gettext("Open in %{owner} admin",
+                                  owner: PhoenixKitEntities.Managed.owner(entity)
+                                )
+                              }
                             />
                           <% else %>
-                            <.table_row_menu_button
-                              phx-click="archive_entity"
-                              phx-value-uuid={entity.uuid}
-                              phx-disable-with={gettext("…")}
-                              icon="hero-trash"
-                              label={gettext("Archive")}
-                            />
+                            <%= if entity.status == "archived" do %>
+                              <.table_row_menu_button
+                                phx-click="restore_entity"
+                                phx-value-uuid={entity.uuid}
+                                phx-disable-with={gettext("…")}
+                                icon="hero-arrow-path"
+                                label={gettext("Restore")}
+                              />
+                            <% else %>
+                              <.table_row_menu_button
+                                phx-click="archive_entity"
+                                phx-value-uuid={entity.uuid}
+                                phx-disable-with={gettext("…")}
+                                icon="hero-trash"
+                                label={gettext("Archive")}
+                              />
+                            <% end %>
                           <% end %>
                         </.table_row_menu>
                       </.table_default_cell>
@@ -501,22 +538,44 @@ defmodule PhoenixKitEntities.Web.Entities do
                           label={gettext("Edit")}
                         />
                         <.table_row_menu_divider />
-                        <%= if entity.status == "archived" do %>
-                          <.table_row_menu_button
-                            phx-click="restore_entity"
-                            phx-value-uuid={entity.uuid}
-                            phx-disable-with={gettext("…")}
-                            icon="hero-arrow-path"
-                            label={gettext("Restore")}
+                        <%= if PhoenixKitEntities.Managed.managed?(entity) do %>
+                          <li
+                            role="none"
+                            class="flex items-center gap-2 px-3 py-2 text-sm text-base-content/60"
+                          >
+                            <.icon name="hero-lock-closed" class="w-4 h-4 shrink-0 opacity-70" />
+                            {gettext("Managed by %{owner}",
+                              owner: PhoenixKitEntities.Managed.owner(entity)
+                            )}
+                          </li>
+                          <.table_row_menu_link
+                            :if={path = managed_admin_path(entity)}
+                            href={PhoenixKit.Utils.Routes.path(path)}
+                            icon="hero-arrow-top-right-on-square"
+                            label={
+                              gettext("Open in %{owner} admin",
+                                owner: PhoenixKitEntities.Managed.owner(entity)
+                              )
+                            }
                           />
                         <% else %>
-                          <.table_row_menu_button
-                            phx-click="archive_entity"
-                            phx-value-uuid={entity.uuid}
-                            phx-disable-with={gettext("…")}
-                            icon="hero-trash"
-                            label={gettext("Archive")}
-                          />
+                          <%= if entity.status == "archived" do %>
+                            <.table_row_menu_button
+                              phx-click="restore_entity"
+                              phx-value-uuid={entity.uuid}
+                              phx-disable-with={gettext("…")}
+                              icon="hero-arrow-path"
+                              label={gettext("Restore")}
+                            />
+                          <% else %>
+                            <.table_row_menu_button
+                              phx-click="archive_entity"
+                              phx-value-uuid={entity.uuid}
+                              phx-disable-with={gettext("…")}
+                              icon="hero-trash"
+                              label={gettext("Archive")}
+                            />
+                          <% end %>
                         <% end %>
                       </.table_row_menu>
                     </div>

@@ -24,6 +24,10 @@ defmodule PhoenixKitEntities.ManagedTest do
     )
   end
 
+  defp data_record(overrides \\ %{}) do
+    Map.merge(%{slug: "oak", title: "Oak", status: "published"}, overrides)
+  end
+
   describe "validate_mutation/3" do
     test "unmanaged entities are untouched" do
       assert :ok = Managed.validate_mutation(%{settings: %{}}, %{"name" => "x"})
@@ -93,6 +97,62 @@ defmodule PhoenixKitEntities.ManagedTest do
                  %{"settings" => Map.put(e.settings, "locked_keys", ["kind"])},
                  on_behalf_of: "catalogue"
                )
+    end
+  end
+
+  describe "validate_data_mutation/4" do
+    test "unmanaged owning entity is untouched, slug change and all" do
+      assert :ok =
+               Managed.validate_data_mutation(%{settings: %{}}, data_record(), %{
+                 "slug" => "renamed"
+               })
+    end
+
+    test "a nil owning entity (dangling entity_uuid) is treated as unmanaged" do
+      assert :ok = Managed.validate_data_mutation(nil, data_record(), %{"slug" => "renamed"})
+    end
+
+    test "generic writes cannot rename a managed value record's slug" do
+      owning = managed_entity()
+
+      assert {:error, :locked_key} =
+               Managed.validate_data_mutation(owning, data_record(), %{"slug" => "renamed"})
+
+      assert {:error, :locked_key} =
+               Managed.validate_data_mutation(owning, data_record(), %{slug: "renamed"})
+    end
+
+    test "resubmitting the SAME slug is not a rename — the disabled field's hidden mirror" do
+      owning = managed_entity()
+
+      assert :ok = Managed.validate_data_mutation(owning, data_record(), %{"slug" => "oak"})
+    end
+
+    test "every other field on a managed value record stays unguarded" do
+      owning = managed_entity()
+      record = data_record()
+
+      assert :ok =
+               Managed.validate_data_mutation(owning, record, %{
+                 "title" => "Renamed",
+                 "status" => "archived",
+                 "data" => %{"color" => "brown"}
+               })
+    end
+
+    test "the owner passes unconditionally via on_behalf_of, even renaming the slug" do
+      owning = managed_entity()
+
+      assert :ok =
+               Managed.validate_data_mutation(owning, data_record(), %{"slug" => "renamed"},
+                 on_behalf_of: "catalogue"
+               )
+    end
+
+    test "a nil new slug (key absent from attrs) is not a rename" do
+      owning = managed_entity()
+
+      assert :ok = Managed.validate_data_mutation(owning, data_record(), %{"title" => "Oak"})
     end
   end
 
