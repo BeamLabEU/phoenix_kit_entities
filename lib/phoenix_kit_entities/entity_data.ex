@@ -1911,19 +1911,21 @@ defmodule PhoenixKitEntities.EntityData do
   # `%{"data" => ...}`, no slug key at all, and takes the skip-on-absence
   # path below instead. Either way, skipping the owning-entity lookup on
   # absence alone isn't where most of the saving here comes from anyway.
-  # What actually saves the common case is `Managed.renames_data_slug?/2`: a save that
-  # resubmits the record's own unchanged slug (the ordinary case — a
-  # disabled field's hidden mirror, or a title-only edit that round-trips
-  # the current value) is cheap to detect without ever reading the
-  # owning entity, since `validate_data_mutation/4` would return `:ok`
-  # for it regardless of whether the blueprint turns out to be managed.
-  # Only an ACTUAL slug change pays for the `Entities.get_entity/1`
+  # What actually saves the common case is `Managed.renames_data_slug?/2`
+  # and `Managed.moves_data_record?/2`: a save that resubmits the record's
+  # own unchanged slug and entity_uuid (the ordinary case — a disabled
+  # field's hidden mirror, or a title-only edit that round-trips the
+  # current values) is cheap to detect without ever reading the owning
+  # entity, since `validate_data_mutation/4` would return `:ok` for it
+  # regardless of whether the blueprint turns out to be managed. Only an
+  # ACTUAL slug change or re-parenting pays for the `Entities.get_entity/1`
   # lookup (a `SELECT` plus `preload(:creator)`). The policy itself
   # (managed?, the `on_behalf_of` bypass) lives in
   # `Managed.validate_data_mutation/4`, not here — see its moduledoc on
   # UI guards without a write interceptor.
   defp validate_managed_slug(entity_data, attrs, opts) do
-    if Managed.renames_data_slug?(entity_data, attrs) do
+    if Managed.renames_data_slug?(entity_data, attrs) or
+         Managed.moves_data_record?(entity_data, attrs) do
       owning_entity = Entities.get_entity(entity_data.entity_uuid)
       Managed.validate_data_mutation(owning_entity, entity_data, attrs, opts)
     else

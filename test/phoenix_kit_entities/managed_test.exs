@@ -7,6 +7,7 @@ defmodule PhoenixKitEntities.ManagedTest do
   """
   use PhoenixKitEntities.DataCase, async: false
 
+  alias PhoenixKitEntities.EntityData
   alias PhoenixKitEntities.Managed
 
   defp managed_entity(overrides \\ %{}) do
@@ -149,6 +150,41 @@ defmodule PhoenixKitEntities.ManagedTest do
                )
     end
 
+    # MAJOR-1 (2026-09-11 review): re-pointing a value record at another
+    # blueprint detaches it from the owner's set exactly as thoroughly as
+    # renaming its slug — `list_values_for/1` filters by `entity_uuid`,
+    # not by `slug`. Confirmed before this fix:
+    # `EntityData.validate_managed_slug/3` only ever consulted
+    # `renames_data_slug?/2`, so a bare `entity_uuid` change walked
+    # straight past the guard and returned `:ok`.
+    test "generic writes cannot re-point a managed value record at another blueprint" do
+      owning = managed_entity()
+      record = data_record(%{entity_uuid: "entity-a"})
+
+      assert {:error, :locked_key} =
+               Managed.validate_data_mutation(owning, record, %{"entity_uuid" => "entity-b"})
+
+      assert {:error, :locked_key} =
+               Managed.validate_data_mutation(owning, record, %{entity_uuid: "entity-b"})
+    end
+
+    test "resubmitting the SAME entity_uuid is not a move" do
+      owning = managed_entity()
+      record = data_record(%{entity_uuid: "entity-a"})
+
+      assert :ok = Managed.validate_data_mutation(owning, record, %{"entity_uuid" => "entity-a"})
+    end
+
+    test "the owner passes unconditionally via on_behalf_of, even re-pointing entity_uuid" do
+      owning = managed_entity()
+      record = data_record(%{entity_uuid: "entity-a"})
+
+      assert :ok =
+               Managed.validate_data_mutation(owning, record, %{"entity_uuid" => "entity-b"},
+                 on_behalf_of: "catalogue"
+               )
+    end
+
     test "a nil new slug (key absent from attrs) is not a rename" do
       owning = managed_entity()
 
@@ -201,6 +237,28 @@ defmodule PhoenixKitEntities.ManagedTest do
 
       assert {:error, :locked_key} =
                Managed.validate_data_mutation(owning, data_record(), %{"slug" => ""})
+    end
+  end
+
+  describe "moves_data_record?/2" do
+    test "an entity_uuid identical to the record's own is not a move" do
+      record = data_record(%{entity_uuid: "entity-a"})
+
+      refute Managed.moves_data_record?(record, %{"entity_uuid" => "entity-a"})
+      refute Managed.moves_data_record?(record, %{entity_uuid: "entity-a"})
+    end
+
+    test "a different entity_uuid is a move" do
+      record = data_record(%{entity_uuid: "entity-a"})
+
+      assert Managed.moves_data_record?(record, %{"entity_uuid" => "entity-b"})
+      assert Managed.moves_data_record?(record, %{entity_uuid: "entity-b"})
+    end
+
+    test "entity_uuid absent from attrs is not a move" do
+      record = data_record(%{entity_uuid: "entity-a"})
+
+      refute Managed.moves_data_record?(record, %{"title" => "Oak"})
     end
   end
 
@@ -337,6 +395,71 @@ defmodule PhoenixKitEntities.ManagedTest do
 
       # Cap exemption: only the plain entity counts for its creator.
       assert PhoenixKitEntities.count_user_entities(actor_uuid) == 1
+    end
+  end
+
+  describe "DB integration — data record entity_uuid guard" do
+    # MAJOR-1 (2026-09-11 review), reproduced end-to-end through the real
+    # `EntityData.update/3` write path, not just `Managed`'s pure functions.
+    test "generic writes cannot re-point a managed value record at another blueprint" do
+      actor_uuid = Ecto.UUID.generate()
+
+      {:ok, managed} =
+        PhoenixKitEntities.create_entity(
+          %{
+            name: "catalogue_set_test_woods",
+            display_name: "Test woods",
+            display_name_plural: "Test woods",
+            status: "published",
+            fields_definition: [],
+            created_by_uuid: actor_uuid,
+            settings: %{
+              "managed_by" => "catalogue",
+              "locked_keys" => ["kind"],
+              "catalogue" => %{"kind" => "multi"}
+            }
+          },
+          on_behalf_of: "catalogue"
+        )
+
+      {:ok, plain} =
+        PhoenixKitEntities.create_entity(%{
+          name: "plain_target",
+          display_name: "Plain target",
+          display_name_plural: "Plain targets",
+          status: "published",
+          fields_definition: [],
+          created_by_uuid: actor_uuid
+        })
+
+      {:ok, record} =
+        EntityData.create(%{
+          entity_uuid: managed.uuid,
+          title: "Oak",
+          slug: "oak",
+          status: "published",
+          data: %{},
+          created_by_uuid: actor_uuid
+        })
+
+      # BEFORE this fix: {:ok, updated} — the record silently left
+      # `managed`'s set while its slug ("oak") stayed behind as a ghost
+      # in the owner's `selected_value_slugs`.
+      assert {:error, :locked_key} = EntityData.update(record, %{"entity_uuid" => plain.uuid})
+      assert EntityData.get(record.uuid).entity_uuid == managed.uuid
+
+      # Renaming the slug on the same record was already refused before
+      # this fix — kept here so both guarded fields are exercised
+      # end-to-end in one DB-backed test.
+      assert {:error, :locked_key} = EntityData.update(record, %{"slug" => "not-oak"})
+
+      # The owner may still re-point its own record.
+      assert {:ok, moved} =
+               EntityData.update(record, %{"entity_uuid" => plain.uuid},
+                 on_behalf_of: "catalogue"
+               )
+
+      assert moved.entity_uuid == plain.uuid
     end
   end
 end
