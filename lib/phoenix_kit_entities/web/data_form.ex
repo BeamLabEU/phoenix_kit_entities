@@ -754,10 +754,20 @@ defmodule PhoenixKitEntities.Web.DataForm do
           # without this clause it fell through to a CaseClauseError instead
           # of a flash (same shape as entity_form.ex's own managed-blueprint
           # refusal handling).
+          #
+          # MINOR-2 (2026-09-11 review): the rejected slug used to stay in
+          # `socket.assigns.changeset` — the disabled field's hidden mirror
+          # would then resubmit it on every subsequent save, refusing the
+          # form forever and making this very flash's advice ("revert that
+          # change to save") unactionable, since nothing in the UI can
+          # revert a disabled field. Rebuilding the changeset from the
+          # persisted record clears the rejected value, so the next save
+          # goes through.
           {:error, :locked_key} ->
             {:noreply,
-             put_flash(
-               socket,
+             socket
+             |> assign(:changeset, EntityData.change(socket.assigns.data_record))
+             |> put_flash(
                :error,
                gettext(
                  "This record's slug is locked by its owning module — revert that change to save."
@@ -1202,24 +1212,36 @@ defmodule PhoenixKitEntities.Web.DataForm do
 
   # Helper Functions
 
+  # MINOR-1 (2026-09-11 review): the Generate button is hidden via `:if`
+  # on a managed record, but a LiveView event is not bound by the markup
+  # that produced it — the same reasoning `client_writable_params/2`
+  # gives for forcing `entity_uuid` server-side. Gated here (not just in
+  # the `generate_slug` event clause) so every path into this function is
+  # covered. Without this, a forged `generate_slug` event rewrites the
+  # hidden slug mirror while the visible field stays disabled and
+  # Generate stays gone — nothing in the UI can put it back.
   defp do_generate_slug(socket) do
-    changeset = socket.assigns.changeset
-    current_lang = socket.assigns[:current_lang]
-    primary = socket.assigns[:primary_language]
-    is_secondary = socket.assigns[:multilang_enabled] && current_lang != primary
-    title = slug_source_title(changeset, is_secondary, current_lang)
-
-    if title == "" do
+    if managed_blueprint?(socket.assigns.entity, socket.assigns.data_record) do
       {:noreply, socket}
     else
-      {params, changeset} = build_slug_params(socket, title, is_secondary, current_lang)
+      changeset = socket.assigns.changeset
+      current_lang = socket.assigns[:current_lang]
+      primary = socket.assigns[:primary_language]
+      is_secondary = socket.assigns[:multilang_enabled] && current_lang != primary
+      title = slug_source_title(changeset, is_secondary, current_lang)
 
-      socket =
-        socket
-        |> assign(:changeset, changeset)
-        |> broadcast_data_form_state(params)
+      if title == "" do
+        {:noreply, socket}
+      else
+        {params, changeset} = build_slug_params(socket, title, is_secondary, current_lang)
 
-      {:noreply, socket}
+        socket =
+          socket
+          |> assign(:changeset, changeset)
+          |> broadcast_data_form_state(params)
+
+        {:noreply, socket}
+      end
     end
   end
 
