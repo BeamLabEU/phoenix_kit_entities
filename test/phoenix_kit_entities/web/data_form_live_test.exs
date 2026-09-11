@@ -694,6 +694,106 @@ defmodule PhoenixKitEntities.Web.DataFormLiveTest do
       assert after_save.title == "Oak"
     end
 
+    # MINOR-2 (2026-09-11 review): the `:locked_key` branch used to leave
+    # the rejected slug sitting in the changeset. The hidden mirror would
+    # then resubmit "forged-slug" on every subsequent save — wedging the
+    # form exactly like the `generate_slug` bug below (MINOR-1) — and the
+    # flash's own advice ("revert that change to save") was unactionable
+    # since the field is disabled. Before this fix, the second
+    # `render_submit` below would still be refused with the same flash.
+    test "after a refused slug change, the form recovers without a reload",
+         %{conn: conn} = ctx do
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, edit_url(ctx.managed_entity, ctx.managed_record))
+
+      # A forged "validate" (phx-change) event dirties the changeset with
+      # a slug the disabled field could never produce — `do_validate/2`
+      # builds the changeset straight from `data_params` with no
+      # `client_writable_params/2` filtering (that only runs on save), so
+      # nothing stops this at the changeset-build step; the write-path
+      # guard is what has to catch it, on the "save" that follows.
+      render_change(view, "validate", %{
+        "phoenix_kit_entity_data" => %{"title" => "Oak", "slug" => "forged-slug"}
+      })
+
+      render_submit(view, "save", %{
+        "phoenix_kit_entity_data" => %{"title" => "Oak", "slug" => "forged-slug"}
+      })
+
+      html = render(view)
+
+      assert html =~
+               ~r/<input\s+type="hidden"\s+name="phoenix_kit_entity_data\[slug\]"\s+value="oak"/
+
+      refute html =~ "forged-slug"
+
+      # `form/3` + `render_submit/1` (rather than `render_submit(view,
+      # "save", params)`) walks the ACTUAL rendered markup: the disabled
+      # slug input is excluded and the hidden mirror's CURRENT value is
+      # what gets submitted, same as a real browser — not a slug typed by
+      # hand in the test. That is the scenario this test guards: before
+      # the fix, the mirror was still stuck on "forged-slug" here and
+      # this save would fail with the very same flash.
+      view
+      |> form("#entity-data-form", %{
+        "phoenix_kit_entity_data" => %{"title" => "Oak (retry)"}
+      })
+      |> render_submit()
+
+      after_save = EntityData.get(ctx.managed_record.uuid)
+      assert after_save.title == "Oak (retry)"
+      assert after_save.slug == "oak"
+    end
+
+    # MINOR-1 (2026-09-11 review): the Generate button is hidden via `:if`
+    # on a managed record, but `handle_event("generate_slug", ...)` was
+    # unconditional — a LiveView event is not bound by the markup that
+    # produced it. Before this fix, the `render_hook` below rewrote the
+    # hidden slug mirror to "oak-wood" even though Generate is gone from
+    # the page, and every ordinary save afterward was refused with
+    # `:locked_key` (data safe, but the form was stuck — only a reload
+    # cleared it).
+    test "a forged generate_slug event cannot wedge a managed record's form",
+         %{conn: conn} = ctx do
+      {:ok, record} =
+        EntityData.create(
+          %{
+            entity_uuid: ctx.managed_entity.uuid,
+            title: "Oak Wood",
+            slug: "oak",
+            status: "published",
+            data: %{},
+            created_by_uuid: ctx.actor_uuid
+          },
+          actor_uuid: ctx.actor_uuid
+        )
+
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, edit_url(ctx.managed_entity, record))
+
+      render_hook(view, "generate_slug", %{})
+
+      html = render(view)
+
+      assert html =~
+               ~r/<input\s+type="hidden"\s+name="phoenix_kit_entity_data\[slug\]"\s+value="oak"/
+
+      refute html =~ "oak-wood"
+
+      # `form/3` + `render_submit/1` submits the mirror's ACTUAL current
+      # value rather than one typed by hand — see the comment on the
+      # MINOR-2 test above.
+      view
+      |> form("#entity-data-form", %{
+        "phoenix_kit_entity_data" => %{"title" => "Oak Wood (edited)"}
+      })
+      |> render_submit()
+
+      after_save = EntityData.get(record.uuid)
+      assert after_save.title == "Oak Wood (edited)"
+      assert after_save.slug == "oak"
+    end
+
     test "the owner can still change the slug via on_behalf_of", %{conn: _conn} = ctx do
       assert {:ok, updated} =
                EntityData.update(ctx.managed_record, %{"slug" => "renamed-by-owner"},
