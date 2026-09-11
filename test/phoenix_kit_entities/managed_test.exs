@@ -378,6 +378,49 @@ defmodule PhoenixKitEntities.ManagedTest do
     end
   end
 
+  describe "validate_data_mutation/4 — owning_entity mismatch (MINOR-4)" do
+    # MINOR-4 (2026-09-11 review): nothing checked that `owning_entity`
+    # actually belongs to `data_record`. Confirmed before this fix: an
+    # unrelated UNMANAGED blueprint (any uuid other than the record's
+    # own) short-circuited the very first `cond` clause (`not
+    # managed?(owning_entity)`) and returned `:ok` for a rename that
+    # SHOULD have been evaluated against the record's real (managed)
+    # owner.
+    test "an unrelated, unmanaged owning_entity cannot be used to slip a rename past the real owner" do
+      record = data_record(%{entity_uuid: "entity-a"})
+      wrong_owner = %{uuid: "entity-b", settings: %{}}
+
+      assert {:error, :locked_key} =
+               Managed.validate_data_mutation(wrong_owner, record, %{"slug" => "renamed"})
+    end
+
+    test "an unrelated MANAGED owning_entity is refused the same way, not evaluated as if it were real" do
+      record = data_record(%{entity_uuid: "entity-a"})
+      wrong_owner = managed_entity(%{uuid: "entity-b"})
+
+      assert {:error, :locked_key} =
+               Managed.validate_data_mutation(wrong_owner, record, %{"title" => "harmless"})
+    end
+
+    test "a matching entity_uuid is not a mismatch — the ordinary call shape" do
+      owning = managed_entity(%{uuid: "entity-a"})
+      record = data_record(%{entity_uuid: "entity-a"})
+
+      assert {:error, :locked_key} =
+               Managed.validate_data_mutation(owning, record, %{"slug" => "renamed"})
+
+      assert :ok = Managed.validate_data_mutation(owning, record, %{"title" => "Renamed"})
+    end
+
+    test "fixtures with no uuid set at all (most tests in this file) are not a mismatch" do
+      owning = managed_entity()
+      record = data_record()
+
+      assert {:error, :locked_key} =
+               Managed.validate_data_mutation(owning, record, %{"slug" => "renamed"})
+    end
+  end
+
   describe "validate_creation/2" do
     test "generic creates cannot claim a managed_by owner" do
       attrs = %{settings: %{"managed_by" => "catalogue"}, name: "catalogue_set_forged"}
