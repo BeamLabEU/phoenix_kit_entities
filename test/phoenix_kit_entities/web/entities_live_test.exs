@@ -273,6 +273,49 @@ defmodule PhoenixKitEntities.Web.EntitiesLiveTest do
       refute menu_html =~ "Open in"
       refute menu_html =~ "evil.example"
     end
+
+    # MAJOR (2026-09-11 review): `String.starts_with?(path, "/")` alone
+    # accepts `//evil.example/x` too — a PROTOCOL-RELATIVE URL, not a
+    # same-app path. With the core mounted at the site root (`url_prefix`
+    # "/"), `PhoenixKit.Utils.Routes.path/1` passes a `//`-prefixed path
+    # through unchanged, so the rendered `href` leaves the admin for
+    # another host. The `https://evil.example/x` case above never
+    # exercised this: `starts_with?(path, "/")` was already false for it.
+    test "omits the link when managed_path is a protocol-relative URL",
+         %{conn: conn} = ctx do
+      {:ok, managed} =
+        create_managed(ctx, "catalogue_set_menu_protocol_relative", %{
+          "managed_path" => "//evil.example/x"
+        })
+
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, _view, html} = live(conn, "/en/admin/entities")
+
+      menu_html =
+        Regex.run(~r/<div id="entity-menu-#{managed.uuid}".*?<\/div>/s, html)
+        |> List.first()
+
+      refute menu_html =~ "Open in"
+      refute menu_html =~ "evil.example"
+    end
+
+    test "omits the link when managed_path is a backslash-prefixed URL",
+         %{conn: conn} = ctx do
+      {:ok, managed} =
+        create_managed(ctx, "catalogue_set_menu_backslash", %{
+          "managed_path" => "/\\evil.example/x"
+        })
+
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, _view, html} = live(conn, "/en/admin/entities")
+
+      menu_html =
+        Regex.run(~r/<div id="entity-menu-#{managed.uuid}".*?<\/div>/s, html)
+        |> List.first()
+
+      refute menu_html =~ "Open in"
+      refute menu_html =~ "evil.example"
+    end
   end
 
   describe "handle_info catch-all" do

@@ -1900,14 +1900,24 @@ defmodule PhoenixKitEntities.EntityData do
   end
 
   # A managed blueprint's owner keys its own relations on a value record's
-  # slug (e.g. the catalogue's `selected_value_slugs`) — skipped for the
-  # common case (no `slug` key in `attrs` at all) so an ordinary
-  # title/data-only save never pays for the owning-entity lookup. The
-  # policy itself (what counts as a change, the `on_behalf_of` bypass)
-  # lives in `Managed.validate_data_mutation/4`, not here — see its
-  # moduledoc on UI guards without a write interceptor.
+  # slug (e.g. the catalogue's `selected_value_slugs`). `client_writable_params/2`
+  # (data_form.ex) always includes `"slug"` in a save's params — as does
+  # `Mirror.Importer` — so nearly every save on ANY blueprint (managed or
+  # not) reaches this function with the key present; skipping the
+  # owning-entity lookup on absence alone barely fires. What actually
+  # saves the common case is `Managed.renames_data_slug?/2`: a save that
+  # resubmits the record's own unchanged slug (the ordinary case — a
+  # disabled field's hidden mirror, or a title-only edit that round-trips
+  # the current value) is cheap to detect without ever reading the
+  # owning entity, since `validate_data_mutation/4` would return `:ok`
+  # for it regardless of whether the blueprint turns out to be managed.
+  # Only an ACTUAL slug change pays for the `Entities.get_entity/1`
+  # lookup (a `SELECT` plus `preload(:creator)`). The policy itself
+  # (managed?, the `on_behalf_of` bypass) lives in
+  # `Managed.validate_data_mutation/4`, not here — see its moduledoc on
+  # UI guards without a write interceptor.
   defp validate_managed_slug(entity_data, attrs, opts) do
-    if Map.has_key?(attrs, :slug) or Map.has_key?(attrs, "slug") do
+    if Managed.renames_data_slug?(entity_data, attrs) do
       owning_entity = Entities.get_entity(entity_data.entity_uuid)
       Managed.validate_data_mutation(owning_entity, entity_data, attrs, opts)
     else

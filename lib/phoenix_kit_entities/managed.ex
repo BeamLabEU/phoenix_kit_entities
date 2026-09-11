@@ -232,13 +232,52 @@ defmodule PhoenixKitEntities.Managed do
       (is_binary(new_status) and new_status != entity.status)
   end
 
-  # The slug is the relation key a managed blueprint's owner keys on (e.g.
-  # catalogue's `selected_value_slugs`) — same rationale as
-  # `renames_identity?/2` above, one level down at the data-record layer.
-  defp renames_data_slug?(data_record, attrs) do
-    new_slug = attrs[:slug] || attrs["slug"]
-    is_binary(new_slug) and new_slug != data_record.slug
+  @doc """
+  True when `attrs` supplies a `:slug` (or `"slug"`) that differs from
+  `data_record.slug` — the relation key a managed blueprint's owner keys
+  on (e.g. catalogue's `selected_value_slugs`), same rationale as
+  `renames_identity?/2` above, one level down at the data-record layer.
+
+  Presence, not truthiness, decides whether `attrs` even speaks to the
+  slug: `Map.fetch/2` (not `attrs[:slug] || attrs["slug"]`), so an
+  explicit `slug: nil` reads as a change instead of silently passing as
+  "not binary, therefore untouched" and erasing the slug — closing that
+  off for any caller that ever builds `attrs` from a source where the
+  key can be present-but-nil (`mirror/importer.ex`'s own record-matching
+  guard happens to keep the key aligned with the existing slug today,
+  but this function doesn't get to assume that of every caller). A key
+  simply ABSENT from `attrs` is still not a rename: an ordinary
+  title/data save never mentions `:slug` at all.
+
+  `""` and `nil` are the same "no slug" on both sides of the compare:
+  the disabled field's hidden mirror posts back `""` when the DATABASE
+  value is already `nil` (a record created before the UI stopped
+  locking the field on `/data/new`, back-filled or otherwise) — Ecto's
+  own `cast/4` would fold that `""` to `nil` too, so failing to close
+  here made that resubmit read as a rename of a title-only save.
+
+  Public so `EntityData.update/3` can call it directly, ahead of
+  `validate_data_mutation/4`: when this returns `false`, that function
+  would return `:ok` no matter what the owning entity turns out to be,
+  so there is no reason to pay for looking it up first.
+  """
+  @spec renames_data_slug?(struct(), map()) :: boolean()
+  def renames_data_slug?(data_record, attrs) do
+    case fetch_slug(attrs) do
+      :error -> false
+      {:ok, new_slug} -> normalize_slug(new_slug) != normalize_slug(data_record.slug)
+    end
   end
+
+  defp fetch_slug(attrs) do
+    case Map.fetch(attrs, :slug) do
+      {:ok, value} -> {:ok, value}
+      :error -> Map.fetch(attrs, "slug")
+    end
+  end
+
+  defp normalize_slug(""), do: nil
+  defp normalize_slug(slug), do: slug
 
   # The marker keys ARE the protection — a generic settings write that
   # rewrites or drops "managed_by"/"locked_keys" would un-manage the

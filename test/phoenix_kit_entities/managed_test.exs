@@ -154,6 +154,46 @@ defmodule PhoenixKitEntities.ManagedTest do
 
       assert :ok = Managed.validate_data_mutation(owning, data_record(), %{"title" => "Oak"})
     end
+
+    # MAJOR (2026-09-11 review): the old check was `is_binary(new_slug) and
+    # new_slug != data_record.slug` — an explicit `slug: nil` in `attrs`
+    # is not a binary, so it read as "untouched" and walked straight past
+    # the guard, silently erasing an existing slug. Reachable generically
+    # via `Mirror.Importer`'s `:overwrite` strategy: a JSON record with no
+    # `"slug"` key produces `record_data["slug"] == nil`, written as
+    # `attrs.slug` without ever going through `on_behalf_of`.
+    test "an explicit nil slug on a record that HAS one is a rename, not a no-op" do
+      owning = managed_entity()
+
+      assert {:error, :locked_key} =
+               Managed.validate_data_mutation(owning, data_record(), %{"slug" => nil})
+
+      assert {:error, :locked_key} =
+               Managed.validate_data_mutation(owning, data_record(), %{slug: nil})
+    end
+
+    # CRITICAL (2026-09-11 review): a record can legitimately have
+    # `slug: nil` (created without one). The disabled field's hidden
+    # mirror then posts back `""` (there is no slug to render into the
+    # input) — the old check read that as `is_binary("") and "" != nil`,
+    # i.e. `true`, refusing EVERY subsequent save (even a title-only
+    # edit) with `:locked_key` forever. `""` and `nil` are now the same
+    # "no slug" on both sides of the compare, matching what Ecto's own
+    # `cast/4` would do with `""`.
+    test "resubmitting \"\" against an already-nil slug is not a rename" do
+      owning = managed_entity()
+      record = data_record(%{slug: nil})
+
+      assert :ok = Managed.validate_data_mutation(owning, record, %{"slug" => ""})
+      assert :ok = Managed.validate_data_mutation(owning, record, %{slug: ""})
+    end
+
+    test "but submitting \"\" against a record that HAS a slug is still a rename" do
+      owning = managed_entity()
+
+      assert {:error, :locked_key} =
+               Managed.validate_data_mutation(owning, data_record(), %{"slug" => ""})
+    end
   end
 
   describe "validate_creation/2" do
