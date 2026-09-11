@@ -25,13 +25,16 @@ defmodule PhoenixKitEntities.Managed do
      exist). UI guards without a write interceptor are theater.
      One write path is deliberately outside the interception:
      `reorder_entities/2` bulk-updates `position` via `update_all`, and
-     `position` is not part of any owner contract.
+     `position` is not part of any owner contract. The same theater
+     risk applies one level down: `validate_data_mutation/4` protects a
+     DATA RECORD's `slug` the same way, since the owner's own tables key
+     relations on it (e.g. the catalogue's `selected_value_slugs`) — every
+     other data-record field is unguarded and goes through the ordinary
+     `EntityData` write path untouched.
 
   Owners bypass the guard by passing `on_behalf_of: "<owner>"` in opts —
   the guard is against *accidental* generic-admin edits, not a security
-  boundary (all callers are admin code). It also covers only the
-  blueprint rows themselves — data records under a managed blueprint go
-  through the ordinary `EntityData` write path.
+  boundary (all callers are admin code).
 
   ## Delete approval
 
@@ -109,6 +112,33 @@ defmodule PhoenixKitEntities.Managed do
         if Keyword.get(opts, :on_behalf_of) == claimed,
           do: :ok,
           else: {:error, :managed_blueprint}
+    end
+  end
+
+  @doc """
+  Validates an update to a DATA RECORD belonging to `owning_entity` — the
+  blueprint the record's `entity_uuid` points at. A managed blueprint's
+  owner keys its own relations on a value record's `slug` (e.g. the
+  catalogue's `selected_value_slugs`), so a generic caller changing it
+  would silently break that relation — the write path refuses it here
+  rather than trusting the UI guard alone (see moduledoc). Owner-originated
+  calls (`on_behalf_of` matching the owner) pass unconditionally — the
+  owner may repoint its own relation. `data_record` supplies the slug's
+  PRIOR value: resubmitting a form with the field disabled still posts the
+  unchanged slug back (so validation and this guard both see a whole
+  payload), and that must not read as a rename.
+
+  Only the record's `slug` is protected — `title`, `status`, `data`, etc.
+  go through unguarded, same as for an unmanaged blueprint's records.
+  """
+  @spec validate_data_mutation(struct() | nil, struct(), map(), keyword()) ::
+          :ok | {:error, :locked_key}
+  def validate_data_mutation(owning_entity, data_record, attrs, opts \\ []) do
+    cond do
+      not managed?(owning_entity) -> :ok
+      Keyword.get(opts, :on_behalf_of) == owner(owning_entity) -> :ok
+      renames_data_slug?(data_record, attrs) -> {:error, :locked_key}
+      true -> :ok
     end
   end
 
@@ -200,6 +230,14 @@ defmodule PhoenixKitEntities.Managed do
 
     (is_binary(new_name) and new_name != entity.name) or
       (is_binary(new_status) and new_status != entity.status)
+  end
+
+  # The slug is the relation key a managed blueprint's owner keys on (e.g.
+  # catalogue's `selected_value_slugs`) — same rationale as
+  # `renames_identity?/2` above, one level down at the data-record layer.
+  defp renames_data_slug?(data_record, attrs) do
+    new_slug = attrs[:slug] || attrs["slug"]
+    is_binary(new_slug) and new_slug != data_record.slug
   end
 
   # The marker keys ARE the protection — a generic settings write that

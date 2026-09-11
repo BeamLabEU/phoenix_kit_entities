@@ -88,6 +88,7 @@ defmodule PhoenixKitEntities.EntityData do
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.Events
   alias PhoenixKitEntities.FieldTypes
+  alias PhoenixKitEntities.Managed
   alias PhoenixKitEntities.Mirror.Exporter
   alias PhoenixKitEntities.UrlResolver
   @type t :: %__MODULE__{}
@@ -1873,22 +1874,44 @@ defmodule PhoenixKitEntities.EntityData do
       {:error, :status_mismatch}
   """
   @spec update(t(), map(), keyword()) ::
-          {:ok, t()} | {:error, Ecto.Changeset.t() | :status_mismatch}
+          {:ok, t()} | {:error, Ecto.Changeset.t() | :status_mismatch | :locked_key}
   def update(%__MODULE__{} = entity_data, attrs, opts \\ []) do
-    case Keyword.get(opts, :require_status) do
-      nil ->
-        entity_data
-        |> changeset(attrs)
-        |> repo().update()
-        |> notify_data_event(:updated, opts)
+    case validate_managed_slug(entity_data, attrs, opts) do
+      :ok ->
+        case Keyword.get(opts, :require_status) do
+          nil ->
+            entity_data
+            |> changeset(attrs)
+            |> repo().update()
+            |> notify_data_event(:updated, opts)
 
-      statuses when is_list(statuses) ->
-        update_with_status_guard(entity_data, attrs, statuses, opts)
+          statuses when is_list(statuses) ->
+            update_with_status_guard(entity_data, attrs, statuses, opts)
 
-      status when is_binary(status) ->
-        raise ArgumentError,
-              "require_status expects a list of statuses, got a binary " <>
-                "(#{inspect(status)}) — wrap it in a list, e.g. require_status: [#{inspect(status)}]"
+          status when is_binary(status) ->
+            raise ArgumentError,
+                  "require_status expects a list of statuses, got a binary " <>
+                    "(#{inspect(status)}) — wrap it in a list, e.g. require_status: [#{inspect(status)}]"
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # A managed blueprint's owner keys its own relations on a value record's
+  # slug (e.g. the catalogue's `selected_value_slugs`) — skipped for the
+  # common case (no `slug` key in `attrs` at all) so an ordinary
+  # title/data-only save never pays for the owning-entity lookup. The
+  # policy itself (what counts as a change, the `on_behalf_of` bypass)
+  # lives in `Managed.validate_data_mutation/4`, not here — see its
+  # moduledoc on UI guards without a write interceptor.
+  defp validate_managed_slug(entity_data, attrs, opts) do
+    if Map.has_key?(attrs, :slug) or Map.has_key?(attrs, "slug") do
+      owning_entity = Entities.get_entity(entity_data.entity_uuid)
+      Managed.validate_data_mutation(owning_entity, entity_data, attrs, opts)
+    else
+      :ok
     end
   end
 

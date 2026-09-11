@@ -590,6 +590,114 @@ defmodule PhoenixKitEntities.Web.DataFormLiveTest do
     end
   end
 
+  describe "managed blueprint value records" do
+    setup ctx do
+      {:ok, managed_entity} =
+        Entities.create_entity(
+          %{
+            name: "catalogue_set_df_managed",
+            display_name: "Catalogue Set DF Managed",
+            display_name_plural: "Catalogue Sets",
+            fields_definition: [],
+            status: "published",
+            created_by_uuid: ctx.actor_uuid,
+            settings: %{"managed_by" => "catalogue", "locked_keys" => []}
+          },
+          on_behalf_of: "catalogue"
+        )
+
+      {:ok, managed_record} =
+        EntityData.create(
+          %{
+            entity_uuid: managed_entity.uuid,
+            title: "Oak",
+            slug: "oak",
+            status: "published",
+            data: %{},
+            created_by_uuid: ctx.actor_uuid
+          },
+          actor_uuid: ctx.actor_uuid
+        )
+
+      {:ok, managed_entity: managed_entity, managed_record: managed_record}
+    end
+
+    test "the slug field is disabled with a locked hint, and Generate is hidden",
+         %{conn: conn} = ctx do
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, _view, html} = live(conn, edit_url(ctx.managed_entity, ctx.managed_record))
+
+      assert html =~ "Locked — the owning module keys on this slug"
+      refute html =~ ~s(phx-click="generate_slug")
+
+      slug_input =
+        Regex.run(~r/<input[^>]*id="phoenix_kit_entity_data_slug"[^>]*>/, html) |> List.first()
+
+      assert is_binary(slug_input)
+      assert slug_input =~ "disabled"
+    end
+
+    test "a disabled field still submits its value via a hidden mirror",
+         %{conn: conn} = ctx do
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, _view, html} = live(conn, edit_url(ctx.managed_entity, ctx.managed_record))
+
+      assert html =~
+               ~r/<input\s+type="hidden"\s+name="phoenix_kit_entity_data\[slug\]"\s+value="oak"/
+    end
+
+    test "resubmitting the unchanged slug still saves other fields",
+         %{conn: conn} = ctx do
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, edit_url(ctx.managed_entity, ctx.managed_record))
+
+      render_submit(view, "save", %{
+        "phoenix_kit_entity_data" => %{"title" => "Oak (renamed title)", "slug" => "oak"}
+      })
+
+      after_save = EntityData.get(ctx.managed_record.uuid)
+      assert after_save.title == "Oak (renamed title)"
+      assert after_save.slug == "oak"
+    end
+
+    test "a crafted slug change is refused at the write path, with a flash",
+         %{conn: conn} = ctx do
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, edit_url(ctx.managed_entity, ctx.managed_record))
+
+      render_submit(view, "save", %{
+        "phoenix_kit_entity_data" => %{"title" => "Oak", "slug" => "forged-slug"}
+      })
+
+      assert render(view) =~ "locked by its owning module"
+
+      after_save = EntityData.get(ctx.managed_record.uuid)
+      assert after_save.slug == "oak"
+      assert after_save.title == "Oak"
+    end
+
+    test "the owner can still change the slug via on_behalf_of", %{conn: _conn} = ctx do
+      assert {:ok, updated} =
+               EntityData.update(ctx.managed_record, %{"slug" => "renamed-by-owner"},
+                 on_behalf_of: "catalogue"
+               )
+
+      assert updated.slug == "renamed-by-owner"
+    end
+
+    test "unmanaged records are unaffected — slug changes freely", %{conn: conn} = ctx do
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, edit_url(ctx.entity, ctx.record))
+
+      render_submit(view, "save", %{
+        "phoenix_kit_entity_data" => %{"title" => "Hello", "slug" => "hello-renamed"}
+      })
+
+      after_save = EntityData.get(ctx.record.uuid)
+      assert after_save.slug == "hello-renamed"
+    end
+  end
+
   describe "live slug derivation (2026-08-28: no typing pause)" do
     test "the title field is wired for live derivation", %{conn: conn} = ctx do
       # Asserted unconditionally. This used to be wrapped in `if html =~
