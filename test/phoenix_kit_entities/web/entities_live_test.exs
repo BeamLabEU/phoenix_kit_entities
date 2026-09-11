@@ -316,6 +316,69 @@ defmodule PhoenixKitEntities.Web.EntitiesLiveTest do
       refute menu_html =~ "Open in"
       refute menu_html =~ "evil.example"
     end
+
+    # MAJOR (2026-09-11 review): per WHATWG, a browser strips ASCII
+    # tab/newline/CR from a URL before parsing it — `"/\t/evil.example"`
+    # collapses to `//evil.example` by the time it reaches
+    # `window.location`, the same protocol-relative URL as the case above
+    # under a spelling `String.starts_with?(path, "//")` alone would miss.
+    # `\n` and `\r` collapse the same way.
+    test "omits the link when managed_path is tab-prefixed (browser-stripped)",
+         %{conn: conn} = ctx do
+      {:ok, managed} =
+        create_managed(ctx, "catalogue_set_menu_tab", %{
+          "managed_path" => "/\t/evil.example"
+        })
+
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, _view, html} = live(conn, "/en/admin/entities")
+
+      menu_html =
+        Regex.run(~r/<div id="entity-menu-#{managed.uuid}".*?<\/div>/s, html)
+        |> List.first()
+
+      assert is_binary(menu_html), "expected dropdown markup for entity-menu-#{managed.uuid}"
+      refute menu_html =~ "Open in"
+      refute menu_html =~ "evil.example"
+    end
+
+    test "omits the link when managed_path is newline-prefixed (browser-stripped)",
+         %{conn: conn} = ctx do
+      {:ok, managed} =
+        create_managed(ctx, "catalogue_set_menu_newline", %{
+          "managed_path" => "/\n/evil.example"
+        })
+
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, _view, html} = live(conn, "/en/admin/entities")
+
+      menu_html =
+        Regex.run(~r/<div id="entity-menu-#{managed.uuid}".*?<\/div>/s, html)
+        |> List.first()
+
+      assert is_binary(menu_html), "expected dropdown markup for entity-menu-#{managed.uuid}"
+      refute menu_html =~ "Open in"
+      refute menu_html =~ "evil.example"
+    end
+
+    test "omits the link when managed_path is carriage-return-prefixed (browser-stripped)",
+         %{conn: conn} = ctx do
+      {:ok, managed} =
+        create_managed(ctx, "catalogue_set_menu_cr", %{
+          "managed_path" => "/\r/evil.example"
+        })
+
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, _view, html} = live(conn, "/en/admin/entities")
+
+      menu_html =
+        Regex.run(~r/<div id="entity-menu-#{managed.uuid}".*?<\/div>/s, html)
+        |> List.first()
+
+      assert is_binary(menu_html), "expected dropdown markup for entity-menu-#{managed.uuid}"
+      refute menu_html =~ "Open in"
+      refute menu_html =~ "evil.example"
+    end
   end
 
   describe "handle_info catch-all" do
