@@ -21,6 +21,7 @@
 
 require Logger
 
+alias PhoenixKitEntities.Test.LiveDatabaseGuard
 alias PhoenixKitEntities.Test.Repo, as: TestRepo
 alias PhoenixKitEntities.Test.SchemaOwnerGuard
 
@@ -32,6 +33,12 @@ alias PhoenixKitEntities.Test.SchemaOwnerGuard
 # Check if the test database exists before trying to connect
 db_config = Application.get_env(:phoenix_kit_entities, TestRepo, [])
 db_name = db_config[:database] || "phoenix_kit_entities_test"
+
+# S014: refuse before anything else touches the database — see
+# PhoenixKitEntities.Test.LiveDatabaseGuard's moduledoc for why this exists
+# alongside (not instead of) SchemaOwnerGuard and the external `pk-test`
+# wrapper.
+LiveDatabaseGuard.check!(db_name)
 
 # The preflight ships in core, and this module's core floor (`~> 2.0`)
 # predates it — so it is used when the running core has it, and otherwise
