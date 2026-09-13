@@ -678,6 +678,42 @@ defmodule PhoenixKitEntities.Web.DataFormLiveTest do
       assert after_save.slug == "oak"
     end
 
+    # A multilang row whose primary language carries no `_slug` of its own
+    # (the shape `EntityData.create/2` stores when an owner creates a value
+    # with only the `slug` column set). Mount seeds `data[primary]["_slug"]`
+    # from the column, so every save posts it back — that is the column's
+    # own value, not a rename, and must not lock the form.
+    test "a multilang row without a stored primary _slug still saves",
+         %{conn: conn} = ctx do
+      {:ok, multilang_record} =
+        EntityData.create(
+          %{
+            entity_uuid: ctx.managed_entity.uuid,
+            title: "Birch",
+            slug: "birch",
+            status: "published",
+            data: %{"_primary_language" => "en-US", "en-US" => %{"_title" => "Birch"}},
+            created_by_uuid: ctx.actor_uuid
+          },
+          actor_uuid: ctx.actor_uuid
+        )
+
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, edit_url(ctx.managed_entity, multilang_record))
+
+      view
+      |> form("#entity-data-form", %{
+        "phoenix_kit_entity_data" => %{"title" => "Birch (renamed title)"}
+      })
+      |> render_submit()
+
+      refute render(view) =~ "locked by its owning module"
+
+      after_save = EntityData.get(multilang_record.uuid)
+      assert after_save.title == "Birch (renamed title)"
+      assert after_save.slug == "birch"
+    end
+
     test "a crafted slug change is refused at the write path, with a flash",
          %{conn: conn} = ctx do
       conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))

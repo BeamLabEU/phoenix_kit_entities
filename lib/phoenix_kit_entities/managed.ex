@@ -406,6 +406,10 @@ defmodule PhoenixKitEntities.Managed do
   A language absent from `attrs["data"]`, or present without a `"_slug"`
   key, is not a rename — multilang only stores overrides, so most
   languages never carry their own `"_slug"` at all.
+
+  The PRIMARY language is compared against the `slug` column when the
+  stored row has no primary `"_slug"`: the multilang form injects the
+  column's value there on every save, and that resubmit is not a rename.
   """
   @spec renames_translated_slug?(struct(), map()) :: boolean()
   def renames_translated_slug?(data_record, attrs) do
@@ -413,10 +417,11 @@ defmodule PhoenixKitEntities.Managed do
       {:ok, new_data} when is_map(new_data) ->
         old_data = Map.get(data_record, :data)
         old_data = if is_map(old_data), do: old_data, else: %{}
+        primary = old_data["_primary_language"] || new_data["_primary_language"]
 
         Enum.any?(new_data, fn
           {lang, %{"_slug" => new_slug}} when is_binary(lang) ->
-            old_slug = get_in(old_data, [lang, "_slug"])
+            old_slug = stored_lang_slug(data_record, old_data, lang, primary)
             normalize_slug(new_slug) != normalize_slug(old_slug)
 
           _ ->
@@ -425,6 +430,18 @@ defmodule PhoenixKitEntities.Managed do
 
       _ ->
         false
+    end
+  end
+
+  # The primary language's `_slug` mirrors the `slug` column: the data form
+  # seeds it from the column on mount and injects it on every multilang
+  # save. A row that never stored its own primary `_slug` (anything created
+  # through `EntityData.create/2` with only `slug` set) is still keyed on
+  # the column, so that is the value a resubmit has to match.
+  defp stored_lang_slug(data_record, old_data, lang, primary) do
+    case get_in(old_data, [lang, "_slug"]) do
+      nil when lang == primary -> Map.get(data_record, :slug)
+      old_slug -> old_slug
     end
   end
 

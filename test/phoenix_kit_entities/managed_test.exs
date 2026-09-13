@@ -323,6 +323,43 @@ defmodule PhoenixKitEntities.ManagedTest do
                "data" => %{"et" => %{"_slug" => "tamm"}}
              })
     end
+
+    # The multilang data form seeds `data[primary]["_slug"]` from the slug
+    # column and injects it on every save. A row stored without its own
+    # primary `_slug` must not read that injected copy as a rename, or no
+    # save from the form ever goes through.
+    test "an injected primary _slug equal to the slug column is not a rename" do
+      record =
+        multilang_record(%{data: %{"_primary_language" => "en", "en" => %{"_title" => "Oak"}}})
+
+      refute Managed.renames_translated_slug?(record, %{
+               "data" => %{
+                 "_primary_language" => "en",
+                 "en" => %{"_title" => "Oak", "_slug" => "oak"}
+               }
+             })
+    end
+
+    test "an injected primary _slug that differs from the slug column IS a rename" do
+      record =
+        multilang_record(%{data: %{"_primary_language" => "en", "en" => %{"_title" => "Oak"}}})
+
+      assert Managed.renames_translated_slug?(record, %{
+               "data" => %{
+                 "_primary_language" => "en",
+                 "en" => %{"_title" => "Oak", "_slug" => "forged-oak"}
+               }
+             })
+    end
+
+    test "the slug-column fallback applies to the primary language only" do
+      record =
+        multilang_record(%{data: %{"_primary_language" => "en", "en" => %{"_title" => "Oak"}}})
+
+      assert Managed.renames_translated_slug?(record, %{
+               "data" => %{"et" => %{"_title" => "Tamm", "_slug" => "oak"}}
+             })
+    end
   end
 
   describe "validate_data_mutation/4 — translated slug" do
