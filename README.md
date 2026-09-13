@@ -134,7 +134,7 @@ lib/
       entity_form.ex                   # Embeddable public form component
     controllers/
       entity_form_controller.ex        # Public form submission handler
-    migrations.ex                       # Module-owned V1 migration chain (pkn_schema marker)
+    migrations.ex                      # Module-owned V1 migration chain (pkn_schema marker)
     mirror/
       exporter.ex                      # Entity/data export to JSON
       importer.ex                      # Entity/data import from JSON
