@@ -6,6 +6,10 @@ defmodule PhoenixKitEntities.Attachments do
 
   called as `parent_for(:entity_file, actor_uuid, %{entity_name: name})` (or `/2`),
   returning `{:ok, folder_uuid}` or `nil` (no scope, today's behaviour).
+
+  Hosts typically find-or-create the folder inside the hook, so call this
+  from a user gesture (opening the picker), never from mount/handle_params —
+  a render must not write folders.
   """
   require Logger
 
@@ -23,6 +27,12 @@ defmodule PhoenixKitEntities.Attachments do
   rescue
     error ->
       Logger.warning("[Entities] scope folder hook failed: #{inspect(error)}")
+      nil
+  catch
+    # A host hook doing a GenServer call or a pool checkout exits rather than
+    # raising; that must not take the data form down either.
+    :exit, reason ->
+      Logger.warning("[Entities] scope folder hook exited: #{inspect(reason)}")
       nil
   end
 

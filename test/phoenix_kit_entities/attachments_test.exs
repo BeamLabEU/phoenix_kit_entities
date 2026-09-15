@@ -19,6 +19,10 @@ defmodule PhoenixKitEntities.AttachmentsTest do
     def parent_for(_kind, _actor_uuid, _subject), do: raise("boom")
   end
 
+  defmodule ExitingHook do
+    def parent_for(_kind, _actor_uuid, _subject), do: exit(:timeout)
+  end
+
   setup do
     on_exit(fn -> Application.delete_env(:phoenix_kit_entities, :attachments_parent_folder) end)
   end
@@ -40,7 +44,7 @@ defmodule PhoenixKitEntities.AttachmentsTest do
       assert Attachments.scope_folder("other", "actor-1") == nil
     end
 
-    test "falls back to a 2-arg hook when no 3-arg clause matches" do
+    test "calls a 2-arg hook when the module exports no 3-arity function" do
       Application.put_env(:phoenix_kit_entities, :attachments_parent_folder, {Hook2, :parent_for})
 
       assert Attachments.scope_folder("products", "actor-1") == "folder-for-actor-1"
@@ -51,6 +55,16 @@ defmodule PhoenixKitEntities.AttachmentsTest do
         :phoenix_kit_entities,
         :attachments_parent_folder,
         {RaisingHook, :parent_for}
+      )
+
+      assert Attachments.scope_folder("products", "actor-1") == nil
+    end
+
+    test "returns nil when the hook exits" do
+      Application.put_env(
+        :phoenix_kit_entities,
+        :attachments_parent_folder,
+        {ExitingHook, :parent_for}
       )
 
       assert Attachments.scope_folder("products", "actor-1") == nil
