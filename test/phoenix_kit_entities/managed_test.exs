@@ -75,7 +75,8 @@ defmodule PhoenixKitEntities.ManagedTest do
 
       for _ <- tasks, do: assert_receive({:ready, _}, 5_000)
       Enum.each(tasks, &send(&1.pid, :go))
-      Task.await_many(tasks, 10_000)
+      # register_delete_guard/2 returns :persistent_term.put/2's result as is.
+      assert Enum.uniq(Task.await_many(tasks, 10_000)) == [:ok]
 
       refused =
         Enum.reject(owners, fn owner ->
@@ -541,6 +542,16 @@ defmodule PhoenixKitEntities.ManagedTest do
   end
 
   describe "validate_delete/2" do
+    # Guards outlive the test process; without erasing them, the "fails
+    # closed without a registered guard" pin only holds in a fresh VM (a
+    # --repeat-until-failure run fails it on the second pass).
+    setup do
+      on_exit(fn ->
+        for owner <- ["managed_test_owner", "crashy_owner"],
+            do: :persistent_term.erase({Managed, :delete_guard, owner})
+      end)
+    end
+
     test "generic deletes of managed blueprints are refused" do
       assert {:error, :managed_blueprint} = Managed.validate_delete(managed_entity())
     end
