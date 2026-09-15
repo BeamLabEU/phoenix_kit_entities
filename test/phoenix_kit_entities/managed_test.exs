@@ -44,6 +44,49 @@ defmodule PhoenixKitEntities.ManagedTest do
     )
   end
 
+  @doc false
+  def allow_delete(_entity), do: :ok
+
+  describe "register_delete_guard/2" do
+    test "concurrent registrations for different owners all land" do
+      # Owners register from their own boot tasks at the same moment (the
+      # catalogue starts two); a shared map's read-modify-write lost one.
+      run = System.unique_integer([:positive])
+      owners = for i <- 1..40, do: "concurrent-owner-#{run}-#{i}"
+
+      on_exit(fn ->
+        Enum.each(owners, &:persistent_term.erase({Managed, :delete_guard, &1}))
+      end)
+
+      parent = self()
+
+      tasks =
+        Enum.map(owners, fn owner ->
+          Task.async(fn ->
+            # Every task is parked here until all forty exist, so the
+            # registrations overlap instead of running one after another.
+            send(parent, {:ready, self()})
+
+            receive do
+              :go -> Managed.register_delete_guard(owner, &__MODULE__.allow_delete/1)
+            end
+          end)
+        end)
+
+      for _ <- tasks, do: assert_receive({:ready, _}, 5_000)
+      Enum.each(tasks, &send(&1.pid, :go))
+      Task.await_many(tasks, 10_000)
+
+      refused =
+        Enum.reject(owners, fn owner ->
+          entity = managed_entity(%{settings: %{"managed_by" => owner}})
+          Managed.validate_delete(entity, on_behalf_of: owner) == :ok
+        end)
+
+      assert refused == []
+    end
+  end
+
   describe "validate_mutation/3" do
     test "unmanaged entities are untouched" do
       assert :ok = Managed.validate_mutation(%{settings: %{}}, %{"name" => "x"})
