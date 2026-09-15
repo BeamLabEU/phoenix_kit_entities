@@ -65,6 +65,37 @@ defmodule PhoenixKitEntities.Web.DataFormLiveTest do
     end
   end
 
+  describe "attachments scope folder" do
+    defmodule ScopeHook do
+      def parent_for(:entity_file, _actor_uuid, %{entity_name: "df_test"}),
+        do: {:ok, "22222222-2222-2222-2222-222222222222"}
+
+      def parent_for(:entity_file, _actor_uuid, _subject), do: nil
+    end
+
+    test "the media picker's scope reflects the host hook for this entity", %{conn: conn} = ctx do
+      Application.put_env(
+        :phoenix_kit_entities,
+        :attachments_parent_folder,
+        {ScopeHook, :parent_for}
+      )
+
+      on_exit(fn -> Application.delete_env(:phoenix_kit_entities, :attachments_parent_folder) end)
+
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, _view, html} = live(conn, edit_url(ctx.entity, ctx.record))
+
+      assert html =~ ~s|data-scope-folder="22222222-2222-2222-2222-222222222222"|
+    end
+
+    test "no scope folder without a hook configured", %{conn: conn} = ctx do
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, _view, html} = live(conn, edit_url(ctx.entity, ctx.record))
+
+      refute html =~ "data-scope-folder"
+    end
+  end
+
   describe "the URL's blueprint has to be the record's blueprint" do
     test "editing a record under another entity's URL redirects to its own",
          %{conn: conn} = ctx do

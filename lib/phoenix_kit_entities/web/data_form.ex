@@ -20,6 +20,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
   alias PhoenixKit.Utils.Routes
   alias PhoenixKit.Utils.Slug
   alias PhoenixKitEntities, as: Entities
+  alias PhoenixKitEntities.Attachments
   alias PhoenixKitEntities.EntityData
   alias PhoenixKitEntities.Events
   alias PhoenixKitEntities.FormBuilder
@@ -210,6 +211,10 @@ defmodule PhoenixKitEntities.Web.DataForm do
       |> assign(:project_title, project_title)
       |> assign(:entity, entity)
       |> assign(:data_record, data_record)
+      |> assign(
+        :scope_folder_uuid,
+        Attachments.scope_folder(entity.name, current_user && current_user.uuid)
+      )
       # Does the slug still follow the title? Server state — see
       # track_slug_ownership/3.
       |> assign(:slug_auto?, is_nil(data_record.uuid))
@@ -1582,7 +1587,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
   @impl true
   def render(assigns) do
     ~H"""
-      <div class="container flex flex-col mx-auto px-4 py-6">
+      <div class="container flex flex-col mx-auto px-4 py-6" data-scope-folder={@scope_folder_uuid}>
         <%!-- Header Section --%>
         <%!-- Readonly Banner --%>
         <%= if @readonly? do %>
@@ -2073,6 +2078,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
           }
           selected_uuids={[]}
           phoenix_kit_current_user={assigns[:phoenix_kit_current_user]}
+          scope_folder_id={@scope_folder_uuid}
         />
       </div>
     """

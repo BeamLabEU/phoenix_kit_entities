@@ -1,3 +1,14 @@
+## 0.4.14 - 2026-09-14
+
+### Added
+
+- **Entity file/image fields can upload into a host-configured folder.**
+  `config :phoenix_kit_entities, :attachments_parent_folder, {Mod, :fun}`,
+  called as `fun(:entity_file, actor_uuid, %{entity_name: name})`, scopes the
+  data form's media picker to that folder — both browsing and new uploads —
+  via the existing `scope_folder_id` support in core's `MediaSelectorModal`.
+  Without a hook configured, behaviour is unchanged.
+
 ## 0.4.13 - 2026-09-13
 
 ### Added
