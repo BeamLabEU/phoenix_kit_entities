@@ -1579,15 +1579,47 @@ defmodule PhoenixKitEntities.FormBuilder do
 
   defp validate_type(_field, value), do: {:ok, value}
 
-  # The number of fractional digits typed, read off the tail of the raw
-  # text (after whichever of `.`/`,` sits last — `Number.parse_decimal/2`
-  # already confirmed that's the decimal point). `Decimal.round/2` back
-  # to that count only pads/trims zeros; it never changes the value,
-  # since `parse_decimal/2` normalizing never adds significant digits.
+  # The number of fractional digits typed, mirroring `Number.parse_decimal/2`'s
+  # own documented separator rule (its `@doc`) instead of a simpler
+  # "last separator wins" regex: a repeated separator on its own
+  # ("1,234,567", the European "1.234.567") is thousands grouping, not a
+  # fraction, and must not be misread as one — that previously padded
+  # fabricated trailing zeros onto a whole number. `Decimal.round/2` back
+  # to the resolved count only pads/trims zeros; it never changes the
+  # value, since `parse_decimal/2`'s normalizing never adds significant
+  # digits.
   defp restore_typed_scale(decimal, raw) do
-    case Regex.run(~r/[.,](\d+)\z/, String.trim(raw)) do
-      [_, fraction] -> Decimal.round(decimal, String.length(fraction))
-      nil -> decimal
+    text = raw |> String.trim() |> String.replace(~r/[ \x{00A0}\x{2009}\x{202F}]/u, "")
+    dots = text |> String.graphemes() |> Enum.count(&(&1 == "."))
+    commas = text |> String.graphemes() |> Enum.count(&(&1 == ","))
+
+    fraction_digits =
+      cond do
+        # Both present: the last one typed is the decimal point (same
+        # rule `Number.parse_decimal/2` uses), the other is grouping.
+        dots > 0 and commas > 0 ->
+          point = if last_index(text, ".") > last_index(text, ","), do: ".", else: ","
+          text |> String.split(point) |> List.last() |> String.length()
+
+        # One kind repeated with nothing else present is grouping —
+        # there is no fraction to restore.
+        commas > 1 or dots > 1 ->
+          0
+
+        true ->
+          case Regex.run(~r/[.,](\d+)\z/, text) do
+            [_, fraction] -> String.length(fraction)
+            nil -> 0
+          end
+      end
+
+    Decimal.round(decimal, fraction_digits)
+  end
+
+  defp last_index(text, char) do
+    case :binary.matches(text, char) do
+      [] -> -1
+      matches -> matches |> List.last() |> elem(0)
     end
   end
 

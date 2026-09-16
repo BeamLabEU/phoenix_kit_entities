@@ -58,6 +58,31 @@ defmodule PhoenixKitEntities.DecimalFieldTest do
       assert Decimal.equal?(value, Decimal.new("12.50"))
     end
 
+    # Regression: a repeated separator on its own is thousands grouping,
+    # not a decimal point — the value must land whole, not padded with
+    # fabricated fraction digits read off the tail of the raw text.
+    test "a thousands-grouped whole number keeps no fractional digits" do
+      assert {:ok, value} = FormBuilder.cast_field(field(), "1,234,567")
+      assert Decimal.to_string(value, :normal) == "1234567"
+
+      # European money-style grouping (dot as grouping separator).
+      assert {:ok, value} = FormBuilder.cast_field(field(), "1.234.567")
+      assert Decimal.to_string(value, :normal) == "1234567"
+
+      assert {:ok, value} = FormBuilder.cast_field(field(), "12,345,678")
+      assert Decimal.to_string(value, :normal) == "12345678"
+    end
+
+    # Mixed grouping + decimal still resolves the LAST separator as the
+    # decimal point and restores exactly its typed fraction length.
+    test "grouping plus a decimal separator restores only the true fraction" do
+      assert {:ok, value} = FormBuilder.cast_field(field(), "1,234,567.50")
+      assert Decimal.to_string(value, :normal) == "1234567.50"
+
+      assert {:ok, value} = FormBuilder.cast_field(field(), "1.234.567,50")
+      assert Decimal.to_string(value, :normal) == "1234567.50"
+    end
+
     test "accepts an integer and an already-cast Decimal" do
       assert {:ok, from_int} = FormBuilder.cast_field(field(), 12)
       assert Decimal.equal?(from_int, Decimal.new(12))
@@ -190,6 +215,16 @@ defmodule PhoenixKitEntities.DecimalFieldTest do
 
     test "renders a free-text control, not a native number spinner" do
       html = render_decimal(field(), nil)
+      assert html =~ ~s(inputmode="decimal")
+      refute html =~ ~s(type="number")
+    end
+
+    # The "number" type shares the same `<.decimal_input>` render clause
+    # in `FieldInput` — pin it directly so a future edit that reverts
+    # only that clause back to a native `type="number"` spinner fails a
+    # test instead of shipping unnoticed.
+    test "the \"number\" type also renders the free-text control" do
+      html = render_decimal(field(%{"type" => "number"}), nil)
       assert html =~ ~s(inputmode="decimal")
       refute html =~ ~s(type="number")
     end
