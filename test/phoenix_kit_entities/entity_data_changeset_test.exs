@@ -172,6 +172,121 @@ defmodule PhoenixKitEntities.EntityDataChangesetTest do
     end
   end
 
+  describe "number/decimal field normalization (matches the admin FormBuilder path)" do
+    # The public form endpoint builds `EntityData.changeset/2` directly,
+    # never through `FormBuilder.validate_type/2` — so without this, a
+    # "number"/"decimal" value it submits would land in storage as raw
+    # typed text while the SAME input typed into the admin form
+    # (`FormBuilder.validate_data/2`) is coerced to a float/`Decimal`
+    # first. Two representations for the same field type would break any
+    # downstream arithmetic, filter, or sort on it.
+    setup do
+      actor_uuid = Ecto.UUID.generate()
+
+      {:ok, entity} =
+        Entities.create_entity(
+          %{
+            name: "data_cs_numeric_test",
+            display_name: "Data CS Numeric Test",
+            display_name_plural: "Data CS Numeric Tests",
+            fields_definition: [
+              %{"type" => "number", "key" => "qty", "label" => "Qty"},
+              %{"type" => "decimal", "key" => "price", "label" => "Price"}
+            ],
+            created_by_uuid: actor_uuid
+          },
+          actor_uuid: actor_uuid
+        )
+
+      {:ok, entity: entity, actor_uuid: actor_uuid}
+    end
+
+    test "a comma-decimal 'number' value is stored exactly as FormBuilder casts it", ctx do
+      cs = changeset(ctx, %{data: %{"qty" => "2,5"}})
+
+      assert {:ok, %{"qty" => expected}} =
+               PhoenixKitEntities.FormBuilder.validate_data(ctx.entity, %{"qty" => "2,5"})
+
+      assert Ecto.Changeset.get_field(cs, :data) == %{"qty" => expected}
+      assert is_float(expected)
+    end
+
+    test "a comma-decimal 'decimal' value is stored exactly as FormBuilder casts it", ctx do
+      cs = changeset(ctx, %{data: %{"price" => "5,10"}})
+
+      assert {:ok, %{"price" => expected}} =
+               PhoenixKitEntities.FormBuilder.validate_data(ctx.entity, %{"price" => "5,10"})
+
+      assert Ecto.Changeset.get_field(cs, :data) == %{"price" => expected}
+      assert %Decimal{} = expected
+    end
+
+    test "invalid text is left untouched and still rejected", ctx do
+      cs = changeset(ctx, %{data: %{"qty" => "not-a-number"}})
+
+      assert Ecto.Changeset.get_field(cs, :data) == %{"qty" => "not-a-number"}
+      assert errors_on(cs)[:data]
+    end
+  end
+
+  describe "decimal field bounds (mirrors validate_number_field/3)" do
+    # `validate_decimal_field/3` used to check shape only
+    # (`decimal_shaped?/1`, since removed) and never looked at
+    # `min`/`max`. An out-of-bounds value fails to cast in
+    # `normalize_numeric_data/1` (see `FormBuilder.apply_decimal_bounds/2`)
+    # and is therefore left in its raw, still-shape-valid form — with no
+    # bounds check downstream, this changeset (the only gate a public
+    # submission passes) accepted it anyway.
+    setup do
+      actor_uuid = Ecto.UUID.generate()
+
+      {:ok, entity} =
+        Entities.create_entity(
+          %{
+            name: "data_cs_decimal_bounds_test",
+            display_name: "Data CS Decimal Bounds Test",
+            display_name_plural: "Data CS Decimal Bounds Tests",
+            fields_definition: [
+              %{
+                "type" => "decimal",
+                "key" => "price",
+                "label" => "Price",
+                "min" => "0",
+                "max" => "10"
+              }
+            ],
+            created_by_uuid: actor_uuid
+          },
+          actor_uuid: actor_uuid
+        )
+
+      {:ok, entity: entity, actor_uuid: actor_uuid}
+    end
+
+    test "rejects an out-of-bounds value", ctx do
+      cs = changeset(ctx, %{data: %{"price" => "999"}})
+      refute cs.valid?
+      assert errors_on(cs)[:data]
+    end
+
+    test "rejects an out-of-bounds comma-decimal value", ctx do
+      cs = changeset(ctx, %{data: %{"price" => "-1,00"}})
+      refute cs.valid?
+      assert errors_on(cs)[:data]
+    end
+
+    test "accepts an in-bounds comma-decimal value, cast the same as FormBuilder", ctx do
+      cs = changeset(ctx, %{data: %{"price" => "5,10"}})
+
+      assert {:ok, %{"price" => expected}} =
+               PhoenixKitEntities.FormBuilder.validate_data(ctx.entity, %{"price" => "5,10"})
+
+      assert cs.valid?
+      assert Ecto.Changeset.get_field(cs, :data) == %{"price" => expected}
+      assert %Decimal{} = expected
+    end
+  end
+
   describe "position" do
     test "accepts integer position", ctx do
       cs = changeset(ctx, %{position: 5})

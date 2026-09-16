@@ -92,6 +92,11 @@ defmodule PhoenixKitEntities.FormBuilderValidationTest do
       assert {:ok, %{"price" => 9.99}} = FormBuilder.validate_data(entity, %{"price" => "9.99"})
     end
 
+    test "accepts a comma decimal separator, same as the dot form" do
+      entity = entity([%{"type" => "number", "key" => "price", "label" => "Price"}])
+      assert {:ok, %{"price" => 9.99}} = FormBuilder.validate_data(entity, %{"price" => "9,99"})
+    end
+
     test "invalid number string" do
       entity = entity([%{"type" => "number", "key" => "qty", "label" => "Qty"}])
       assert {:error, errors} = FormBuilder.validate_data(entity, %{"qty" => "abc"})
@@ -101,6 +106,46 @@ defmodule PhoenixKitEntities.FormBuilderValidationTest do
     test "empty number is accepted when not required" do
       entity = entity([%{"type" => "number", "key" => "qty", "label" => "Qty"}])
       assert {:ok, _} = FormBuilder.validate_data(entity, %{"qty" => ""})
+    end
+
+    # `number` used to rely on the browser's native `<input min max>` for
+    # this; it now renders free text through `<.decimal_input>`, so the
+    # server must enforce the bound itself or nothing does.
+    test "enforces min and max" do
+      entity =
+        entity([%{"type" => "number", "key" => "qty", "label" => "Qty", "min" => 0, "max" => 10}])
+
+      assert {:error, errors} = FormBuilder.validate_data(entity, %{"qty" => "-1"})
+      assert Map.has_key?(errors, "qty")
+
+      assert {:error, errors} = FormBuilder.validate_data(entity, %{"qty" => "10.01"})
+      assert Map.has_key?(errors, "qty")
+
+      assert {:ok, %{"qty" => min}} = FormBuilder.validate_data(entity, %{"qty" => "0"})
+      assert min == 0.0
+      assert {:ok, %{"qty" => max}} = FormBuilder.validate_data(entity, %{"qty" => "10"})
+      assert max == 10.0
+    end
+
+    # A re-validate of an unchanged form (or any caller passing an
+    # already-cast value) used to fall through `validate_type/2`'s
+    # catch-all clause, which skips `apply_decimal_bounds/2` entirely —
+    # the only branch of this type that enforces `min`/`max`.
+    test "enforces min and max on an already-numeric value, not just a string" do
+      entity =
+        entity([%{"type" => "number", "key" => "qty", "label" => "Qty", "min" => 0, "max" => 10}])
+
+      assert {:error, errors} = FormBuilder.validate_data(entity, %{"qty" => 11})
+      assert Map.has_key?(errors, "qty")
+
+      assert {:error, errors} = FormBuilder.validate_data(entity, %{"qty" => -1.5})
+      assert Map.has_key?(errors, "qty")
+
+      assert {:error, errors} = FormBuilder.validate_data(entity, %{"qty" => Decimal.new("10.5")})
+      assert Map.has_key?(errors, "qty")
+
+      assert {:ok, %{"qty" => qty}} = FormBuilder.validate_data(entity, %{"qty" => 5})
+      assert qty == 5.0
     end
   end
 
