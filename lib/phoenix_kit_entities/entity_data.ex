@@ -89,6 +89,7 @@ defmodule PhoenixKitEntities.EntityData do
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.Events
   alias PhoenixKitEntities.FieldTypes
+  alias PhoenixKitEntities.FormBuilder
   alias PhoenixKitEntities.Managed
   alias PhoenixKitEntities.Mirror.Exporter
   alias PhoenixKitEntities.UrlResolver
@@ -193,6 +194,7 @@ defmodule PhoenixKitEntities.EntityData do
     |> validate_parent_same_entity()
     |> validate_parent_not_descendant()
     |> sanitize_rich_text_data()
+    |> normalize_numeric_data()
     |> validate_data_against_entity()
     # Core's v135 names this FK `fk_entity_data_entity_uuid`, not the
     # `phoenix_kit_entity_data_entity_uuid_fkey` that `foreign_key_constraint/2`
@@ -419,6 +421,87 @@ defmodule PhoenixKitEntities.EntityData do
         rescue
           Ecto.NoResultsError -> changeset
         end
+    end
+  end
+
+  @numeric_field_types ~w(number decimal)
+
+  # The public form path (`EntityFormController`) writes straight into this
+  # changeset without ever going through `FormBuilder.validate_type/2` — so
+  # a "number"/"decimal" value it submits ("2,5") would otherwise be stored
+  # as raw typed text, while the SAME input typed into the admin form
+  # (`LiveDataForm` → `FormBuilder.validate_data/2`) is coerced to a float
+  # (`number`) or a scale-preserving `Decimal` (`decimal`) before it ever
+  # reaches this changeset. Two representations for the same field type
+  # would break any downstream code that expects one shape consistently
+  # (arithmetic, filters, sort). `FormBuilder.cast_field/2` is the exact
+  # per-field coercion `validate_data/2` itself uses, so calling it here
+  # reproduces the admin path's result bit-for-bit rather than
+  # re-implementing it a third time.
+  #
+  # Best-effort like `sanitize_rich_text_data/1` above: a value that
+  # doesn't cast (invalid text, or a field already bounds-violating) is
+  # left exactly as submitted, so `validate_number_field/3` /
+  # `validate_decimal_field/3` below still see it and report their own
+  # error — this step only ever changes what a VALID value looks like in
+  # storage, never what counts as valid.
+  defp normalize_numeric_data(changeset) do
+    entity_uuid = get_field(changeset, :entity_uuid)
+    data = get_field(changeset, :data)
+
+    case {entity_uuid, data} do
+      {nil, _} ->
+        changeset
+
+      {_, nil} ->
+        changeset
+
+      {id, data} ->
+        try do
+          entity = Entities.get_entity!(id)
+          fields_definition = entity.fields_definition || []
+
+          normalized_data =
+            if Multilang.multilang_data?(data) do
+              Enum.reduce(data, %{}, fn
+                {"_primary_language", value}, acc ->
+                  Map.put(acc, "_primary_language", value)
+
+                {lang_code, lang_data}, acc when is_map(lang_data) ->
+                  Map.put(acc, lang_code, normalize_numeric_fields(fields_definition, lang_data))
+
+                {key, value}, acc ->
+                  Map.put(acc, key, value)
+              end)
+            else
+              normalize_numeric_fields(fields_definition, data)
+            end
+
+          put_change(changeset, :data, normalized_data)
+        rescue
+          Ecto.NoResultsError -> changeset
+        end
+    end
+  end
+
+  defp normalize_numeric_fields(fields_definition, data) when is_map(data) do
+    Enum.reduce(fields_definition, data, fn field_def, acc ->
+      normalize_numeric_field(acc, field_def)
+    end)
+  end
+
+  defp normalize_numeric_fields(_fields_definition, data), do: data
+
+  defp normalize_numeric_field(data, field_def) do
+    key = field_def["key"]
+
+    if field_def["type"] in @numeric_field_types and Map.has_key?(data, key) do
+      case FormBuilder.cast_field(field_def, data[key]) do
+        {:ok, coerced} -> Map.put(data, key, coerced)
+        {:error, _messages} -> data
+      end
+    else
+      data
     end
   end
 

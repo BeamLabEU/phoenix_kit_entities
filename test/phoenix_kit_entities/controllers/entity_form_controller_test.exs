@@ -13,10 +13,10 @@ defmodule PhoenixKitEntities.Controllers.EntityFormControllerTest do
   use PhoenixKitEntities.DataCase, async: false
 
   alias PhoenixKit.Test.Fixtures
-  alias PhoenixKit.Utils.Number
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.Controllers.EntityFormController
   alias PhoenixKitEntities.EntityData
+  alias PhoenixKitEntities.FormBuilder
 
   @endpoint PhoenixKitEntities.Test.Endpoint
 
@@ -629,13 +629,19 @@ defmodule PhoenixKitEntities.Controllers.EntityFormControllerTest do
       {:ok, number_entity: entity}
     end
 
-    test "a comma-decimal value is accepted and stored", %{number_entity: entity} do
+    test "a comma-decimal value is stored exactly as the admin path would cast it",
+         %{number_entity: entity} do
       conn = build_conn(:post, "/")
 
       params = %{
         "entity_slug" => entity.name,
         "phoenix_kit_entity_data" => %{"data" => %{"amount" => "2,5"}}
       }
+
+      # What `LiveDataForm` (admin path) would have stored for the same
+      # typed input, via `FormBuilder.validate_data/2`.
+      assert {:ok, %{"amount" => expected}} =
+               FormBuilder.validate_data(entity, %{"amount" => "2,5"})
 
       result = simple_invoke(conn, params)
       assert result.status in [302, 303]
@@ -644,12 +650,7 @@ defmodule PhoenixKitEntities.Controllers.EntityFormControllerTest do
                Phoenix.Flash.get(result.assigns.flash, :info) =~ "success"
 
       [record] = EntityData.list_by_entity(entity.uuid)
-      # `EntityData.changeset/2` is a validation gate, not a caster (same as
-      # its `decimal_shaped?/1` check for the `decimal` type) — it stores
-      # the typed text as-is once confirmed valid, the same way a `decimal`
-      # field's exact-precision text survives untouched.
-      assert Number.parse_decimal(get_in(record.data, ["amount"])) ==
-               {:ok, Decimal.new("2.5")}
+      assert get_in(record.data, ["amount"]) === expected
     end
 
     test "garbage text is rejected, no record created", %{number_entity: entity} do
