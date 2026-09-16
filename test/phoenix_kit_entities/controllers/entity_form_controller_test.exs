@@ -13,6 +13,7 @@ defmodule PhoenixKitEntities.Controllers.EntityFormControllerTest do
   use PhoenixKitEntities.DataCase, async: false
 
   alias PhoenixKit.Test.Fixtures
+  alias PhoenixKit.Utils.Number
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.Controllers.EntityFormController
   alias PhoenixKitEntities.EntityData
@@ -593,6 +594,77 @@ defmodule PhoenixKitEntities.Controllers.EntityFormControllerTest do
 
       result = simple_invoke(conn, params)
       assert result.status in [302, 303]
+    end
+  end
+
+  describe "public submission of a number field" do
+    # SECURITY: the public form endpoint writes straight into
+    # `EntityData.create/2` without ever going through
+    # `FormBuilder.validate_type/2` — `EntityData.changeset/2`'s
+    # `validate_number_field/3` is the ONLY gate a public submission
+    # passes. It used to check the raw text with a dot-only regex, so a
+    # comma-decimal value (the norm in et/ru locales, and what
+    # `<.decimal_input>` on the admin side already accepts) was rejected
+    # here even though it is a perfectly valid number.
+    setup %{actor_uuid: actor_uuid} do
+      {:ok, entity} =
+        Entities.create_entity(
+          %{
+            name: "form_ctrl_number_widget",
+            display_name: "Form Ctrl Number Widget",
+            display_name_plural: "Form Ctrl Number Widgets",
+            status: "published",
+            fields_definition: [
+              %{"type" => "number", "key" => "amount", "label" => "Amount"}
+            ],
+            settings: %{
+              "public_form_enabled" => true,
+              "public_form_fields" => ["amount"]
+            },
+            created_by_uuid: actor_uuid
+          },
+          actor_uuid: actor_uuid
+        )
+
+      {:ok, number_entity: entity}
+    end
+
+    test "a comma-decimal value is accepted and stored", %{number_entity: entity} do
+      conn = build_conn(:post, "/")
+
+      params = %{
+        "entity_slug" => entity.name,
+        "phoenix_kit_entity_data" => %{"data" => %{"amount" => "2,5"}}
+      }
+
+      result = simple_invoke(conn, params)
+      assert result.status in [302, 303]
+
+      assert Phoenix.Flash.get(result.assigns.flash, :info) =~ "submit" or
+               Phoenix.Flash.get(result.assigns.flash, :info) =~ "success"
+
+      [record] = EntityData.list_by_entity(entity.uuid)
+      # `EntityData.changeset/2` is a validation gate, not a caster (same as
+      # its `decimal_shaped?/1` check for the `decimal` type) — it stores
+      # the typed text as-is once confirmed valid, the same way a `decimal`
+      # field's exact-precision text survives untouched.
+      assert Number.parse_decimal(get_in(record.data, ["amount"])) ==
+               {:ok, Decimal.new("2.5")}
+    end
+
+    test "garbage text is rejected, no record created", %{number_entity: entity} do
+      conn = build_conn(:post, "/")
+
+      params = %{
+        "entity_slug" => entity.name,
+        "phoenix_kit_entity_data" => %{"data" => %{"amount" => "not-a-number"}}
+      }
+
+      result = simple_invoke(conn, params)
+      assert result.status in [302, 303]
+      assert Phoenix.Flash.get(result.assigns.flash, :error) =~ "error"
+
+      assert EntityData.list_by_entity(entity.uuid) == []
     end
   end
 

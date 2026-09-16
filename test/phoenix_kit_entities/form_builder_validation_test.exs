@@ -126,6 +126,27 @@ defmodule PhoenixKitEntities.FormBuilderValidationTest do
       assert {:ok, %{"qty" => max}} = FormBuilder.validate_data(entity, %{"qty" => "10"})
       assert max == 10.0
     end
+
+    # A re-validate of an unchanged form (or any caller passing an
+    # already-cast value) used to fall through `validate_type/2`'s
+    # catch-all clause, which skips `apply_decimal_bounds/2` entirely —
+    # the only branch of this type that enforces `min`/`max`.
+    test "enforces min and max on an already-numeric value, not just a string" do
+      entity =
+        entity([%{"type" => "number", "key" => "qty", "label" => "Qty", "min" => 0, "max" => 10}])
+
+      assert {:error, errors} = FormBuilder.validate_data(entity, %{"qty" => 11})
+      assert Map.has_key?(errors, "qty")
+
+      assert {:error, errors} = FormBuilder.validate_data(entity, %{"qty" => -1.5})
+      assert Map.has_key?(errors, "qty")
+
+      assert {:error, errors} = FormBuilder.validate_data(entity, %{"qty" => Decimal.new("10.5")})
+      assert Map.has_key?(errors, "qty")
+
+      assert {:ok, %{"qty" => qty}} = FormBuilder.validate_data(entity, %{"qty" => 5})
+      assert qty == 5.0
+    end
   end
 
   describe "validate_data/2 with boolean fields" do

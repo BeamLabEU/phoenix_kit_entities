@@ -84,6 +84,7 @@ defmodule PhoenixKitEntities.EntityData do
   alias PhoenixKit.Utils.Date, as: UtilsDate
   alias PhoenixKit.Utils.HtmlSanitizer
   alias PhoenixKit.Utils.Multilang
+  alias PhoenixKit.Utils.Number
   alias PhoenixKit.Utils.UUID, as: UUIDUtils
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.Events
@@ -609,15 +610,25 @@ defmodule PhoenixKitEntities.EntityData do
     end
   end
 
+  # The public-form path (`EntityFormController`) writes straight into
+  # `data` without ever going through `FormBuilder.validate_type/2` — this
+  # changeset is the ONLY gate a public submission passes. It must accept
+  # (and bounds-check) exactly what `FormBuilder` accepts, via the same
+  # `Number.parse_decimal/2`, or a comma-decimal locale value ("2,5") that
+  # sails through the admin form gets rejected here — or worse, an
+  # out-of-bounds value that `FormBuilder` would refuse slips straight
+  # into storage from the public path.
   defp validate_number_field(changeset, field_def, value) do
-    if is_number(value) || (is_binary(value) && Regex.match?(~r/^\d+(\.\d+)?$/, value)) do
-      changeset
-    else
-      add_error(
-        changeset,
-        :data,
-        gettext("field '%{label}' must be a number", label: field_def["label"])
-      )
+    case Number.parse_decimal(value, min: field_def["min"], max: field_def["max"]) do
+      {:ok, _decimal} ->
+        changeset
+
+      {:error, _reason} ->
+        add_error(
+          changeset,
+          :data,
+          gettext("field '%{label}' must be a number", label: field_def["label"])
+        )
     end
   end
 

@@ -1466,16 +1466,25 @@ defmodule PhoenixKitEntities.FormBuilder do
   defp validate_type(%{"type" => "number"} = field, value)
        when is_binary(value) and value != "" do
     case Number.parse_decimal(value) do
-      {:ok, decimal} ->
-        case apply_decimal_bounds(field, decimal) do
-          {:ok, bounded} -> {:ok, Decimal.to_float(bounded)}
-          {:error, _reasons} = error -> error
-        end
-
-      {:error, _reason} ->
-        {:error, [gettext("must be a valid number")]}
+      {:ok, decimal} -> bound_number(field, decimal)
+      {:error, _reason} -> {:error, [gettext("must be a valid number")]}
     end
   end
+
+  # A value already cast to a number (a re-validate of an unchanged form, or
+  # a caller passing typed data directly) previously fell through to the
+  # catch-all clause at the bottom of this function and skipped
+  # `apply_decimal_bounds/2` entirely — the ONLY branch of this type that
+  # enforces `min`/`max`. Route it through the same bounds check as the
+  # binary branch above.
+  defp validate_type(%{"type" => "number"} = field, %Decimal{} = value),
+    do: bound_number(field, value)
+
+  defp validate_type(%{"type" => "number"} = field, value) when is_integer(value),
+    do: bound_number(field, Decimal.new(value))
+
+  defp validate_type(%{"type" => "number"} = field, value) when is_float(value),
+    do: bound_number(field, value |> Float.to_string() |> Decimal.new())
 
   # Exact numeric. `Number.parse_decimal/2` is used rather than
   # `Float.parse/1` precisely so the value never round-trips through a
@@ -1633,6 +1642,17 @@ defmodule PhoenixKitEntities.FormBuilder do
     case :binary.matches(text, char) do
       [] -> -1
       matches -> matches |> List.last() |> elem(0)
+    end
+  end
+
+  # Shared by the `number` type's `validate_type/2` clauses above:
+  # bounds-check then hand back a float, matching this type's documented
+  # "integer or decimal via float" contract (unlike `decimal`, which stays
+  # a `Decimal` end to end).
+  defp bound_number(field, %Decimal{} = decimal) do
+    case apply_decimal_bounds(field, decimal) do
+      {:ok, bounded} -> {:ok, Decimal.to_float(bounded)}
+      {:error, _reasons} = error -> error
     end
   end
 
