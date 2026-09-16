@@ -669,6 +669,84 @@ defmodule PhoenixKitEntities.Controllers.EntityFormControllerTest do
     end
   end
 
+  describe "public submission of a decimal field" do
+    # SECURITY: same gap as the "number" type above, for "decimal":
+    # `validate_decimal_field/3` used to check shape only and never
+    # looked at `min`/`max` — an out-of-bounds value that fails to cast in
+    # `normalize_numeric_data/1` is left in its raw, still-shape-valid
+    # form, and this changeset (the only gate a public submission passes)
+    # accepted it anyway.
+    setup %{actor_uuid: actor_uuid} do
+      {:ok, entity} =
+        Entities.create_entity(
+          %{
+            name: "form_ctrl_decimal_widget",
+            display_name: "Form Ctrl Decimal Widget",
+            display_name_plural: "Form Ctrl Decimal Widgets",
+            status: "published",
+            fields_definition: [
+              %{
+                "type" => "decimal",
+                "key" => "price",
+                "label" => "Price",
+                "min" => "0",
+                "max" => "10"
+              }
+            ],
+            settings: %{
+              "public_form_enabled" => true,
+              "public_form_fields" => ["price"]
+            },
+            created_by_uuid: actor_uuid
+          },
+          actor_uuid: actor_uuid
+        )
+
+      {:ok, decimal_entity: entity}
+    end
+
+    test "an in-bounds comma-decimal value is accepted and cast like the admin path",
+         %{decimal_entity: entity} do
+      conn = build_conn(:post, "/")
+
+      params = %{
+        "entity_slug" => entity.name,
+        "phoenix_kit_entity_data" => %{"data" => %{"price" => "5,10"}}
+      }
+
+      assert {:ok, %{"price" => expected}} =
+               FormBuilder.validate_data(entity, %{"price" => "5,10"})
+
+      result = simple_invoke(conn, params)
+      assert result.status in [302, 303]
+
+      assert Phoenix.Flash.get(result.assigns.flash, :info) =~ "submit" or
+               Phoenix.Flash.get(result.assigns.flash, :info) =~ "success"
+
+      [record] = EntityData.list_by_entity(entity.uuid)
+      # A `Decimal` has no native JSON representation, so it round-trips
+      # through JSONB storage as its canonical string form — same for the
+      # admin path (see `EntityData`'s own "decimal" comments) — compare
+      # via that string rather than `%Decimal{}` struct equality.
+      assert get_in(record.data, ["price"]) == Decimal.to_string(expected, :normal)
+    end
+
+    test "an out-of-bounds value is rejected, no record created", %{decimal_entity: entity} do
+      conn = build_conn(:post, "/")
+
+      params = %{
+        "entity_slug" => entity.name,
+        "phoenix_kit_entity_data" => %{"data" => %{"price" => "999"}}
+      }
+
+      result = simple_invoke(conn, params)
+      assert result.status in [302, 303]
+      assert Phoenix.Flash.get(result.assigns.flash, :error) =~ "error"
+
+      assert EntityData.list_by_entity(entity.uuid) == []
+    end
+  end
+
   describe "redirect_back fallback" do
     test "no referer header → redirects to /", %{entity: entity} do
       conn = build_conn(:post, "/")

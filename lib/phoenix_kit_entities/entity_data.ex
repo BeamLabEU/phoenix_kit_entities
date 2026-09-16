@@ -715,33 +715,34 @@ defmodule PhoenixKitEntities.EntityData do
     end
   end
 
-  # The shape guard for exact numerics. A `%Decimal{}` is what a fresh
-  # cast produces; a canonical string is what comes back out of JSONB,
-  # since JSON has no decimal and serialising through a float would undo
-  # the whole point of the type.
+  # The shape AND bounds gate for exact numerics. A `%Decimal{}` is what a
+  # fresh cast produces; a canonical string is what comes back out of
+  # JSONB, since JSON has no decimal and serialising through a float would
+  # undo the whole point of the type — `Number.parse_decimal/2` accepts
+  # both, plus a hand-written `" 5,10 "` (comma or dot, trimmed), matching
+  # what `FormBuilder.cast_field/2` accepts on the admin path.
+  #
+  # Same reasoning as `validate_number_field/3` above: the public form
+  # path never goes through `FormBuilder.validate_type/2`, so this
+  # changeset is the ONLY gate a public submission passes. It used to
+  # check shape only (`decimal_shaped?/1`, since removed) and never
+  # looked at `min`/`max` — an out-of-bounds value that fails to cast in
+  # `normalize_numeric_data/1` (see `FormBuilder.apply_decimal_bounds/2`)
+  # is left in its raw, still-shape-valid form, and this being the final
+  # word meant it sailed straight into storage.
   defp validate_decimal_field(changeset, field_def, value) do
-    if decimal_shaped?(value) do
-      changeset
-    else
-      add_error(
-        changeset,
-        :data,
-        gettext("field '%{label}' must be a number", label: field_def["label"])
-      )
+    case Number.parse_decimal(value, min: field_def["min"], max: field_def["max"]) do
+      {:ok, _decimal} ->
+        changeset
+
+      {:error, _reason} ->
+        add_error(
+          changeset,
+          :data,
+          gettext("field '%{label}' must be a number", label: field_def["label"])
+        )
     end
   end
-
-  defp decimal_shaped?(%Decimal{}), do: true
-  defp decimal_shaped?(value) when is_number(value), do: true
-
-  # Trimmed before parsing, to match what `FormBuilder.cast_field/2` accepts.
-  # Without this a hand-written `" 5.1 "` casts fine on the way in and is then
-  # refused by this guard on re-save.
-  defp decimal_shaped?(value) when is_binary(value) do
-    match?({_decimal, ""}, value |> String.trim() |> Decimal.parse())
-  end
-
-  defp decimal_shaped?(_value), do: false
 
   defp validate_boolean_field(changeset, field_def, value) do
     if is_boolean(value) do
