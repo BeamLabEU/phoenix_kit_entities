@@ -67,6 +67,7 @@ defmodule PhoenixKitEntities.Components.FieldInput do
   use Phoenix.Component
   use Gettext, backend: PhoenixKitEntities.Gettext
 
+  import PhoenixKitWeb.Components.Core.DecimalInput, only: [decimal_input: 1]
   import PhoenixKitWeb.Components.Core.Icon, only: [icon: 1]
 
   alias PhoenixKitEntities.FieldTypes
@@ -187,15 +188,11 @@ defmodule PhoenixKitEntities.Components.FieldInput do
 
   defp render_input(%{type: "number"} = assigns) do
     ~H"""
-    <input
-      type="number"
+    <.decimal_input
       id={@input_id}
       name={@name}
       value={@value}
       form={@form}
-      min={@field["min"]}
-      max={@field["max"]}
-      step={@field["step"] || "any"}
       placeholder={@field["placeholder"]}
       disabled={@disabled}
       phx-debounce="blur"
@@ -204,26 +201,20 @@ defmodule PhoenixKitEntities.Components.FieldInput do
     """
   end
 
-  # Decimal — `step` follows the declared scale, or the browser rejects
-  # the extra places this type exists to preserve. The value renders
-  # through the shared helper because it arrives either as a %Decimal{}
-  # (just cast) or as the canonical string (back out of JSONB).
+  # Decimal — bounds (`min`/`max`) are enforced server-side by
+  # `FormBuilder.cast_field/2`, not through browser constraint
+  # validation. The value renders through the shared helper because it
+  # arrives either as a %Decimal{} (just cast) or as the canonical
+  # string (back out of JSONB).
   defp render_input(%{type: "decimal"} = assigns) do
-    assigns =
-      assigns
-      |> assign(:decimal_value, FieldTypes.decimal_input_value(assigns.value))
-      |> assign(:decimal_step, FieldTypes.decimal_step(assigns.field))
+    assigns = assign(assigns, :decimal_value, FieldTypes.decimal_input_value(assigns.value))
 
     ~H"""
-    <input
-      type="number"
+    <.decimal_input
       id={@input_id}
       name={@name}
       value={@decimal_value}
       form={@form}
-      min={@field["min"]}
-      max={@field["max"]}
-      step={@decimal_step}
       placeholder={@field["placeholder"]}
       disabled={@disabled}
       phx-debounce="blur"

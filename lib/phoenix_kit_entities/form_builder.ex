@@ -91,6 +91,7 @@ defmodule PhoenixKitEntities.FormBuilder do
   """
 
   import Phoenix.Component
+  import PhoenixKitWeb.Components.Core.DecimalInput, only: [decimal_input: 1]
   import PhoenixKitWeb.Components.Core.Icon, only: [icon: 1]
   import PhoenixKitWeb.Components.Core.FormFieldLabel, only: [label: 1]
   use Gettext, backend: PhoenixKitEntities.Gettext
@@ -98,6 +99,7 @@ defmodule PhoenixKitEntities.FormBuilder do
   alias PhoenixKit.Modules.Languages.DialectMapper
   alias PhoenixKit.Utils.Format
   alias PhoenixKit.Utils.Multilang
+  alias PhoenixKit.Utils.Number
   alias PhoenixKitEntities.FieldTypes
 
   # Sentinel value for the synthetic "Other" option on radio/select/checkbox
@@ -625,15 +627,11 @@ defmodule PhoenixKitEntities.FormBuilder do
       <.label for={@field["key"]}>
         {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
-      <input
-        type="number"
+      <.decimal_input
         name={"#{@changeset.data.__struct__.__schema__(:source)}[data][#{@field["key"]}]"}
         value={@value}
         placeholder={@placeholder}
         class={["input w-full", @opts[:input_class]]}
-        min={@field["min"]}
-        max={@field["max"]}
-        step={@field["step"] || 1}
         required={@field["required"] && !@opts[:primary_placeholders]}
         disabled={@opts[:disabled]}
       />
@@ -646,9 +644,9 @@ defmodule PhoenixKitEntities.FormBuilder do
     """
   end
 
-  # Decimal — same control as number, but `step` follows the declared
-  # scale so the browser's own validation does not reject the extra
-  # places this type exists to preserve.
+  # Decimal — same control as number; bounds (`min`/`max`) are enforced
+  # server-side by `apply_decimal_bounds/2`, not through browser
+  # constraint validation.
   def build_field(%{"type" => "decimal"} = field, changeset, opts) do
     assigns = %{
       field: field,
@@ -663,15 +661,11 @@ defmodule PhoenixKitEntities.FormBuilder do
       <.label for={@field["key"]}>
         {translated_label(@field, @opts[:lang_code])}{if @field["required"] && !@opts[:primary_placeholders], do: " *"}
       </.label>
-      <input
-        type="number"
+      <.decimal_input
         name={"#{@changeset.data.__struct__.__schema__(:source)}[data][#{@field["key"]}]"}
         value={@value}
         placeholder={@placeholder}
         class={["input w-full", @opts[:input_class]]}
-        min={@field["min"]}
-        max={@field["max"]}
-        step={decimal_step(@field)}
         required={@field["required"] && !@opts[:primary_placeholders]}
         disabled={@opts[:disabled]}
       />
@@ -1469,26 +1463,32 @@ defmodule PhoenixKitEntities.FormBuilder do
   end
 
   defp validate_type(%{"type" => "number"}, value) when is_binary(value) and value != "" do
-    case Float.parse(value) do
-      {num, ""} -> {:ok, num}
-      _ -> {:error, [gettext("must be a valid number")]}
+    case Number.parse_decimal(value) do
+      {:ok, decimal} -> {:ok, Decimal.to_float(decimal)}
+      {:error, _reason} -> {:error, [gettext("must be a valid number")]}
     end
   end
 
-  # Exact numeric. `Decimal.parse/1` is used rather than `Float.parse/1`
-  # precisely so the value never round-trips through a float — that is the
-  # whole reason this type exists. A `%Decimal{}` arriving already cast
-  # (a re-validate of an unchanged form) passes straight through.
+  # Exact numeric. `Number.parse_decimal/2` is used rather than
+  # `Float.parse/1` precisely so the value never round-trips through a
+  # float — that is the whole reason this type exists. A `%Decimal{}`
+  # arriving already cast (a re-validate of an unchanged form) passes
+  # straight through.
   defp validate_type(%{"type" => "decimal"} = field, %Decimal{} = value),
     do: apply_decimal_bounds(field, value)
 
   defp validate_type(%{"type" => "decimal"} = field, value)
        when is_binary(value) and value != "" do
-    # Comma decimal separators are the norm in et/ru locales and a plain
-    # Decimal.parse would reject them outright.
-    case value |> String.trim() |> String.replace(",", ".") |> Decimal.parse() do
-      {decimal, ""} -> apply_decimal_bounds(field, decimal)
-      _ -> {:error, [gettext("must be a valid number")]}
+    # Comma decimal separators are the norm in et/ru locales;
+    # `Number.parse_decimal/2` accepts either — but it also normalizes
+    # away trailing zeros ("5.1000" -> 5.1), which is wrong here: this
+    # type's whole reason to exist is to preserve exactly the precision
+    # a person typed (5.10 is a different price from 5.1 on an invoice).
+    # Restore it from the typed text once the value itself is confirmed
+    # valid.
+    case Number.parse_decimal(value) do
+      {:ok, decimal} -> apply_decimal_bounds(field, restore_typed_scale(decimal, value))
+      {:error, _reason} -> {:error, [gettext("must be a valid number")]}
     end
   end
 
@@ -1579,6 +1579,18 @@ defmodule PhoenixKitEntities.FormBuilder do
 
   defp validate_type(_field, value), do: {:ok, value}
 
+  # The number of fractional digits typed, read off the tail of the raw
+  # text (after whichever of `.`/`,` sits last — `Number.parse_decimal/2`
+  # already confirmed that's the decimal point). `Decimal.round/2` back
+  # to that count only pads/trims zeros; it never changes the value,
+  # since `parse_decimal/2` normalizing never adds significant digits.
+  defp restore_typed_scale(decimal, raw) do
+    case Regex.run(~r/[.,](\d+)\z/, String.trim(raw)) do
+      [_, fraction] -> Decimal.round(decimal, String.length(fraction))
+      nil -> decimal
+    end
+  end
+
   # `min`/`max` are advisory on `number` (stored, never enforced). They
   # ARE enforced here: the first consumer is money, where a negative
   # slipping through is a real defect rather than a cosmetic one.
@@ -1624,7 +1636,6 @@ defmodule PhoenixKitEntities.FormBuilder do
   defp to_decimal(_value), do: nil
 
   defp decimal_input_value(value), do: FieldTypes.decimal_input_value(value)
-  defp decimal_step(field), do: FieldTypes.decimal_step(field)
 
   # `invalid_values` (used by the checkbox clause above) can now
   # legitimately contain a non-binary term (a crafted map, for one — see

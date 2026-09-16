@@ -92,6 +92,11 @@ defmodule PhoenixKitEntities.FormBuilderValidationTest do
       assert {:ok, %{"price" => 9.99}} = FormBuilder.validate_data(entity, %{"price" => "9.99"})
     end
 
+    test "accepts a comma decimal separator, same as the dot form" do
+      entity = entity([%{"type" => "number", "key" => "price", "label" => "Price"}])
+      assert {:ok, %{"price" => 9.99}} = FormBuilder.validate_data(entity, %{"price" => "9,99"})
+    end
+
     test "invalid number string" do
       entity = entity([%{"type" => "number", "key" => "qty", "label" => "Qty"}])
       assert {:error, errors} = FormBuilder.validate_data(entity, %{"qty" => "abc"})
