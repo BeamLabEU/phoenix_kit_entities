@@ -1679,12 +1679,13 @@ defmodule PhoenixKitEntities.FormBuilder do
 
   # An unparseable bound is IGNORED rather than raised on. `min`/`max` come
   # from a field definition, which an admin can edit; a typo there must not
-  # turn every save of that field into a crash.
+  # turn every save of that field into a crash. A `"NaN"` bound parses,
+  # but `Decimal.compare/2` raises on it, so it is ignored too.
   defp compare_bound(_value, nil), do: :eq
 
   defp compare_bound(value, bound) do
     case to_decimal(bound) do
-      %Decimal{} = limit -> Decimal.compare(value, limit)
+      %Decimal{} = limit -> if Decimal.nan?(limit), do: :eq, else: Decimal.compare(value, limit)
       nil -> :eq
     end
   end

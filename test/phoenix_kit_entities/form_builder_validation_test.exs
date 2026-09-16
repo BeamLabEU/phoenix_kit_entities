@@ -149,6 +149,23 @@ defmodule PhoenixKitEntities.FormBuilderValidationTest do
     end
   end
 
+  describe "validate_data/2 with a NaN bound" do
+    # `"NaN"` parses as a Decimal, but `Decimal.compare/2` raises on it —
+    # an unreadable bound is ignored, not a crash on every save.
+    test "is ignored on number and decimal fields" do
+      entity =
+        entity([
+          %{"type" => "number", "key" => "qty", "label" => "Qty", "min" => "NaN"},
+          %{"type" => "decimal", "key" => "price", "label" => "Price", "max" => "NaN"}
+        ])
+
+      assert {:ok, %{"qty" => 3.0, "price" => price}} =
+               FormBuilder.validate_data(entity, %{"qty" => "3", "price" => "1,50"})
+
+      assert Decimal.equal?(price, Decimal.new("1.50"))
+    end
+  end
+
   describe "validate_data/2 with boolean fields" do
     test "true values" do
       entity = entity([%{"type" => "boolean", "key" => "active", "label" => "Active"}])

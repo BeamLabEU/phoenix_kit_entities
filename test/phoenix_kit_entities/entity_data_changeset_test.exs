@@ -287,6 +287,58 @@ defmodule PhoenixKitEntities.EntityDataChangesetTest do
     end
   end
 
+  describe "malformed numeric bounds in a field definition" do
+    # `Number.parse_decimal/2` raises on a `:min`/`:max` it cannot read.
+    # Bounds are definition DATA (mirror import, API), so `""`, a typo or
+    # "NaN" must be ignored the way `FormBuilder` ignores them — not turn
+    # every save of the record into an `ArgumentError` / `Decimal.Error`.
+    setup do
+      actor_uuid = Ecto.UUID.generate()
+
+      {:ok, entity} =
+        Entities.create_entity(
+          %{
+            name: "data_cs_bad_bounds_test",
+            display_name: "Data CS Bad Bounds Test",
+            display_name_plural: "Data CS Bad Bounds Tests",
+            fields_definition: [
+              %{
+                "type" => "number",
+                "key" => "qty",
+                "label" => "Qty",
+                "min" => "",
+                "max" => "abc"
+              },
+              %{
+                "type" => "decimal",
+                "key" => "price",
+                "label" => "Price",
+                "min" => "NaN",
+                "max" => %{"x" => 1}
+              }
+            ],
+            created_by_uuid: actor_uuid
+          },
+          actor_uuid: actor_uuid
+        )
+
+      {:ok, entity: entity, actor_uuid: actor_uuid}
+    end
+
+    test "unreadable bounds are ignored, not raised on", ctx do
+      cs = changeset(ctx, %{data: %{"qty" => "2,5", "price" => "-5,10"}})
+
+      assert cs.valid?
+      assert %{"qty" => 2.5, "price" => %Decimal{} = price} = Ecto.Changeset.get_field(cs, :data)
+      assert Decimal.equal?(price, Decimal.new("-5.10"))
+    end
+
+    test "invalid values are still rejected", ctx do
+      cs = changeset(ctx, %{data: %{"qty" => "x", "price" => "y"}})
+      refute cs.valid?
+    end
+  end
+
   describe "position" do
     test "accepts integer position", ctx do
       cs = changeset(ctx, %{position: 5})

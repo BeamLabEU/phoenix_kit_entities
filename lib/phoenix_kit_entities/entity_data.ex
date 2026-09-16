@@ -702,7 +702,7 @@ defmodule PhoenixKitEntities.EntityData do
   # out-of-bounds value that `FormBuilder` would refuse slips straight
   # into storage from the public path.
   defp validate_number_field(changeset, field_def, value) do
-    case Number.parse_decimal(value, min: field_def["min"], max: field_def["max"]) do
+    case Number.parse_decimal(value, numeric_bounds(field_def)) do
       {:ok, _decimal} ->
         changeset
 
@@ -731,7 +731,7 @@ defmodule PhoenixKitEntities.EntityData do
   # is left in its raw, still-shape-valid form, and this being the final
   # word meant it sailed straight into storage.
   defp validate_decimal_field(changeset, field_def, value) do
-    case Number.parse_decimal(value, min: field_def["min"], max: field_def["max"]) do
+    case Number.parse_decimal(value, numeric_bounds(field_def)) do
       {:ok, _decimal} ->
         changeset
 
@@ -743,6 +743,27 @@ defmodule PhoenixKitEntities.EntityData do
         )
     end
   end
+
+  # `Number.parse_decimal/2` RAISES on a `:min`/`:max` it cannot read, but
+  # bounds come from a field definition (mirror import, API, hand-edited
+  # JSON), where `""` or a typo is data, not a programming error. Resolve
+  # them the way `FormBuilder`'s `compare_bound/2` does — an unreadable
+  # bound (NaN included, which `Decimal` refuses to compare) is ignored —
+  # so a bad definition cannot turn every save of the record into a 500.
+  defp numeric_bounds(field_def) do
+    [min: numeric_bound(field_def["min"]), max: numeric_bound(field_def["max"])]
+  end
+
+  defp numeric_bound(bound) when is_number(bound), do: bound
+
+  defp numeric_bound(bound) when is_binary(bound) do
+    case bound |> String.trim() |> Decimal.parse() do
+      {%Decimal{} = decimal, ""} -> if Decimal.nan?(decimal), do: nil, else: decimal
+      _ -> nil
+    end
+  end
+
+  defp numeric_bound(_bound), do: nil
 
   defp validate_boolean_field(changeset, field_def, value) do
     if is_boolean(value) do
