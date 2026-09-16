@@ -609,7 +609,10 @@ defmodule PhoenixKitEntities.FormBuilder do
     """
   end
 
-  # Number Input
+  # Number Input — bounds (`min`/`max`) are enforced server-side by
+  # `validate_type/2`'s `apply_decimal_bounds/2` call, not through
+  # browser constraint validation (this renders free text, via
+  # `<.decimal_input>`, same as `decimal` below).
   def build_field(%{"type" => "number"} = field, changeset, opts) do
     placeholder = get_effective_placeholder(field, opts)
     value = get_effective_text_value(changeset, field["key"], opts)
@@ -644,9 +647,7 @@ defmodule PhoenixKitEntities.FormBuilder do
     """
   end
 
-  # Decimal — same control as number; bounds (`min`/`max`) are enforced
-  # server-side by `apply_decimal_bounds/2`, not through browser
-  # constraint validation.
+  # Decimal — same control and bounds enforcement as `number` above.
   def build_field(%{"type" => "decimal"} = field, changeset, opts) do
     assigns = %{
       field: field,
@@ -1462,10 +1463,17 @@ defmodule PhoenixKitEntities.FormBuilder do
     {:ok, normalized_value}
   end
 
-  defp validate_type(%{"type" => "number"}, value) when is_binary(value) and value != "" do
+  defp validate_type(%{"type" => "number"} = field, value)
+       when is_binary(value) and value != "" do
     case Number.parse_decimal(value) do
-      {:ok, decimal} -> {:ok, Decimal.to_float(decimal)}
-      {:error, _reason} -> {:error, [gettext("must be a valid number")]}
+      {:ok, decimal} ->
+        case apply_decimal_bounds(field, decimal) do
+          {:ok, bounded} -> {:ok, Decimal.to_float(bounded)}
+          {:error, _reasons} = error -> error
+        end
+
+      {:error, _reason} ->
+        {:error, [gettext("must be a valid number")]}
     end
   end
 
@@ -1588,6 +1596,11 @@ defmodule PhoenixKitEntities.FormBuilder do
   # to the resolved count only pads/trims zeros; it never changes the
   # value, since `parse_decimal/2`'s normalizing never adds significant
   # digits.
+  #
+  # This duplicates that rule (and the `last_index/2` helper below) by
+  # hand because core keeps its own copy private — nothing to call
+  # instead. Follow-up: once core exports the resolution rule, replace
+  # this copy so the two can't silently drift.
   defp restore_typed_scale(decimal, raw) do
     text = raw |> String.trim() |> String.replace(~r/[ \x{00A0}\x{2009}\x{202F}]/u, "")
     dots = text |> String.graphemes() |> Enum.count(&(&1 == "."))
@@ -1623,9 +1636,11 @@ defmodule PhoenixKitEntities.FormBuilder do
     end
   end
 
-  # `min`/`max` are advisory on `number` (stored, never enforced). They
-  # ARE enforced here: the first consumer is money, where a negative
-  # slipping through is a real defect rather than a cosmetic one.
+  # Shared by both numeric types' `validate_type/2` clauses. `number`
+  # used to lean on the browser's native `<input min max>` for this and
+  # enforced nothing server-side; now that both types render through
+  # `<.decimal_input>` (free text, no browser constraint validation),
+  # this is the only enforcement either gets.
   defp apply_decimal_bounds(field, %Decimal{} = value) do
     cond do
       below?(value, field["min"]) ->

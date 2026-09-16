@@ -115,8 +115,8 @@ defmodule PhoenixKitEntities.DecimalFieldTest do
       assert {:ok, nil} = FormBuilder.cast_field(field(), "")
     end
 
-    # `min`/`max` are stored-but-ignored on `number`. On decimal they are
-    # enforced, because the first consumer is money.
+    # `number` enforces the same bound (see `FormBuilderValidationTest`)
+    # since it moved to the same free-text control.
     test "enforces min and max" do
       bounded = field(%{"min" => 0, "max" => "100.00"})
 

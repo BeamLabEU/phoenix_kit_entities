@@ -107,6 +107,25 @@ defmodule PhoenixKitEntities.FormBuilderValidationTest do
       entity = entity([%{"type" => "number", "key" => "qty", "label" => "Qty"}])
       assert {:ok, _} = FormBuilder.validate_data(entity, %{"qty" => ""})
     end
+
+    # `number` used to rely on the browser's native `<input min max>` for
+    # this; it now renders free text through `<.decimal_input>`, so the
+    # server must enforce the bound itself or nothing does.
+    test "enforces min and max" do
+      entity =
+        entity([%{"type" => "number", "key" => "qty", "label" => "Qty", "min" => 0, "max" => 10}])
+
+      assert {:error, errors} = FormBuilder.validate_data(entity, %{"qty" => "-1"})
+      assert Map.has_key?(errors, "qty")
+
+      assert {:error, errors} = FormBuilder.validate_data(entity, %{"qty" => "10.01"})
+      assert Map.has_key?(errors, "qty")
+
+      assert {:ok, %{"qty" => min}} = FormBuilder.validate_data(entity, %{"qty" => "0"})
+      assert min == 0.0
+      assert {:ok, %{"qty" => max}} = FormBuilder.validate_data(entity, %{"qty" => "10"})
+      assert max == 10.0
+    end
   end
 
   describe "validate_data/2 with boolean fields" do
