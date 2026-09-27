@@ -27,6 +27,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
   alias PhoenixKitEntities.FormBuilder
   alias PhoenixKitEntities.Presence
   alias PhoenixKitEntities.PresenceHelpers
+  alias PhoenixKitEntities.Relations
   alias PhoenixKitWeb.Actor
   alias PhoenixKitWeb.Components.TreePicker
 
@@ -49,7 +50,8 @@ defmodule PhoenixKitEntities.Web.DataForm do
        media_pick_target: nil,
        media_filter: :image,
        media_pick_generation: 0,
-       scope_folder_uuid: nil
+       scope_folder_uuid: nil,
+       relation_ctx: %{}
      )}
   end
 
@@ -222,6 +224,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
       # An edit opens on the language being viewed; a new record starts on
       # the main language, which holds its required fields.
       |> mount_multilang(open_on: if(data_record.uuid, do: :viewing_language, else: :primary))
+      |> assign_relation_ctx()
 
     hydrate_data_presence(socket, entity, data_record, form_record_key, current_user)
   end
@@ -445,6 +448,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
         |> assign(:data_record, data_record)
         |> assign(:changeset, changeset)
         |> sync_parent_pick(data_record)
+        |> ensure_relation_labels()
         |> put_flash(:info, gettext("Changes reset to last saved state"))
         |> broadcast_data_form_state(extract_changeset_params(changeset))
 
@@ -511,6 +515,67 @@ defmodule PhoenixKitEntities.Web.DataForm do
     {:noreply, assign(socket, show_media_selector: false, media_pick_target: nil)}
   end
 
+  # ── Relation fields ─────────────────────────────────────────────
+  # A big target is picked through core's SearchPicker: it searches and
+  # picks by event, and a pick lands in the changeset's data, which the
+  # field's hidden inputs then carry through every validate and the save
+  # (the same route as a media pick). Small targets are plain checkboxes
+  # or a select and need none of this.
+
+  def handle_event("relation_search", %{"id" => id} = params, socket) do
+    case relation_field_for_picker(socket, id) do
+      nil ->
+        {:noreply, socket}
+
+      field ->
+        query = to_string(params["q"] || "")
+        limit = picker_limit(params["limit"])
+        opts = [lang: socket.assigns[:current_locale]]
+        {rows, more?} = Relations.search(field, query, limit, current_links(socket, field), opts)
+
+        {:noreply,
+         push_event(socket, "relation_results", %{
+           id: id,
+           q: query,
+           results: rows,
+           has_more: more?
+         })}
+    end
+  end
+
+  def handle_event("relation_pick", %{"id" => id, "uuid" => uuid}, socket) do
+    field = relation_field_for_picker(socket, id)
+
+    socket =
+      if field && socket.assigns[:lock_owner?] && Relations.uuids(uuid) != [] do
+        value =
+          if Relations.multiple?(field),
+            do: Enum.uniq(current_links(socket, field) ++ [uuid]),
+            else: uuid
+
+        put_relation_value(socket, field, value)
+      else
+        socket
+      end
+
+    {:noreply, push_event(socket, "relation_staged", %{id: id})}
+  end
+
+  def handle_event("relation_remove", %{"key" => key, "uuid" => uuid}, socket) do
+    field = Enum.find(Relations.relation_fields(socket.assigns.entity), &(&1["key"] == key))
+
+    if field && socket.assigns[:lock_owner?] do
+      value =
+        if Relations.multiple?(field),
+          do: current_links(socket, field) -- [uuid],
+          else: nil
+
+      {:noreply, put_relation_value(socket, field, value)}
+    else
+      {:noreply, socket}
+    end
+  end
+
   # Pulls the resource uuid off socket assigns for use in error log
   # context. Returns `nil` when the assign is missing or the underlying
   # struct hasn't been hydrated yet (e.g. an exception during the very
@@ -541,6 +606,106 @@ defmodule PhoenixKitEntities.Web.DataForm do
 
     changeset = Ecto.Changeset.put_change(changeset, :data, data)
     assign(socket, :changeset, changeset)
+  end
+
+  # What each relation field needs to draw its picker (see
+  # `Relations.picker_contexts/3`). Loaded here in handle_params, and again
+  # when the blueprint changes; a record's links only ever need their titles
+  # topped up (`ensure_relation_labels/1`).
+  defp assign_relation_ctx(socket) do
+    data = Ecto.Changeset.get_field(socket.assigns.changeset, :data)
+
+    assign(
+      socket,
+      :relation_ctx,
+      Relations.picker_contexts(socket.assigns.entity, data,
+        lang: socket.assigns[:current_locale]
+      )
+    )
+  end
+
+  # Links that arrived from elsewhere (another session's edits, a reload)
+  # may name records the picker has no title for yet — one query for those.
+  defp ensure_relation_labels(socket) do
+    ctx = socket.assigns[:relation_ctx] || %{}
+    links = Relations.link_data(Ecto.Changeset.get_field(socket.assigns.changeset, :data))
+
+    missing =
+      ctx
+      |> Enum.flat_map(fn {key, field_ctx} ->
+        Relations.uuids(links[key]) -- Map.keys(field_ctx.labels)
+      end)
+      |> Enum.uniq()
+
+    if missing == [] do
+      socket
+    else
+      add_relation_labels(
+        socket,
+        Relations.labels_for(missing, lang: socket.assigns[:current_locale])
+      )
+    end
+  end
+
+  defp add_relation_labels(socket, labels) do
+    update(socket, :relation_ctx, fn ctx ->
+      Map.new(ctx, fn {key, field_ctx} ->
+        {key, %{field_ctx | labels: Map.merge(field_ctx.labels, labels)}}
+      end)
+    end)
+  end
+
+  defp relation_field_for_picker(socket, id) do
+    Enum.find(
+      Relations.relation_fields(socket.assigns.entity),
+      &(FormBuilder.relation_picker_id(nil, &1["key"]) == id)
+    )
+  end
+
+  defp current_links(socket, field) do
+    socket.assigns.changeset
+    |> Ecto.Changeset.get_field(:data)
+    |> Relations.link_data()
+    |> Map.get(field["key"])
+    |> Relations.uuids()
+  end
+
+  defp picker_limit(limit) when is_integer(limit), do: limit
+
+  defp picker_limit(limit) when is_binary(limit) do
+    case Integer.parse(limit) do
+      {n, _} -> n
+      :error -> 8
+    end
+  end
+
+  defp picker_limit(_), do: 8
+
+  # A link lives in the primary language's data whichever tab is open.
+  defp put_relation_value(socket, field, value) do
+    changeset = socket.assigns.changeset
+    data = Relations.put_link(Ecto.Changeset.get_field(changeset, :data), field["key"], value)
+    changeset = Ecto.Changeset.put_change(changeset, :data, data)
+
+    socket = socket |> assign(:changeset, changeset) |> ensure_relation_labels()
+    broadcast_data_form_state(socket, extract_changeset_params(changeset))
+  end
+
+  # `EntityData.changeset/2` is the final gate on `data` (a relation link
+  # to a record trashed meanwhile, say). Its errors sit on `:data`, which no
+  # input renders — without a flash the save just silently didn't happen.
+  defp flash_data_errors(socket, changeset) do
+    case for({:data, error} <- changeset.errors, do: translate_validator_error(error)) do
+      [] ->
+        socket
+
+      messages ->
+        put_flash(
+          socket,
+          :error,
+          gettext("Field validation errors: %{errors}", errors: Enum.join(messages, "; "))
+        )
+    end
   end
 
   # The parent picker is core's TreePicker, not an <.input>, so a changeset
@@ -815,7 +980,10 @@ defmodule PhoenixKitEntities.Web.DataForm do
 
           {:error, %Ecto.Changeset{} = changeset} ->
             {:noreply,
-             socket |> assign(:changeset, changeset) |> broadcast_data_form_state(params)}
+             socket
+             |> assign(:changeset, changeset)
+             |> flash_data_errors(changeset)
+             |> broadcast_data_form_state(params)}
 
           # The managed-blueprint write guard refuses a slug change with an
           # atom, not a changeset (`Managed.validate_data_mutation/4`) —
@@ -896,6 +1064,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
       |> assign(:data_record, saved_record)
       |> refresh_page_crumbs()
       |> assign(:changeset, changeset)
+      |> ensure_relation_labels()
       |> put_flash(:info, gettext("Data record saved successfully"))
       |> broadcast_data_form_state(params)
     else
@@ -1007,6 +1176,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
           |> assign(:form_record_topic_key, normalize_record_key(data_record.uuid))
           |> assign(:changeset, changeset)
           |> sync_parent_pick(data_record)
+          |> ensure_relation_labels()
           |> put_flash(
             :info,
             gettext("Record updated in another session. Showing latest changes.")
@@ -1487,6 +1657,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
     |> assign(:data_record, updated_record)
     |> assign(:changeset, validated_changeset)
     |> sync_parent_pick(updated_record)
+    |> ensure_relation_labels()
     |> assign(:has_unsaved_changes, true)
   end
 
@@ -1510,6 +1681,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
     |> refresh_page_crumbs()
     |> assign(:changeset, changeset)
     |> refresh_multilang()
+    |> assign_relation_ctx()
   end
 
   defp extract_changeset_params(changeset) do
@@ -1837,6 +2009,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
                       wrapper_class: "mb-6",
                       disabled: @readonly?,
                       media_picker: not @readonly?,
+                      relations: @relation_ctx,
                       lang_code: if(@multilang_enabled, do: @current_lang, else: nil)
                     )}
                   </div>
@@ -2085,6 +2258,7 @@ defmodule PhoenixKitEntities.Web.DataForm do
                   {PhoenixKitEntities.FormBuilder.build_fields(@entity, primary_language_view(f),
                     wrapper_class: "mb-6",
                     disabled: @readonly?,
+                    relations: @relation_ctx,
                     lang_code: nil
                   )}
                 </div>

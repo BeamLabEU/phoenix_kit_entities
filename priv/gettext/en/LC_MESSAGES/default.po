@@ -2771,3 +2771,155 @@ msgstr "parent record is in the trash"
 #, elixir-autogen, elixir-format
 msgid "New entity"
 msgstr "New entity"
+
+#: lib/phoenix_kit_entities/relations.ex
+#, elixir-autogen, elixir-format
+msgid "must link to records by their id"
+msgstr "must link to records by their id"
+
+#: lib/phoenix_kit_entities/relations.ex
+#, elixir-autogen, elixir-format
+msgid "can link to one record only"
+msgstr "can link to one record only"
+
+#: lib/phoenix_kit_entities/relations.ex
+#, elixir-autogen, elixir-format
+msgid "links to an entity that no longer exists"
+msgstr "links to an entity that no longer exists"
+
+#: lib/phoenix_kit_entities/relations.ex
+#, elixir-autogen, elixir-format
+msgid "can only link to %{entity} records"
+msgstr "can only link to %{entity} records"
+
+#: lib/phoenix_kit_entities/relations.ex
+#, elixir-autogen, elixir-format
+msgid "cannot link to a record in the trash"
+msgstr "cannot link to a record in the trash"
+
+#: lib/phoenix_kit_entities/relations.ex
+#, elixir-autogen, elixir-format
+msgid "In trash"
+msgstr "In trash"
+
+#: lib/phoenix_kit_entities/entity_data.ex
+#, elixir-autogen, elixir-format
+msgid "field '%{label}' %{message}"
+msgstr "field '%{label}' %{message}"
+
+#: lib/phoenix_kit_entities/field_types.ex
+#, elixir-autogen, elixir-format
+msgid "Links to records of another entity"
+msgstr "Links to records of another entity"
+
+#: lib/phoenix_kit_entities/field_types.ex
+#, elixir-autogen, elixir-format
+msgid "Relation"
+msgstr "Relation"
+
+#: lib/phoenix_kit_entities/errors.ex
+#, elixir-autogen, elixir-format
+msgid "Relation fields are turned off in the Entities settings."
+msgstr "Relation fields are turned off in the Entities settings."
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "Links are the same in every language — change them in the primary language."
+msgstr "Links are the same in every language — change them in the primary language."
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "The entity this field links to no longer exists."
+msgstr "The entity this field links to no longer exists."
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "No %{entity} records yet."
+msgstr "No %{entity} records yet."
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "— None —"
+msgstr "— None —"
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "Remove"
+msgstr "Remove"
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "Search %{entity}…"
+msgstr "Search %{entity}…"
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "Searching…"
+msgstr "Searching…"
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "Adding…"
+msgstr "Adding…"
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "Load more"
+msgstr "Load more"
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "Loading…"
+msgstr "Loading…"
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "No matches"
+msgstr "No matches"
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "Unknown record"
+msgstr "Unknown record"
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "missing entity"
+msgstr "missing entity"
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Links to many %{entity}"
+msgstr "Links to many %{entity}"
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Links to one of %{entity}"
+msgstr "Links to one of %{entity}"
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Links to"
+msgstr "Links to"
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Choose an entity…"
+msgstr "Choose an entity…"
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Each record picks from the chosen entity's records."
+msgstr "Each record picks from the chosen entity's records."
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Allow linking to several records"
+msgstr "Allow linking to several records"
+
+#: lib/phoenix_kit_entities/web/data_navigator.ex
+#, elixir-autogen, elixir-format
+msgid "Permanently delete this record? %{count} record links to it; that link will be removed. This cannot be undone."
+msgid_plural "Permanently delete this record? %{count} records link to it; those links will be removed. This cannot be undone."
+msgstr[0] "Permanently delete this record? %{count} record links to it; that link will be removed. This cannot be undone."
+msgstr[1] "Permanently delete this record? %{count} records link to it; those links will be removed. This cannot be undone."

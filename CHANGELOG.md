@@ -1,3 +1,57 @@
+## 0.5.0 - 2026-09-27
+
+### Added
+
+- **The `relation` field type works.** A record can link to one record of
+  another entity, or to several with `"allow_multiple" => true` (a panel size
+  to the grades and thicknesses it is sold in, say). The field names its
+  target in `target_entity`: the entity's uuid, or its name. The value is the
+  linked record's uuid, or a list of uuids, stored in the primary language's
+  data only. `FieldTypes.relation_field/4` builds one.
+- **Admin picker.** A target with up to 50 live records shows checkboxes, or a
+  select for a single link. A bigger target shows a search box (core's
+  `SearchPicker`) with the linked records as removable chips. The entity
+  editor picks the target entity and the "allow multiple" option. Record
+  lists, readonly views and `LiveDataForm` show titles, not uuids.
+- **Write-path checks.** `EntityData.create/2` and `update/3` (so seeds too)
+  refuse a link that is not a live record of the target, and a second link in
+  a single field. Only links a write adds are checked, so trashing a target
+  never blocks saving the records that point at it.
+- **`EntityData.resolve_relations/3`** returns the linked records for a list of
+  records, `%{record_uuid => [linked]}`, in the target's order. It runs one
+  query per target entity, not one per record. Missing and trashed targets
+  are skipped, and `statuses:` narrows further.
+- **Deleting a target permanently removes the link** from every record that
+  holds it, in the same transaction, for single and bulk deletes. The removal
+  edits only the link, in the row's current data, so a concurrent edit to
+  the same record survives. A save from a copy loaded before the delete does
+  not bring the link back. Trashing keeps the link, so a restore brings it
+  back. "Delete forever" on a trashed record says how many records link to
+  it; `EntityData.count_relation_references/1` gives the same count.
+- **Mirror export/import carries relations between installs.** A relation
+  field exports its target as the entity's name, and each link as the linked
+  record's slug. Import turns both back into local uuids.
+
+### Changed
+
+- **A mirror import is one transaction per run** (`import_entity/2`,
+  `import_from_data/2`, `import_all/1`, `import_selected/1`). All definitions
+  are imported first, and every record's uuid is decided before anything is
+  written, so links resolve whatever order the files and records come in,
+  cycles included. A record that fails is not written, and neither is any
+  record linking to it. The result map gains `:unresolved_links`, listing
+  refs that matched nothing. Broadcasts and mirror re-exports now happen once
+  the run commits, not per record.
+- `EntityData.update/3` now always runs in a transaction.
+- **`entities_allow_relations` is enforced.** With it off, no new relation
+  field can be added. Relation fields an entity already has keep working. The
+  setting still has no settings-page toggle.
+- Public forms never accept a relation value, even if an old
+  `public_form_fields` list names the field.
+- When the final data check refuses a save in the admin record form (for
+  example, a linked record was trashed in another tab), the form now shows a
+  flash. Before, nothing happened.
+
 ## 0.4.17 - 2026-09-26
 
 ### Changed

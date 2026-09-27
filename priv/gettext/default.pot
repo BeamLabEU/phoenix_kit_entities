@@ -2771,3 +2771,155 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "New entity"
 msgstr ""
+
+#: lib/phoenix_kit_entities/relations.ex
+#, elixir-autogen, elixir-format
+msgid "must link to records by their id"
+msgstr ""
+
+#: lib/phoenix_kit_entities/relations.ex
+#, elixir-autogen, elixir-format
+msgid "can link to one record only"
+msgstr ""
+
+#: lib/phoenix_kit_entities/relations.ex
+#, elixir-autogen, elixir-format
+msgid "links to an entity that no longer exists"
+msgstr ""
+
+#: lib/phoenix_kit_entities/relations.ex
+#, elixir-autogen, elixir-format
+msgid "can only link to %{entity} records"
+msgstr ""
+
+#: lib/phoenix_kit_entities/relations.ex
+#, elixir-autogen, elixir-format
+msgid "cannot link to a record in the trash"
+msgstr ""
+
+#: lib/phoenix_kit_entities/relations.ex
+#, elixir-autogen, elixir-format
+msgid "In trash"
+msgstr ""
+
+#: lib/phoenix_kit_entities/entity_data.ex
+#, elixir-autogen, elixir-format
+msgid "field '%{label}' %{message}"
+msgstr ""
+
+#: lib/phoenix_kit_entities/field_types.ex
+#, elixir-autogen, elixir-format
+msgid "Links to records of another entity"
+msgstr ""
+
+#: lib/phoenix_kit_entities/field_types.ex
+#, elixir-autogen, elixir-format
+msgid "Relation"
+msgstr ""
+
+#: lib/phoenix_kit_entities/errors.ex
+#, elixir-autogen, elixir-format
+msgid "Relation fields are turned off in the Entities settings."
+msgstr ""
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "Links are the same in every language — change them in the primary language."
+msgstr ""
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "The entity this field links to no longer exists."
+msgstr ""
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "No %{entity} records yet."
+msgstr ""
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "— None —"
+msgstr ""
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "Remove"
+msgstr ""
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "Search %{entity}…"
+msgstr ""
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "Searching…"
+msgstr ""
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "Adding…"
+msgstr ""
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "Load more"
+msgstr ""
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "Loading…"
+msgstr ""
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "No matches"
+msgstr ""
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "Unknown record"
+msgstr ""
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "missing entity"
+msgstr ""
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Links to many %{entity}"
+msgstr ""
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Links to one of %{entity}"
+msgstr ""
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Links to"
+msgstr ""
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Choose an entity…"
+msgstr ""
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Each record picks from the chosen entity's records."
+msgstr ""
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Allow linking to several records"
+msgstr ""
+
+#: lib/phoenix_kit_entities/web/data_navigator.ex
+#, elixir-autogen, elixir-format
+msgid "Permanently delete this record? %{count} record links to it; that link will be removed. This cannot be undone."
+msgid_plural "Permanently delete this record? %{count} records link to it; those links will be removed. This cannot be undone."
+msgstr[0] ""
+msgstr[1] ""

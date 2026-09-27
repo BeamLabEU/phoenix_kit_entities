@@ -20,6 +20,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.EntityData
   alias PhoenixKitEntities.Events
+  alias PhoenixKitEntities.Relations
   alias PhoenixKitWeb.Actor
 
   @impl true
@@ -61,6 +62,8 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
       |> assign(:search_term, "")
       |> assign(:view_mode, "table")
       |> assign(:entity_data_records, [])
+      |> assign(:relation_labels, %{})
+      |> assign(:relation_ref_counts, %{})
       |> assign(:record_depths, %{})
 
     {:ok, socket}
@@ -808,6 +811,34 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
     socket
     |> assign(:entity_data_records, records)
     |> assign(:record_depths, depths)
+    |> assign_relation_info(records)
+  end
+
+  # Relation fields show titles, not uuids (one query for all the rows),
+  # and a trashed row that other records link to says so before "Delete
+  # forever" — that delete removes the links.
+  defp assign_relation_info(socket, records) do
+    trashed = Enum.filter(records, &(&1.status == "trashed"))
+
+    socket
+    |> assign(:relation_labels, Relations.labels(records, lang: socket.assigns[:current_locale]))
+    |> assign(:relation_ref_counts, Relations.count_referencing_many(trashed))
+  end
+
+  defp permanent_delete_confirm(ref_counts, uuid) do
+    case Map.get(ref_counts, uuid, 0) do
+      0 ->
+        gettext(
+          "Permanently delete this record? This cannot be undone, and will fail if it's still referenced by other tables."
+        )
+
+      count ->
+        ngettext(
+          "Permanently delete this record? %{count} record links to it; that link will be removed. This cannot be undone.",
+          "Permanently delete this record? %{count} records link to it; those links will be removed. This cannot be undone.",
+          count
+        )
+    end
   end
 
   # Tree-order rows only when the view is showing a coherent slice of
@@ -941,11 +972,40 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
     display_data
     |> Enum.take(3)
     |> Enum.map_join(" • ", fn {key, value} ->
-      "#{key}: #{truncate_text(to_string(value), 30)}"
+      "#{key}: #{truncate_text(preview_text(value), 30)}"
     end)
   end
 
   def format_data_preview(_), do: ""
+
+  @doc """
+  `format_data_preview/1` for a record, with its relation fields' uuids
+  replaced by the linked records' titles (`labels` from
+  `Relations.labels/2`).
+  """
+  def format_data_preview(%EntityData{data: data} = record, labels) when is_map(data) do
+    relation_keys =
+      case record.entity do
+        %Entities{} = entity -> entity |> Relations.relation_fields() |> Enum.map(& &1["key"])
+        _ -> []
+      end
+
+    data
+    |> Relations.link_data()
+    |> Map.new(fn {key, value} ->
+      if key in relation_keys,
+        do: {key, value |> Relations.uuids() |> Enum.flat_map(&List.wrap(labels[&1][:title]))},
+        else: {key, value}
+    end)
+    |> format_data_preview()
+  end
+
+  def format_data_preview(_record, _labels), do: ""
+
+  defp preview_text(values) when is_list(values), do: Enum.map_join(values, ", ", &preview_text/1)
+  defp preview_text(value) when is_binary(value), do: value
+  defp preview_text(value) when is_number(value) or is_atom(value), do: to_string(value)
+  defp preview_text(value), do: inspect(value)
 
   # Nothing to filter on a brand-new entity: no records, no trash, no
   # query, default status. The page is then just its title, Add, and the
@@ -1509,11 +1569,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
                               phx-click="permanent_delete"
                               phx-value-uuid={data_record.uuid}
                               phx-disable-with={gettext("…")}
-                              data-confirm={
-                                gettext(
-                                  "Permanently delete this record? This cannot be undone, and will fail if it's still referenced by other tables."
-                                )
-                              }
+                              data-confirm={permanent_delete_confirm(@relation_ref_counts, data_record.uuid)}
                               icon="hero-x-circle"
                               label={gettext("Delete forever")}
                             />
@@ -1617,7 +1673,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
                           <%!-- Data Preview --%>
                           <%= if data_record.data && map_size(data_record.data) > 0 do %>
                             <p class="text-sm text-base-content/70 mb-3">
-                              {format_data_preview(data_record.data)}
+                              {format_data_preview(data_record, @relation_labels)}
                             </p>
                           <% end %>
                         </.link>
@@ -1708,11 +1764,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
                             phx-click="permanent_delete"
                             phx-value-uuid={data_record.uuid}
                             phx-disable-with={gettext("…")}
-                            data-confirm={
-                              gettext(
-                                "Permanently delete this record? This cannot be undone, and will fail if it's still referenced by other tables."
-                              )
-                            }
+                            data-confirm={permanent_delete_confirm(@relation_ref_counts, data_record.uuid)}
                             icon="hero-x-circle"
                             label={gettext("Delete forever")}
                           />

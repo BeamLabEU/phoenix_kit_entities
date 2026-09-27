@@ -2771,3 +2771,155 @@ msgstr "vanemkirje on prügikastis"
 #, elixir-autogen, elixir-format
 msgid "New entity"
 msgstr "Uus üksus"
+
+#: lib/phoenix_kit_entities/relations.ex
+#, elixir-autogen, elixir-format
+msgid "must link to records by their id"
+msgstr "peab viitama kirjetele nende ID järgi"
+
+#: lib/phoenix_kit_entities/relations.ex
+#, elixir-autogen, elixir-format
+msgid "can link to one record only"
+msgstr "saab viidata ainult ühele kirjele"
+
+#: lib/phoenix_kit_entities/relations.ex
+#, elixir-autogen, elixir-format
+msgid "links to an entity that no longer exists"
+msgstr "viitab üksusele, mida enam ei ole"
+
+#: lib/phoenix_kit_entities/relations.ex
+#, elixir-autogen, elixir-format
+msgid "can only link to %{entity} records"
+msgstr "saab viidata ainult üksuse %{entity} kirjetele"
+
+#: lib/phoenix_kit_entities/relations.ex
+#, elixir-autogen, elixir-format
+msgid "cannot link to a record in the trash"
+msgstr "ei saa viidata prügikastis olevale kirjele"
+
+#: lib/phoenix_kit_entities/relations.ex
+#, elixir-autogen, elixir-format
+msgid "In trash"
+msgstr "Prügikastis"
+
+#: lib/phoenix_kit_entities/entity_data.ex
+#, elixir-autogen, elixir-format
+msgid "field '%{label}' %{message}"
+msgstr "väli '%{label}' %{message}"
+
+#: lib/phoenix_kit_entities/field_types.ex
+#, elixir-autogen, elixir-format
+msgid "Links to records of another entity"
+msgstr "Viitab teise üksuse kirjetele"
+
+#: lib/phoenix_kit_entities/field_types.ex
+#, elixir-autogen, elixir-format
+msgid "Relation"
+msgstr "Seos"
+
+#: lib/phoenix_kit_entities/errors.ex
+#, elixir-autogen, elixir-format
+msgid "Relation fields are turned off in the Entities settings."
+msgstr "Seoseväljad on üksuste seadetes välja lülitatud."
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "Links are the same in every language — change them in the primary language."
+msgstr "Seosed on kõigis keeltes samad — muuda neid põhikeeles."
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "The entity this field links to no longer exists."
+msgstr "Üksust, millele see väli viitab, enam ei ole."
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "No %{entity} records yet."
+msgstr "Üksusel %{entity} pole veel kirjeid."
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "— None —"
+msgstr "— Puudub —"
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "Remove"
+msgstr "Eemalda"
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "Search %{entity}…"
+msgstr "Otsi: %{entity}…"
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "Searching…"
+msgstr "Otsin…"
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "Adding…"
+msgstr "Lisan…"
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "Load more"
+msgstr "Laadi veel"
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "Loading…"
+msgstr "Laadin…"
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "No matches"
+msgstr "Vasteid pole"
+
+#: lib/phoenix_kit_entities/form_builder.ex
+#, elixir-autogen, elixir-format
+msgid "Unknown record"
+msgstr "Tundmatu kirje"
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "missing entity"
+msgstr "puuduv üksus"
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Links to many %{entity}"
+msgstr "Viitab mitmele: %{entity}"
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Links to one of %{entity}"
+msgstr "Viitab ühele: %{entity}"
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Links to"
+msgstr "Viitab üksusele"
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Choose an entity…"
+msgstr "Vali üksus…"
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Each record picks from the chosen entity's records."
+msgstr "Iga kirje valib valitud üksuse kirjete seast."
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Allow linking to several records"
+msgstr "Luba viidata mitmele kirjele"
+
+#: lib/phoenix_kit_entities/web/data_navigator.ex
+#, elixir-autogen, elixir-format
+msgid "Permanently delete this record? %{count} record links to it; that link will be removed. This cannot be undone."
+msgid_plural "Permanently delete this record? %{count} records link to it; those links will be removed. This cannot be undone."
+msgstr[0] "Kas kustutada see kirje jäädavalt? Sellele viitab %{count} kirje; see viide eemaldatakse. Seda ei saa tagasi võtta."
+msgstr[1] "Kas kustutada see kirje jäädavalt? Sellele viitab %{count} kirjet; need viited eemaldatakse. Seda ei saa tagasi võtta."

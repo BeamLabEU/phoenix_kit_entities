@@ -260,6 +260,29 @@ Repo-local aliases:
   type}`, `{:user_entity_limit_reached, max}`) so callers pattern-match
   locale-agnostically; LV call sites pipe the reason through
   `Errors.message/1` for the user-facing string.
+- **Relation fields** (`Relations`) store a record uuid, or a list with
+  `allow_multiple`, in the PRIMARY language's data only; `target_entity` is
+  the target's uuid (a name also resolves, and is what the mirror exports).
+  `EntityData.changeset/2` refuses only ADDED links that are not live
+  records of the target — held links are never re-checked, so a trashed or
+  vanished target never blocks saving the record that points at it.
+  "Held" means held by the CURRENT row, read `FOR UPDATE`; a stale copy's
+  links to records deleted since are silently dropped, never re-added.
+  **Lock order is target rows, then source rows**, on both sides: a save
+  locks its linked records `FOR SHARE` and then its own row, and a hard
+  delete locks the doomed rows, prunes the sources, then deletes. Keep that
+  order in any new write path, or saves and deletes can deadlock. Pruning is
+  an atomic `jsonb_set` on the current value, never a whole-map rewrite.
+  Reads skip missing/trashed targets. `FormBuilder` stays DB-free: callers
+  load `Relations.picker_contexts/3` and pass it as `opts[:relations]`.
+  Public forms never take a relation value.
+- **A mirror import is one transaction per run.** Records are validated
+  BEFORE any is written: in production, a failed write inside that
+  transaction aborts the whole run (Ecto nested-transaction semantics). The
+  test sandbox turns nested transactions into savepoints and hides this, so
+  a test passing is no proof. The internal `EntityData` options
+  (`relation_check: :defer`, `defer_notify: true`, `uuid:`) exist for the
+  importer only.
 - **Rich-text field values are sanitized on the write path** through
   `PhoenixKit.Utils.HtmlSanitizer.sanitize_rich_text_fields/2` (per language
   too) — never store raw user HTML in the `data` JSONB.
@@ -316,6 +339,7 @@ lib/phoenix_kit_entities/
 ├── managed.ex                                   # Managed-blueprint guards + delete-guard registry
 ├── migrations.ex                                # Module-owned migration chain
 ├── presence.ex / presence_helpers.ex            # FIFO collaborative editing locks
+├── relations.ex                                 # relation field: checks, resolve, picker data, delete pruning, mirror refs
 ├── routes.ex                                    # Admin + public route declarations
 ├── sitemap_source.ex                            # PhoenixKit Sitemap source
 ├── url_resolver.ex                              # Shared URL-pattern resolution
@@ -385,7 +409,7 @@ All defined in `Events`, broadcast via `PhoenixKit.PubSub.Manager`.
 |---|---|---|
 | `entities_enabled` | boolean | Global on/off for the module |
 | `entities_max_per_user` | integer | Entities one user may create (default 100) |
-| `entities_allow_relations` | boolean | Relation field types enabled (default true) |
+| `entities_allow_relations` | boolean | Whether NEW relation fields may be added (default true); existing ones keep working. No settings UI |
 | `entities_file_upload` | boolean | File/image field uploads enabled (default false) |
 | `entities_mirror_path` | string | Base directory for filesystem mirroring (default `priv/entities` under the host) |
 | `sitemap_entities_pattern` | string | Global URL pattern when no per-entity one is set, e.g. `/:entity_name/:slug` |
@@ -538,6 +562,7 @@ publish has succeeded.
 - Commit messages start with an action verb (`Add`, `Update`, `Fix`, `Remove`, `Merge`). No AI attribution and no `Co-Authored-By` trailers.
 - Version bumps and CHANGELOG entries land with the release commit on upstream, not in feature PRs.
 - Review files live in `dev_docs/pull_requests/{year}/{pr_number}-{slug}/{AGENT}_REVIEW.md`, one file per reviewing agent, never edited by another agent; `FOLLOW_UP.md` records how each finding was resolved. Severities: `BUG - CRITICAL/HIGH/MEDIUM`, `IMPROVEMENT - HIGH/MEDIUM`, `NITPICK`.
+- Any other dated doc in `dev_docs/` (handoffs, reports, plans, sweeps) is named `YYYY-MM-DD-kebab-slug.md`, date FIRST, so a plain listing sorts chronologically (e.g. `dev_docs/2026-09-27-relations-handoff.md`).
 
 ## TODOs
 
