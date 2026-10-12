@@ -244,7 +244,6 @@ defmodule PhoenixKitEntities.Web.EntityFormLiveTest do
       render_hook(view, "select_icon", %{"icon" => "hero-user"})
       render_hook(view, "clear_icon", %{})
       render_hook(view, "close_icon_picker", %{})
-      render_hook(view, "stop_propagation", %{})
       assert render(view) =~ "Update Entity"
     end
   end

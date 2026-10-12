@@ -370,11 +370,6 @@ defmodule PhoenixKitEntities.Web.EntityForm do
     reply_with_broadcast(socket)
   end
 
-  def handle_event("stop_propagation", _params, socket) do
-    # This event does nothing - it just prevents the click from propagating to the backdrop
-    {:noreply, socket}
-  end
-
   def handle_event("generate_entity_slug", _params, socket) do
     if socket.assigns[:lock_owner?] do
       changeset = socket.assigns.changeset
@@ -3061,8 +3056,12 @@ defmodule PhoenixKitEntities.Web.EntityForm do
 
         <%!-- Field Form Modal --%>
         <%= if @show_field_form do %>
-          <div class="modal modal-open" phx-click="cancel_field">
-            <div class="modal-box w-11/12 max-w-2xl" phx-click="stop_propagation">
+          <%!-- The backdrop is a SIBLING of the box, not its parent. A click
+               goes to the nearest common ancestor of the press and the release,
+               so a handler on the wrapper also fires for a text selection that
+               starts in a field and is let go outside the box. --%>
+          <div class="modal modal-open">
+            <div class="modal-box w-11/12 max-w-2xl">
               <h3 class="font-bold text-lg mb-4">
                 {if @editing_field_index, do: gettext("Edit Field"), else: gettext("Add New Field")}
               </h3>
@@ -3360,19 +3359,16 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                 </div>
               </.form>
             </div>
+            <div class="modal-backdrop" phx-click="cancel_field"></div>
           </div>
         <% end %>
 
         <%!-- Icon Picker Modal --%>
         <%= if @show_icon_picker do %>
-          <div
-            class="fixed inset-0 bg-base-content/50 z-50 flex items-center justify-center p-4"
-            phx-click="close_icon_picker"
-          >
-            <div
-              class="bg-base-100 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col"
-              phx-click="stop_propagation"
-            >
+          <div class="fixed inset-0 bg-base-content/50 z-50 flex items-center justify-center p-4">
+            <%!-- Sibling backdrop, for the same reason as the field modal. --%>
+            <div class="absolute inset-0" phx-click="close_icon_picker" aria-hidden="true"></div>
+            <div class="relative bg-base-100 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
               <%!-- Modal Header --%>
               <div class="flex items-center justify-between p-6 border-b border-base-300">
                 <h2 class="text-2xl font-bold flex items-center gap-2">
