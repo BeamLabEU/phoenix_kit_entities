@@ -1495,7 +1495,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
                       <.link
                         navigate={
                           PhoenixKit.Utils.Routes.path(
-                            "/admin/entities/#{get_entity_slug(@entities, data_record.entity_uuid)}/data/#{data_record.uuid}"
+                            "/admin/entities/#{get_entity_slug(@entities, data_record.entity_uuid)}/data/#{data_record.uuid}/edit"
                           )
                         }
                         class="block hover:text-primary transition-colors cursor-pointer"
@@ -1649,7 +1649,7 @@ defmodule PhoenixKitEntities.Web.DataNavigator do
                         <.link
                           navigate={
                             PhoenixKit.Utils.Routes.path(
-                              "/admin/entities/#{get_entity_slug(@entities, data_record.entity_uuid)}/data/#{data_record.uuid}"
+                              "/admin/entities/#{get_entity_slug(@entities, data_record.entity_uuid)}/data/#{data_record.uuid}/edit"
                             )
                           }
                           class="flex-1 hover:text-primary transition-colors cursor-pointer"

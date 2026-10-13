@@ -219,6 +219,13 @@ Repo-local aliases:
   in `:persistent_term` goes stale on code reload and every delete then fails
   with `{:error, :delete_guard_error}`. `reorder_entities/2` is deliberately
   outside the interception (`position` is in no owner contract).
+- **A record has a read-only page** at `/admin/entities/:slug/data/:uuid`
+  (`Web.DataShow`, no form, no editing lock); the editor stays at `…/edit`.
+  Core derives a view's permission from its namespace
+  (`PhoenixKitEntities.Web.*` → `"entities"`), so the gate is the same as
+  `Web.DataForm`'s. Hosts link to the editor with
+  `PhoenixKitEntities.admin_edit_path/2` and
+  `assign_admin_edit(…, permission: "entities")`.
 - **Entity names** are snake_case, start with a letter, 2–50 chars:
   `^[a-z][a-z0-9_]*$`. **Field definitions** require string keys:
   `%{"type" => "text", "key" => "name", "label" => "Name"}`.
@@ -381,6 +388,7 @@ lib/phoenix_kit_entities/
     ├── entity_form.ex                           # Entity create/edit
     ├── data_navigator.ex                        # Data record browser (filters, bulk actions, trash view)
     ├── data_form.ex                             # Data record create/edit
+    ├── data_show.ex                             # Data record read-only view (Edit / Back)
     ├── entities_settings.ex                     # Module settings + import/export modal
     ├── project_data_live.ex                     # Read-only records tab for the projects hub
     └── hooks.ex                                 # on_mount: Events subscription + presence tracking

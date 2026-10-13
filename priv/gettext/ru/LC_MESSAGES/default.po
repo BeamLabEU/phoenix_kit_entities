@@ -3046,3 +3046,18 @@ msgstr "полю связи '%{key}' нужна целевая сущность 
 #, elixir-autogen, elixir-format
 msgid "relation fields are turned off (entities_allow_relations); cannot add '%{key}'"
 msgstr "поля связи отключены (entities_allow_relations); нельзя добавить '%{key}'"
+
+#: lib/phoenix_kit_entities/web/data_show.ex
+#, elixir-autogen, elixir-format
+msgid "Back"
+msgstr "Назад"
+
+#: lib/phoenix_kit_entities/web/data_show.ex
+#, elixir-autogen, elixir-format
+msgid "Record of the %{entity} entity"
+msgstr "Запись сущности «%{entity}»"
+
+#: lib/phoenix_kit_entities/web/data_show.ex
+#, elixir-autogen, elixir-format
+msgid "Video attached"
+msgstr "Видео прикреплено"

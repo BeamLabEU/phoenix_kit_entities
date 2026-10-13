@@ -912,6 +912,26 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
     end
   end
 
+  describe "record links" do
+    # The title opens the editor in one click, as before the read-only page
+    # existed; the row/card menu's "View" is the way to the read-only page.
+    for mode <- ["table", "grid"] do
+      test "#{mode} view: the title links to the editor, the View entry to the read-only page",
+           %{conn: conn} = ctx do
+        conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+        {:ok, view, _html} = live(conn, navigator_url(ctx.entity) <> "?view=#{unquote(mode)}")
+
+        for record <- ctx.records do
+          base = "/admin/entities/dn_test/data/#{record.uuid}"
+
+          assert has_element?(view, ~s|a[href$="#{base}/edit"]|, record.title)
+          assert has_element?(view, ~s|a[href$="#{base}"]|, "View")
+          refute has_element?(view, ~s|a[href$="#{base}"]|, record.title)
+        end
+      end
+    end
+  end
+
   defp navigator_url(entity, opts \\ []) do
     base = "/en/admin/entities/#{entity.name}/data"
 
