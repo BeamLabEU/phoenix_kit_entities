@@ -187,7 +187,9 @@ defmodule PhoenixKitEntities do
     |> validate_inclusion(:status, @valid_statuses)
     |> validate_format(:name, ~r/^[a-z][a-z0-9_]*$/,
       message:
-        "must start with a letter and contain only lowercase letters, numbers, and underscores"
+        gettext(
+          "must start with a letter and contain only lowercase letters, numbers, and underscores"
+        )
     )
     |> validate_name_uniqueness()
     |> validate_fields_definition()
@@ -208,7 +210,7 @@ defmodule PhoenixKitEntities do
       add_error(
         changeset,
         :created_by_uuid,
-        "created_by_uuid must be present"
+        gettext("created_by_uuid must be present")
       )
     else
       changeset
@@ -225,7 +227,7 @@ defmodule PhoenixKitEntities do
       case get_entity_by_name(name) do
         nil -> changeset
         existing when current_uuid != nil and existing.uuid == current_uuid -> changeset
-        _existing -> add_error(changeset, :name, "has already been taken")
+        _existing -> add_error(changeset, :name, gettext("has already been taken"))
       end
     end
   end
@@ -239,7 +241,11 @@ defmodule PhoenixKitEntities do
         validate_each_field_definition(changeset, fields)
 
       _invalid ->
-        add_error(changeset, :fields_definition, "must be a list of field definitions")
+        add_error(
+          changeset,
+          :fields_definition,
+          gettext("must be a list of field definitions")
+        )
     end
   end
 
@@ -259,13 +265,13 @@ defmodule PhoenixKitEntities do
       add_error(
         changeset,
         :fields_definition,
-        "field missing required keys: #{Enum.join(missing_keys, ", ")}"
+        gettext("field missing required keys: %{keys}", keys: Enum.join(missing_keys, ", "))
       )
     end
   end
 
   defp validate_single_field_definition(changeset, _invalid) do
-    add_error(changeset, :fields_definition, "each field must be a map")
+    add_error(changeset, :fields_definition, gettext("each field must be a map"))
   end
 
   # `FieldTypes.list_types/0` is the one allowlist: every type the admin
@@ -278,7 +284,10 @@ defmodule PhoenixKitEntities do
       add_error(
         changeset,
         :fields_definition,
-        "invalid field type '#{field["type"]}' for field '#{field["key"]}'"
+        gettext("invalid field type '%{type}' for field '%{key}'",
+          type: to_string(field["type"]),
+          key: to_string(field["key"])
+        )
       )
     end
   end
@@ -293,7 +302,7 @@ defmodule PhoenixKitEntities do
         add_error(
           changeset,
           :fields_definition,
-          "relation field '#{field["key"]}' needs a target_entity"
+          gettext("relation field '%{key}' needs a target_entity", key: to_string(field["key"]))
         )
 
       existing_relation?(changeset, field["key"]) or Relations.allowed?() ->
@@ -303,7 +312,10 @@ defmodule PhoenixKitEntities do
         add_error(
           changeset,
           :fields_definition,
-          "relation fields are turned off (entities_allow_relations); cannot add '#{field["key"]}'"
+          gettext(
+            "relation fields are turned off (entities_allow_relations); cannot add '%{key}'",
+            key: to_string(field["key"])
+          )
         )
     end
   end
@@ -737,6 +749,63 @@ defmodule PhoenixKitEntities do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  @doc """
+  Adds one to each named counter in `settings["public_form_stats"]` and
+  stamps `last_submission_at`, in a single atomic `UPDATE`.
+
+  It reads and writes only the stats key of the stored row, so it neither
+  loses a concurrent bump nor overwrites settings saved meanwhile. It is not
+  an edit of the entity: no activity row, no `:entity_updated` broadcast,
+  `date_updated` untouched.
+
+  ## Examples
+
+      iex> PhoenixKitEntities.bump_public_form_stats(uuid, ["total_submissions"])
+      :ok
+  """
+  @spec bump_public_form_stats(binary(), [String.t()]) :: :ok
+  def bump_public_form_stats(entity_uuid, counters)
+      when is_binary(entity_uuid) and is_list(counters) do
+    counters = Enum.uniq(counters)
+    now = UtilsDate.utc_now() |> DateTime.to_iso8601()
+
+    from(e in __MODULE__,
+      where: e.uuid == ^entity_uuid,
+      update: [
+        set: [
+          settings:
+            fragment(
+              """
+              jsonb_set(
+                coalesce(?, '{}'::jsonb),
+                '{public_form_stats}',
+                coalesce(? -> 'public_form_stats', '{}'::jsonb)
+                || (SELECT coalesce(
+                             jsonb_object_agg(
+                               k,
+                               coalesce((? -> 'public_form_stats' ->> k)::bigint, 0) + 1
+                             ),
+                             '{}'::jsonb
+                           )
+                    FROM unnest(?::text[]) AS k)
+                || jsonb_build_object('last_submission_at', ?::text),
+                true
+              )
+              """,
+              e.settings,
+              e.settings,
+              e.settings,
+              ^counters,
+              ^now
+            )
+        ]
+      ]
+    )
+    |> repo().update_all([])
+
+    :ok
   end
 
   @doc """
@@ -1488,11 +1557,12 @@ defmodule PhoenixKitEntities do
       iex> PhoenixKitEntities.update_sort_mode(entity, "manual")
       {:ok, %PhoenixKitEntities{}}
   """
-  @spec update_sort_mode(t(), String.t()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
-  def update_sort_mode(%__MODULE__{} = entity, mode) when mode in @valid_sort_modes do
+  @spec update_sort_mode(t(), String.t(), keyword()) ::
+          {:ok, t()} | {:error, Ecto.Changeset.t() | term()}
+  def update_sort_mode(%__MODULE__{} = entity, mode, opts \\ []) when mode in @valid_sort_modes do
     current_settings = entity.settings || %{}
     new_settings = Map.put(current_settings, "sort_mode", mode)
-    update_entity(entity, %{settings: new_settings})
+    update_entity(entity, %{settings: new_settings}, opts)
   end
 
   # ============================================================================
@@ -1560,12 +1630,17 @@ defmodule PhoenixKitEntities do
       iex> PhoenixKitEntities.update_mirror_settings(entity, %{"mirror_definitions" => true})
       {:ok, %PhoenixKit.Entities{}}
   """
-  @spec update_mirror_settings(t(), map()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
-  def update_mirror_settings(%__MODULE__{} = entity, mirror_settings)
+  @spec update_mirror_settings(t(), map(), keyword()) ::
+          {:ok, t()} | {:error, Ecto.Changeset.t() | term()}
+  def update_mirror_settings(%__MODULE__{} = entity, mirror_settings, opts \\ [])
       when is_map(mirror_settings) do
-    current_settings = entity.settings || %{}
-    new_settings = Map.merge(current_settings, mirror_settings)
-    update_entity(entity, %{settings: new_settings})
+    # Only the two mirror keys, merged into the STORED row: the struct a
+    # caller holds may be a form's working copy carrying settings nobody
+    # saved, and this write must not persist those along the way.
+    mirror_settings = Map.take(mirror_settings, ["mirror_definitions", "mirror_data"])
+    stored = (entity.uuid && get_entity(entity.uuid)) || entity
+    new_settings = Map.merge(stored.settings || %{}, mirror_settings)
+    update_entity(stored, %{settings: new_settings}, opts)
   end
 
   # ============================================================================
@@ -1617,13 +1692,13 @@ defmodule PhoenixKitEntities do
       iex> PhoenixKitEntities.enable_all_definitions_mirror()
       {:ok, count}
   """
-  @spec enable_all_definitions_mirror() :: {:ok, non_neg_integer()}
-  def enable_all_definitions_mirror do
+  @spec enable_all_definitions_mirror(keyword()) :: {:ok, non_neg_integer()}
+  def enable_all_definitions_mirror(opts \\ []) do
     entities = list_entities()
 
     results =
       Enum.map(entities, fn entity ->
-        update_mirror_settings(entity, %{"mirror_definitions" => true})
+        update_mirror_settings(entity, %{"mirror_definitions" => true}, opts)
       end)
 
     success_count = Enum.count(results, &match?({:ok, _}, &1))
@@ -1638,13 +1713,13 @@ defmodule PhoenixKitEntities do
       iex> PhoenixKitEntities.disable_all_definitions_mirror()
       {:ok, count}
   """
-  @spec disable_all_definitions_mirror() :: {:ok, non_neg_integer()}
-  def disable_all_definitions_mirror do
+  @spec disable_all_definitions_mirror(keyword()) :: {:ok, non_neg_integer()}
+  def disable_all_definitions_mirror(opts \\ []) do
     entities = list_entities()
 
     results =
       Enum.map(entities, fn entity ->
-        update_mirror_settings(entity, %{"mirror_definitions" => false})
+        update_mirror_settings(entity, %{"mirror_definitions" => false}, opts)
       end)
 
     success_count = Enum.count(results, &match?({:ok, _}, &1))
@@ -1659,13 +1734,13 @@ defmodule PhoenixKitEntities do
       iex> PhoenixKitEntities.enable_all_data_mirror()
       {:ok, count}
   """
-  @spec enable_all_data_mirror() :: {:ok, non_neg_integer()}
-  def enable_all_data_mirror do
+  @spec enable_all_data_mirror(keyword()) :: {:ok, non_neg_integer()}
+  def enable_all_data_mirror(opts \\ []) do
     entities = list_entities()
 
     results =
       Enum.map(entities, fn entity ->
-        update_mirror_settings(entity, %{"mirror_data" => true})
+        update_mirror_settings(entity, %{"mirror_data" => true}, opts)
       end)
 
     success_count = Enum.count(results, &match?({:ok, _}, &1))
@@ -1680,13 +1755,13 @@ defmodule PhoenixKitEntities do
       iex> PhoenixKitEntities.disable_all_data_mirror()
       {:ok, count}
   """
-  @spec disable_all_data_mirror() :: {:ok, non_neg_integer()}
-  def disable_all_data_mirror do
+  @spec disable_all_data_mirror(keyword()) :: {:ok, non_neg_integer()}
+  def disable_all_data_mirror(opts \\ []) do
     entities = list_entities()
 
     results =
       Enum.map(entities, fn entity ->
-        update_mirror_settings(entity, %{"mirror_data" => false})
+        update_mirror_settings(entity, %{"mirror_data" => false}, opts)
       end)
 
     success_count = Enum.count(results, &match?({:ok, _}, &1))
@@ -1759,9 +1834,9 @@ defmodule PhoenixKitEntities do
       ...> })
       {:ok, %PhoenixKitEntities{}}
   """
-  @spec set_entity_translation(t(), String.t(), map()) ::
-          {:ok, t()} | {:error, Ecto.Changeset.t()}
-  def set_entity_translation(%__MODULE__{} = entity, lang_code, attrs)
+  @spec set_entity_translation(t(), String.t(), map(), keyword()) ::
+          {:ok, t()} | {:error, Ecto.Changeset.t() | term()}
+  def set_entity_translation(%__MODULE__{} = entity, lang_code, attrs, opts \\ [])
       when is_binary(lang_code) and is_map(attrs) do
     current_settings = entity.settings || %{}
     translations = Map.get(current_settings, "translations", %{})
@@ -1789,7 +1864,7 @@ defmodule PhoenixKitEntities do
         Map.put(current_settings, "translations", updated_translations)
       end
 
-    update_entity(entity, %{settings: new_settings})
+    update_entity(entity, %{settings: new_settings}, opts)
   end
 
   @doc """
@@ -1800,9 +1875,9 @@ defmodule PhoenixKitEntities do
       iex> remove_entity_translation(entity, "es-ES")
       {:ok, %PhoenixKitEntities{}}
   """
-  @spec remove_entity_translation(t(), String.t()) ::
-          {:ok, t()} | {:error, Ecto.Changeset.t()}
-  def remove_entity_translation(%__MODULE__{} = entity, lang_code)
+  @spec remove_entity_translation(t(), String.t(), keyword()) ::
+          {:ok, t()} | {:error, Ecto.Changeset.t() | term()}
+  def remove_entity_translation(%__MODULE__{} = entity, lang_code, opts \\ [])
       when is_binary(lang_code) do
     current_settings = entity.settings || %{}
     translations = Map.get(current_settings, "translations", %{})
@@ -1815,7 +1890,7 @@ defmodule PhoenixKitEntities do
         Map.put(current_settings, "translations", updated)
       end
 
-    update_entity(entity, %{settings: new_settings})
+    update_entity(entity, %{settings: new_settings}, opts)
   end
 
   @doc """

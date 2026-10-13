@@ -12,19 +12,19 @@ defmodule Mix.Tasks.PhoenixKitEntities.Export do
   ## Usage
 
       # Export all entities (definitions + data if data mirroring enabled)
-      mix phoenix_kit.entities.export
+      mix phoenix_kit_entities.export
 
       # Export specific entity
-      mix phoenix_kit.entities.export --entity brand
+      mix phoenix_kit_entities.export --entity brand
 
       # Export with data included (regardless of setting)
-      mix phoenix_kit.entities.export --with-data
+      mix phoenix_kit_entities.export --with-data
 
       # Export without data (regardless of setting)
-      mix phoenix_kit.entities.export --no-data
+      mix phoenix_kit_entities.export --no-data
 
       # Custom output path
-      mix phoenix_kit.entities.export --output /path/to/export
+      mix phoenix_kit_entities.export --output /path/to/export
 
   ## Options
 
@@ -59,18 +59,17 @@ defmodule Mix.Tasks.PhoenixKitEntities.Export do
   ## Examples
 
       # Full export for version control backup
-      mix phoenix_kit.entities.export --with-data
+      mix phoenix_kit_entities.export --with-data
 
       # Export just the brand entity
-      mix phoenix_kit.entities.export --entity brand
+      mix phoenix_kit_entities.export --entity brand
 
       # Export to a specific directory
-      mix phoenix_kit.entities.export --output ./backup/entities
+      mix phoenix_kit_entities.export --output ./backup/entities
   """
 
   use Mix.Task
 
-  alias PhoenixKit.Settings
   alias PhoenixKit.Utils.Date, as: UtilsDate
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.EntityData
@@ -84,13 +83,25 @@ defmodule Mix.Tasks.PhoenixKitEntities.Export do
 
     {options, _remaining} = parse_options(args)
 
-    # Override path if specified
-    if output_path = options[:output] do
-      Settings.update_setting("entities_mirror_path", output_path)
+    # `--output` names the directory for THIS run (`Storage.with_root/2`);
+    # the `entities_mirror_path` setting is left alone. An operator's own
+    # path is not held to the setting's containment rule — see
+    # `Storage.with_root/2`.
+    case options[:output] do
+      nil -> run_export(options)
+      output_path -> Storage.with_root(output_path, fn -> run_export(options) end)
     end
+  end
 
-    # Ensure directory exists
-    Storage.ensure_directory()
+  defp run_export(options) do
+    case Storage.ensure_directory() do
+      :ok ->
+        :ok
+
+      {:error, {:mkdir_failed, path, reason}} ->
+        Mix.shell().error("Cannot create output directory #{path}: #{:file.format_error(reason)}")
+        exit({:shutdown, 1})
+    end
 
     if options[:entity] do
       export_single_entity(options[:entity], options)

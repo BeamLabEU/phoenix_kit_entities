@@ -734,7 +734,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
 
       # Update the entity with new settings
       updated_entity = Map.put(socket.assigns.entity, :settings, updated_settings)
-      changeset = Entities.change_entity(updated_entity)
+      changeset = settings_changeset(socket, updated_entity)
 
       socket =
         socket
@@ -773,7 +773,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
       if setting_name do
         updated_settings = Map.put(current_settings, setting_name, value)
         updated_entity = Map.put(socket.assigns.entity, :settings, updated_settings)
-        changeset = Entities.change_entity(updated_entity)
+        changeset = settings_changeset(socket, updated_entity)
 
         socket =
           socket
@@ -804,7 +804,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
 
       updated_settings = Map.put(current_settings, "public_form_fields", updated_fields)
       updated_entity = Map.put(socket.assigns.entity, :settings, updated_settings)
-      changeset = Entities.change_entity(updated_entity)
+      changeset = settings_changeset(socket, updated_entity)
 
       socket =
         socket
@@ -831,7 +831,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
 
       updated_settings = Map.put(current_settings, setting_key, !current_value)
       updated_entity = Map.put(socket.assigns.entity, :settings, updated_settings)
-      changeset = Entities.change_entity(updated_entity)
+      changeset = settings_changeset(socket, updated_entity)
 
       socket =
         socket
@@ -855,7 +855,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
       current_settings = socket.assigns.entity.settings || %{}
       updated_settings = Map.put(current_settings, setting_key, value)
       updated_entity = Map.put(socket.assigns.entity, :settings, updated_settings)
-      changeset = Entities.change_entity(updated_entity)
+      changeset = settings_changeset(socket, updated_entity)
 
       socket =
         socket
@@ -873,7 +873,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
       current_settings = socket.assigns.entity.settings || %{}
       updated_settings = Map.delete(current_settings, "public_form_stats")
       updated_entity = Map.put(socket.assigns.entity, :settings, updated_settings)
-      changeset = Entities.change_entity(updated_entity)
+      changeset = settings_changeset(socket, updated_entity)
 
       socket =
         socket
@@ -903,14 +903,9 @@ defmodule PhoenixKitEntities.Web.EntityForm do
           %{"mirror_definitions" => false, "mirror_data" => false}
         end
 
-      case Entities.update_mirror_settings(entity, new_settings) do
+      case Entities.update_mirror_settings(entity, new_settings, Actor.opts(socket)) do
         {:ok, updated_entity} ->
-          socket =
-            socket
-            |> assign(:entity, updated_entity)
-            |> assign(:changeset, Entities.change_entity(updated_entity))
-
-          {:noreply, socket}
+          {:noreply, adopt_mirror_settings(socket, updated_entity)}
 
         {:error, _changeset} ->
           {:noreply, put_flash(socket, :error, gettext("Failed to update backup settings"))}
@@ -926,14 +921,13 @@ defmodule PhoenixKitEntities.Web.EntityForm do
       current_value = Entities.mirror_data_enabled?(entity)
       new_value = !current_value
 
-      case Entities.update_mirror_settings(entity, %{"mirror_data" => new_value}) do
+      case Entities.update_mirror_settings(
+             entity,
+             %{"mirror_data" => new_value},
+             Actor.opts(socket)
+           ) do
         {:ok, updated_entity} ->
-          socket =
-            socket
-            |> assign(:entity, updated_entity)
-            |> assign(:changeset, Entities.change_entity(updated_entity))
-
-          {:noreply, socket}
+          {:noreply, adopt_mirror_settings(socket, updated_entity)}
 
         {:error, _changeset} ->
           {:noreply, put_flash(socket, :error, gettext("Failed to update backup settings"))}
@@ -1469,6 +1463,29 @@ defmodule PhoenixKitEntities.Web.EntityForm do
     else
       :ok
     end
+  end
+
+  # The form's changeset over a working copy whose settings just changed,
+  # keeping everything typed so far: a bare `change_entity(updated_entity)`
+  # would rebuild the form from the stored values and drop it.
+  defp settings_changeset(socket, updated_entity) do
+    socket
+    |> assign(:entity, updated_entity)
+    |> update_changeset_field(%{"settings" => updated_entity.settings})
+  end
+
+  # The backup switches write immediately, and write only their own keys
+  # (see `Entities.update_mirror_settings/3`). The working copy takes just
+  # those keys back, so the rest of the in-progress form — typed fields and
+  # settings not saved yet — stays as the admin left it.
+  defp adopt_mirror_settings(socket, saved_entity) do
+    mirror = Map.take(saved_entity.settings || %{}, ["mirror_definitions", "mirror_data"])
+    working = socket.assigns.entity
+    updated_entity = %{working | settings: Map.merge(working.settings || %{}, mirror)}
+
+    socket
+    |> assign(:changeset, settings_changeset(socket, updated_entity))
+    |> assign(:entity, updated_entity)
   end
 
   defp update_changeset_field(socket, new_params) do
