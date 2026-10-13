@@ -1637,10 +1637,41 @@ defmodule PhoenixKitEntities do
     # Only the two mirror keys, merged into the STORED row: the struct a
     # caller holds may be a form's working copy carrying settings nobody
     # saved, and this write must not persist those along the way.
+    #
+    # The stored row is read under `FOR UPDATE` and written in the same
+    # transaction, so a settings change saved by someone else lands either
+    # before the read (and is kept) or after the write — never in between,
+    # where this merge would overwrite it. Broadcast, mirror export and
+    # activity row follow the commit, as `update_entity/3` orders them.
     mirror_settings = Map.take(mirror_settings, ["mirror_definitions", "mirror_data"])
-    stored = (entity.uuid && get_entity(entity.uuid)) || entity
-    new_settings = Map.merge(stored.settings || %{}, mirror_settings)
-    update_entity(stored, %{settings: new_settings}, opts)
+
+    txn =
+      repo().transaction(fn ->
+        stored = lock_entity(entity.uuid) || entity
+        attrs = %{settings: Map.merge(stored.settings || %{}, mirror_settings)}
+
+        with :ok <- Managed.validate_mutation(stored, attrs, opts),
+             {:ok, updated} <- stored |> changeset(attrs) |> repo().update() do
+          updated
+        else
+          {:error, %Ecto.Changeset{} = changeset} -> repo().rollback({:invalid, changeset})
+          {:error, reason} -> repo().rollback({:refused, reason})
+        end
+      end)
+
+    case txn do
+      {:ok, updated} -> notify_entity_event({:ok, updated}, :updated, opts)
+      {:error, {:invalid, changeset}} -> notify_entity_event({:error, changeset}, :updated, opts)
+      {:error, {:refused, reason}} -> {:error, reason}
+    end
+  end
+
+  defp lock_entity(nil), do: nil
+
+  defp lock_entity(uuid) do
+    from(e in __MODULE__, where: e.uuid == ^uuid, lock: "FOR UPDATE")
+    |> repo().one()
+    |> repo().preload(:creator)
   end
 
   # ============================================================================

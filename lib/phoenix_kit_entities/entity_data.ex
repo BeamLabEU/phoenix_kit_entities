@@ -2431,14 +2431,28 @@ defmodule PhoenixKitEntities.EntityData do
     # Stash the row's current status in metadata so restore can return
     # to it. Without this, restore unconditionally lands on "published"
     # and a trashed draft silently goes live on restore.
-    metadata =
-      (entity_data.metadata || %{})
-      |> Map.put("trashed_from_status", entity_data.status)
+    #
+    # The status stashed is the STORED one, read under `FOR UPDATE`: the
+    # struct a caller holds can be a page loaded before someone else
+    # changed the status, or before someone else trashed the row — and
+    # trashing a trashed row would stash "trashed" over the real status.
+    txn =
+      repo().transaction(fn ->
+        from(d in __MODULE__, where: d.uuid == ^entity_data.uuid, lock: "FOR UPDATE")
+        |> repo().one()
+        |> trash_stored_row(entity_data)
+      end)
 
-    entity_data
-    |> status_only_changeset(@soft_delete_status, metadata)
-    |> repo().update()
-    |> notify_data_event(:trashed, opts)
+    case txn do
+      {:ok, trashed} ->
+        notify_data_event({:ok, trashed}, :trashed, opts)
+
+      {:error, :already_trashed} ->
+        {:error, :already_trashed}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        notify_data_event({:error, changeset}, :trashed, opts)
+    end
   end
 
   def trash(%__MODULE__{} = entity_data), do: trash(entity_data, [])
@@ -2484,6 +2498,21 @@ defmodule PhoenixKitEntities.EntityData do
   # longer valid (e.g. the entity gained a required field after the row
   # was created) must still be retirable via trash. The bulk paths
   # bypass changesets entirely; this keeps single-record + bulk in sync.
+  defp trash_stored_row(%__MODULE__{status: @soft_delete_status}, _given),
+    do: repo().rollback(:already_trashed)
+
+  # A row deleted meanwhile (`nil`) is written from the caller's struct, so
+  # the stale write raises as any update of a missing row does.
+  defp trash_stored_row(stored, given) do
+    row = stored || given
+    metadata = Map.put(row.metadata || %{}, "trashed_from_status", row.status)
+
+    case row |> status_only_changeset(@soft_delete_status, metadata) |> repo().update() do
+      {:ok, trashed} -> trashed
+      {:error, changeset} -> repo().rollback(changeset)
+    end
+  end
+
   defp status_only_changeset(entity_data, status, metadata) do
     entity_data
     |> cast(%{status: status, metadata: metadata, date_updated: UtilsDate.utc_now()}, [

@@ -340,7 +340,9 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
     # never take a public value, even when a stale `public_form_fields`
     # lists one: an anonymous form must not be a way to probe which record
     # uuids exist, and the public form renders no picker for them. Nor do
-    # `file` fields and headings, which have no input to submit.
+    # `file` fields and headings, which have no input to submit, nor
+    # `image`/`video` fields: the public form has no media picker, and a
+    # posted uuid would attach any stored file a visitor can name.
     settings = entity.settings || %{}
     public_fields = public_fields(entity, settings)
 
@@ -405,7 +407,7 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
     end
   end
 
-  @no_public_value_types ~w(relation file heading)
+  @no_public_value_types ~w(relation file image video heading)
 
   # The fields a public submission may fill, by key.
   defp public_fields(entity, settings) do
@@ -422,7 +424,9 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
   # its size, and an admin form relies on the input's `maxlength`. An
   # anonymous POST has no such courtesy, so the public path caps every
   # value: the field's own `max_length` when it declares one, a flat
-  # ceiling otherwise.
+  # ceiling otherwise. `max_length` counts characters, as the browser's
+  # `maxlength` does, so its byte ceiling leaves room for that many
+  # characters at four bytes each.
   @public_value_max_bytes 20_000
   @public_list_max_entries 100
 
@@ -433,7 +437,8 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
   defp public_value_fits?(field, value) when is_binary(value) do
     case field["max_length"] do
       max when is_integer(max) and max > 0 ->
-        byte_size(value) <= @public_value_max_bytes and String.length(value) <= max
+        byte_size(value) <= max(@public_value_max_bytes, max * 4) and
+          String.length(value) <= max
 
       _ ->
         byte_size(value) <= @public_value_max_bytes

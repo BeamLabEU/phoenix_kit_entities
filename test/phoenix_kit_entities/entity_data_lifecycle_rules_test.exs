@@ -85,6 +85,37 @@ defmodule PhoenixKitEntities.EntityDataLifecycleRulesTest do
       end
     end
 
+    for trash <- [:single, :bulk] do
+      test "#{trash} trash from a stale page stashes the stored status, not the page's", ctx do
+        stale = record!(ctx, %{status: "published", metadata: %{"source" => "public_form"}})
+
+        {:ok, _} =
+          EntityData.update(EntityData.get!(stale.uuid), %{
+            status: "draft",
+            metadata: %{"source" => "public_form", "note" => "added meanwhile"}
+          })
+
+        trash(unquote(trash), stale)
+
+        trashed = EntityData.get!(stale.uuid)
+        assert trashed.metadata["trashed_from_status"] == "draft"
+        assert trashed.metadata["note"] == "added meanwhile"
+
+        restore(:single, stale)
+        assert EntityData.get!(stale.uuid).status == "draft"
+      end
+    end
+
+    test "trashing from a page loaded before the row was trashed keeps the stash", ctx do
+      stale = record!(ctx, %{status: "published"})
+      trash(:single, EntityData.get!(stale.uuid))
+
+      assert EntityData.trash(stale) == {:error, :already_trashed}
+      assert EntityData.bulk_trash([stale.uuid]) == {0, nil}
+
+      assert EntityData.get!(stale.uuid).metadata["trashed_from_status"] == "published"
+    end
+
     for restore <- [:single, :bulk] do
       test "a trashed row with no stash comes back as a draft (#{restore})", ctx do
         record = record!(ctx)

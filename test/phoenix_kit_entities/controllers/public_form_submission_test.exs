@@ -36,13 +36,13 @@ defmodule PhoenixKitEntities.Controllers.PublicFormSubmissionTest do
     "date" => {"2026-02-28", "2026-02-28", ["9999-99-99", "2026-02-30", "28.02.2026"]},
     "select" => {"A", "A", ["Z"]},
     "radio" => {"B", "B", ["Z"]},
-    "checkbox" => {["A", "B"], ["A", "B"], [["Z"]]},
-    "image" => {@media_uuid, @media_uuid, ["../../../../../x", "not-a-uuid"]},
-    "video" => {@media_uuid, @media_uuid, ["../../../../../x"]}
+    "checkbox" => {["A", "B"], ["A", "B"], [["Z"]]}
   }
 
-  # Offered by the picker, but with no control to submit a value through.
-  @no_control_types ~w(file)
+  # Offered by the picker, but with nothing a visitor can fill in: `file`
+  # renders no control, `image`/`video` only an empty hidden input (the
+  # public form has no media picker).
+  @no_value_types ~w(file image video)
 
   setup do
     admin = Fixtures.admin_fixture()
@@ -59,8 +59,13 @@ defmodule PhoenixKitEntities.Controllers.PublicFormSubmissionTest do
     end
   end
 
+  # `types` entries are a type name or a ready field definition.
   defp create_entity(admin, name, types, extra_settings \\ %{}) do
-    fields = Enum.map(types, &field/1)
+    fields =
+      Enum.map(types, fn
+        type when is_binary(type) -> field(type)
+        %{} = definition -> definition
+      end)
 
     {:ok, entity} =
       Entities.create_entity(
@@ -183,7 +188,7 @@ defmodule PhoenixKitEntities.Controllers.PublicFormSubmissionTest do
       offered = Map.keys(FieldTypes.all()) -- ["heading", "relation"]
 
       assert Enum.sort(offered) ==
-               Enum.sort(Map.keys(@cases) ++ @no_control_types)
+               Enum.sort(Map.keys(@cases) ++ @no_value_types)
     end
 
     for {type, {typed, stored, _invalid}} <- @cases do
@@ -212,7 +217,7 @@ defmodule PhoenixKitEntities.Controllers.PublicFormSubmissionTest do
     end
 
     test "an untouched form with every type stores a record", %{admin: admin} do
-      entity = create_entity(admin, "pf_untouched", Map.keys(@cases) ++ @no_control_types)
+      entity = create_entity(admin, "pf_untouched", Map.keys(@cases) ++ @no_value_types)
 
       conn = submit_form(entity, %{})
 
@@ -238,6 +243,27 @@ defmodule PhoenixKitEntities.Controllers.PublicFormSubmissionTest do
       assert info(conn) == "Form submitted successfully!"
       assert [record] = records(entity)
       assert record.data == %{"f_text" => "kept"}
+    end
+
+    for type <- ~w(image video) do
+      test "#{type}: a posted media uuid is not stored, through the form or past it", %{
+        admin: admin
+      } do
+        type = unquote(type)
+        entity = create_entity(admin, "pf_media_#{type}", ["text", type])
+
+        # Through the form: the uuid goes in the field's own hidden input.
+        conn = submit_form(entity, %{"f_text" => "kept", "f_#{type}" => @media_uuid})
+        assert info(conn) == "Form submitted successfully!"
+
+        # Past it: a hand-built body.
+        conn = post_data(entity, %{"f_text" => "kept", "f_#{type}" => @media_uuid})
+        assert info(conn) == "Form submitted successfully!"
+
+        assert [first, second] = records(entity)
+        assert first.data == %{"f_text" => "kept"}
+        assert second.data == %{"f_text" => "kept"}
+      end
     end
   end
 
@@ -459,6 +485,33 @@ defmodule PhoenixKitEntities.Controllers.PublicFormSubmissionTest do
       assert records(entity) == []
 
       assert entity |> post_data(%{"f_text" => String.duplicate("é", 20)}) |> info()
+      assert [_] = records(entity)
+    end
+
+    test "max_length counts characters: multibyte text at the limit is kept, one over refused",
+         %{admin: admin} do
+      long = %{"type" => "textarea", "key" => "f_long", "label" => "Long", "max_length" => 7000}
+      entity = create_entity(admin, "pf_len_cjk", [long])
+
+      # 7,000 three-byte characters: 21,000 bytes, past the flat ceiling.
+      at_limit = String.duplicate("語", 7000)
+
+      assert entity |> post_data(%{"f_long" => at_limit <> "語"}) |> error()
+      assert records(entity) == []
+
+      assert entity |> post_data(%{"f_long" => at_limit}) |> info()
+      assert [%{data: %{"f_long" => ^at_limit}}] = records(entity)
+    end
+
+    test "a field with no max_length keeps the flat byte ceiling for multibyte text", %{
+      admin: admin
+    } do
+      entity = create_entity(admin, "pf_flat_cjk", ["textarea"])
+
+      assert entity |> post_data(%{"f_textarea" => String.duplicate("語", 6667)}) |> error()
+      assert records(entity) == []
+
+      assert entity |> post_data(%{"f_textarea" => String.duplicate("語", 6666)}) |> info()
       assert [_] = records(entity)
     end
 
