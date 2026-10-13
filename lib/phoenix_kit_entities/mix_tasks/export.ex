@@ -70,12 +70,9 @@ defmodule Mix.Tasks.PhoenixKitEntities.Export do
 
   use Mix.Task
 
-  alias PhoenixKit.Utils.Date, as: UtilsDate
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.EntityData
-  alias PhoenixKitEntities.Mirror.Storage
-
-  @export_version "1.0"
+  alias PhoenixKitEntities.Mirror.{Exporter, Storage}
 
   @impl Mix.Task
   def run(args) do
@@ -146,12 +143,8 @@ defmodule Mix.Tasks.PhoenixKitEntities.Export do
 
       entity ->
         include_data = include_data?(options)
-        data_records = if include_data, do: EntityData.list_data_by_entity(entity.uuid), else: []
-
-        content = build_export_content(entity, data_records)
-        result = Storage.write_entity(entity.name, content)
-
-        log_result(entity_name, length(data_records), result, options)
+        result = export_entity(entity, include_data)
+        log_result(entity_name, exported_count(entity, include_data, options), result, options)
         log_summary([result], options)
     end
   end
@@ -163,60 +156,35 @@ defmodule Mix.Tasks.PhoenixKitEntities.Export do
 
     include_data = include_data?(options)
 
-    results =
-      Entities.list_entities()
-      |> Enum.map(fn entity ->
-        data_records = if include_data, do: EntityData.list_data_by_entity(entity.uuid), else: []
-        content = build_export_content(entity, data_records)
-        result = Storage.write_entity(entity.name, content)
+    entities = Entities.list_entities()
 
-        log_result(entity.name, length(data_records), result, options)
+    counts =
+      if include_data and options[:quiet] != true,
+        do: EntityData.counts_by_entities(Enum.map(entities, & &1.uuid)),
+        else: %{}
+
+    results =
+      Enum.map(entities, fn entity ->
+        result = export_entity(entity, include_data)
+        log_result(entity.name, Map.get(counts, entity.uuid, 0), result, options)
         result
       end)
 
     log_summary(results, options)
   end
 
-  defp build_export_content(entity, data_records) do
-    %{
-      "export_version" => @export_version,
-      "exported_at" => UtilsDate.utc_now() |> DateTime.to_iso8601(),
-      "definition" => serialize_entity(entity),
-      "data" => Enum.map(data_records, &serialize_entity_data/1)
-    }
-  end
+  defp exported_count(_entity, _include_data, %{quiet: true}), do: 0
+  defp exported_count(entity, true, _options), do: EntityData.count_by_entity(entity.uuid)
+  defp exported_count(_entity, false, _options), do: 0
 
-  defp serialize_entity(entity) do
-    %{
-      "name" => entity.name,
-      "display_name" => entity.display_name,
-      "display_name_plural" => entity.display_name_plural,
-      "description" => entity.description,
-      "icon" => entity.icon,
-      "status" => to_string(entity.status),
-      "fields_definition" => entity.fields_definition,
-      "settings" => entity.settings,
-      "date_created" => format_datetime(entity.date_created),
-      "date_updated" => format_datetime(entity.date_updated)
-    }
+  # The CLI uses the same portable relation and multilang serialization as
+  # automatic mirrors, while its flags decide whether data is included.
+  defp export_entity(entity, include_data) do
+    case Exporter.export_entity(entity, include_data: include_data) do
+      {:ok, path, _mode} -> {:ok, path}
+      {:error, _reason} = error -> error
+    end
   end
-
-  defp serialize_entity_data(record) do
-    %{
-      "title" => record.title,
-      "slug" => record.slug,
-      "status" => to_string(record.status),
-      "data" => record.data,
-      "metadata" => record.metadata,
-      "date_created" => format_datetime(record.date_created),
-      "date_updated" => format_datetime(record.date_updated)
-    }
-  end
-
-  defp format_datetime(nil), do: nil
-  defp format_datetime(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
-  defp format_datetime(%NaiveDateTime{} = ndt), do: NaiveDateTime.to_iso8601(ndt)
-  defp format_datetime(other), do: to_string(other)
 
   defp log_result(_name, _data_count, _result, %{quiet: true}), do: :ok
 

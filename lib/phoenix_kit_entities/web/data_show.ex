@@ -41,7 +41,9 @@ defmodule PhoenixKitEntities.Web.DataShow do
     record = EntityData.get!(uuid, lang: locale)
 
     if owns_record?(entity, record) do
-      if connected?(socket), do: Events.subscribe_to_entity_data(entity.uuid)
+      # Linked records can belong to other entities; their lifecycle events
+      # must also refresh the displayed titles and visibility.
+      if connected?(socket), do: Events.subscribe_to_all_data()
 
       {:noreply,
        socket
@@ -66,23 +68,28 @@ defmodule PhoenixKitEntities.Web.DataShow do
 
   @impl true
   def handle_info({:data_updated, entity_uuid, data_uuid}, socket) do
-    if entity_uuid == socket.assigns.entity.uuid and data_uuid == socket.assigns.record.uuid do
-      case EntityData.get(data_uuid, lang: socket.assigns.current_locale) do
-        nil ->
-          {:noreply, socket}
+    cond do
+      entity_uuid == socket.assigns.entity.uuid and data_uuid == socket.assigns.record.uuid ->
+        case EntityData.get(data_uuid, lang: socket.assigns.current_locale) do
+          nil ->
+            {:noreply, socket}
 
-        record ->
-          {:noreply,
-           socket
-           |> assign(:page_title, record.title)
-           |> assign(
-             :page_crumbs,
-             crumbs(socket.assigns.entity, record, socket.assigns.current_locale_base)
-           )
-           |> assign_record(record)}
-      end
-    else
-      {:noreply, socket}
+          record ->
+            {:noreply,
+             socket
+             |> assign(:page_title, record.title)
+             |> assign(
+               :page_crumbs,
+               crumbs(socket.assigns.entity, record, socket.assigns.current_locale_base)
+             )
+             |> assign_record(record)}
+        end
+
+      linked_record?(socket, data_uuid) ->
+        {:noreply, assign_record(socket, socket.assigns.record)}
+
+      true ->
+        {:noreply, socket}
     end
   end
 
@@ -93,7 +100,9 @@ defmodule PhoenixKitEntities.Web.DataShow do
        |> put_flash(:error, gettext("This record was removed in another session."))
        |> push_navigate(to: back_path(socket.assigns.entity, socket.assigns.current_locale_base))}
     else
-      {:noreply, socket}
+      if linked_record?(socket, data_uuid),
+        do: {:noreply, assign_record(socket, socket.assigns.record)},
+        else: {:noreply, socket}
     end
   end
 
@@ -110,6 +119,10 @@ defmodule PhoenixKitEntities.Web.DataShow do
 
           {:noreply,
            socket
+           |> assign(
+             :page_subtitle,
+             gettext("Record of the %{entity} entity", entity: entity.display_name)
+           )
            |> assign(
              :page_crumbs,
              crumbs(entity, socket.assigns.record, socket.assigns.current_locale_base)
@@ -178,10 +191,18 @@ defmodule PhoenixKitEntities.Web.DataShow do
       |> Relations.relation_fields()
       |> Enum.flat_map(&Relations.uuids(data[&1["key"]]))
       |> Relations.labels_for(lang: socket.assigns.current_locale)
+      |> Map.reject(fn {_uuid, label} -> label.status == "trashed" end)
 
     socket
     |> assign(:record, record)
     |> assign(:link_labels, link_labels)
+  end
+
+  # Include hidden targets too, so restoring one makes its label reappear.
+  defp linked_record?(socket, uuid) do
+    socket.assigns.entity
+    |> Relations.relation_fields()
+    |> Enum.any?(&(uuid in Relations.uuids((socket.assigns.record.data || %{})[&1["key"]])))
   end
 
   # Splits the fields at each `heading`: a heading is not a label/value pair,

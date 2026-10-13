@@ -256,6 +256,28 @@ defmodule PhoenixKitEntities.Web.DataShowLiveTest do
   end
 
   describe "navigation" do
+    test "a linked record's title and trash status refresh without editing this record",
+         %{conn: conn} = ctx do
+      {:ok, view, _html} = live(admin_conn(conn, ctx), show_url(ctx.entity, ctx.record))
+      {:ok, target} = EntityData.update(ctx.target, %{title: "New linked title"})
+      assert has_element?(view, ~s|[data-field="ref"]|, "New linked title")
+
+      {:ok, trashed} = EntityData.trash(target)
+      assert has_element?(view, ~s|[data-field="ref"]|, "—")
+      refute has_element?(view, ~s|[data-field="ref"]|, "New linked title")
+
+      {:ok, _} = EntityData.restore_from_trash(trashed)
+      assert has_element?(view, ~s|[data-field="ref"]|, "New linked title")
+    end
+
+    test "a relation to an already trashed target is hidden", %{conn: conn} = ctx do
+      {:ok, _} = EntityData.trash(ctx.target)
+      {:ok, view, _html} = live(admin_conn(conn, ctx), show_url(ctx.entity, ctx.record))
+
+      assert has_element?(view, ~s|[data-field="ref"]|, "—")
+      refute has_element?(view, ~s|[data-field="ref"]|, "Linked thing")
+    end
+
     test "Edit points at the edit form, Back at the entity's records",
          %{conn: conn} = ctx do
       {:ok, view, _html} = live(admin_conn(conn, ctx), show_url(ctx.entity, ctx.record))
@@ -450,6 +472,62 @@ defmodule PhoenixKitEntities.Web.DataShowLiveTest do
       assert has_element?(view, ~s|[data-field="tags"]|, "a, c")
       # an empty radio is a dash, not a blank cell
       assert has_element?(view, ~s|[data-field="tone"]|, "—")
+    end
+
+    test "a secondary locale resolves option labels and preserves navigation paths",
+         %{conn: conn, choice_entity: entity, choice_record: record} = ctx do
+      conn =
+        conn
+        |> admin_conn(ctx)
+        |> Plug.Test.init_test_session(%{
+          "phoenix_kit_test_locale" => "es-ES",
+          "phoenix_kit_test_locale_base" => "es"
+        })
+
+      {:ok, view, html} = live(conn, show_url(entity, record))
+      assert has_element?(view, ~s|[data-field="size"]|, "pequeño")
+
+      back = Routes.path("/admin/entities/#{entity.name}/data", locale: "es")
+      section = Routes.path("/admin/entities", locale: "es")
+      edit = Entities.admin_edit_path(entity, record, locale: "es")
+      assert has_element?(view, ~s|#data-show-back[href="#{back}"]|)
+      assert has_element?(view, ~s|#data-show-edit[href="#{edit}"]|)
+      assert %{section: {"Entities", ^section}, crumbs: [{_, ^back}, _]} = page_trail(html)
+
+      {:ok, _} = EntityData.delete(record)
+      assert_redirect(view, back)
+    end
+
+    test "secondary-language record values and titles are shown", %{conn: conn} = ctx do
+      data = %{
+        "_primary_language" => "en-US",
+        "en-US" => %{"_title" => "Hello", "name" => "Primary name"},
+        "es-ES" => %{"_title" => "Hola", "name" => "Nombre traducido"}
+      }
+
+      {:ok, _} = EntityData.update(ctx.record, %{data: data})
+
+      conn =
+        conn
+        |> admin_conn(ctx)
+        |> Plug.Test.init_test_session(%{
+          "phoenix_kit_test_locale" => "es-ES",
+          "phoenix_kit_test_locale_base" => "es"
+        })
+
+      {:ok, view, _html} = live(conn, show_url(ctx.entity, ctx.record))
+      assert page_title(view) =~ "Hola"
+      assert has_element?(view, ~s|[data-field="name"]|, "Nombre traducido")
+      assert EntityData.get!(ctx.record.uuid).data == data
+    end
+
+    test "deleting a linked record removes its label without navigating away",
+         %{conn: conn} = ctx do
+      {:ok, view, _html} = live(admin_conn(conn, ctx), show_url(ctx.entity, ctx.record))
+      {:ok, _} = EntityData.delete(ctx.target)
+
+      assert has_element?(view, ~s|[data-field="ref"]|, "—")
+      assert render(view) =~ "Hello"
     end
 
     test "a schema change elsewhere refreshes the labels",

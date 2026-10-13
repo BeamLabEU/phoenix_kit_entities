@@ -267,7 +267,9 @@ Repo-local aliases:
   A submission is not an edit of the entity — never route it through
   `update_entity/3`, which logs `entity.updated`, broadcasts a schema change
   to every open record editor and rewrites the whole settings map. A request
-  the rate limiter refused writes nothing.
+  the rate limiter refused writes nothing. Settings saves through
+  `update_entity/3` preserve the stored stats under a row lock; the entity
+  form passes `reset_public_form_stats: true` only for an explicit reset.
 - **A form's working copy never reaches the row before a save.** `Web.DataForm`
   keeps `data_record` as the persisted row and puts a peer's unsaved typing in
   the changeset only (folding it into the struct makes the next save an empty
@@ -278,7 +280,9 @@ Repo-local aliases:
 - **Restore returns a record to the status it was trashed from.** `trash/2`
   and `bulk_trash/2` stash it in `metadata["trashed_from_status"]`; both
   restores consume the stash and fall back to `"draft"`, never `"published"` —
-  flagged public submissions are stored as drafts.
+  flagged public submissions are stored as drafts. Single-record restore
+  re-reads the status and metadata under `FOR UPDATE`, refusing a stale
+  restore when the stored row is no longer trashed.
 - **A new record's position** is `max(position) + 1` under a per-entity
   `pg_advisory_xact_lock` (`phoenix_kit_entities:positions:<uuid>`); `position`
   is nullable, so never compute it in Elixir over the selected rows.

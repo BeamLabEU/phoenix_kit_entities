@@ -1431,36 +1431,22 @@ defmodule PhoenixKitEntities.Web.EntityForm do
   end
 
   defp save_entity(socket, entity_params) do
-    opts = Actor.opts(socket)
+    opts =
+      Keyword.put(
+        Actor.opts(socket),
+        :reset_public_form_stats,
+        socket.assigns[:form_stats_reset?]
+      )
 
     if socket.assigns.entity.uuid do
       # Reload entity from database to ensure Ecto detects all changes
       # (socket.assigns.entity may have in-memory modifications that mask changes)
       fresh_entity = Entities.get_entity!(socket.assigns.entity.uuid)
-      entity_params = keep_stored_form_stats(entity_params, fresh_entity, socket)
       Entities.update_entity(fresh_entity, entity_params, opts)
     else
       Entities.create_entity(entity_params, opts)
     end
   end
-
-  # The public-form statistics are counted on the stored row while this form
-  # is open (`Entities.bump_public_form_stats/2`) and are not form-editable,
-  # so a save takes them from the row just read, never from the settings the
-  # form has carried since it opened. The one thing an admin can do to them
-  # here is reset them: then the save writes none.
-  defp keep_stored_form_stats(%{"settings" => %{} = settings} = entity_params, fresh, socket) do
-    stored = (fresh.settings || %{})["public_form_stats"]
-
-    settings =
-      if is_nil(stored) or socket.assigns[:form_stats_reset?],
-        do: Map.delete(settings, "public_form_stats"),
-        else: Map.put(settings, "public_form_stats", stored)
-
-    Map.put(entity_params, "settings", settings)
-  end
-
-  defp keep_stored_form_stats(entity_params, _fresh, _socket), do: entity_params
 
   defp move_field(fields, from_index, to_index) do
     field = Enum.at(fields, from_index)

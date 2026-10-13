@@ -108,4 +108,43 @@ defmodule PhoenixKitEntities.SettingsWriteRaceTest do
     assert stored == %{"public_form_title" => "Saved meanwhile", "mirror_data" => true}
     assert updated.settings == stored
   end
+
+  test "an entity save waiting on a submission keeps the committed counters", ctx do
+    test_pid = self()
+
+    submission =
+      Task.async(fn ->
+        unboxed(fn ->
+          Repo.transaction(fn ->
+            Entities.bump_public_form_stats(ctx.entity.uuid, ["total_submissions"])
+            send(test_pid, :row_held)
+
+            receive do
+              :commit -> :ok
+            end
+          end)
+        end)
+      end)
+
+    assert_receive :row_held, 5_000
+
+    save =
+      Task.async(fn ->
+        unboxed(fn ->
+          Entities.update_entity(ctx.entity, %{
+            settings: %{"public_form_title" => "New title"}
+          })
+        end)
+      end)
+
+    await_blocked_writer()
+    send(submission.pid, :commit)
+    assert {:ok, _} = Task.await(submission)
+    assert {:ok, updated} = Task.await(save)
+
+    stored = unboxed(fn -> Entities.get_entity!(ctx.entity.uuid).settings end)
+    assert stored["public_form_title"] == "New title"
+    assert stored["public_form_stats"]["total_submissions"] == 1
+    assert updated.settings == stored
+  end
 end

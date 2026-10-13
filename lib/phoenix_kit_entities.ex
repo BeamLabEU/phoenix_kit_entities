@@ -726,6 +726,10 @@ defmodule PhoenixKitEntities do
   @doc """
   Updates an entity.
 
+  Settings saves preserve the stored `public_form_stats` under a row lock,
+  including submissions counted while the save waits. Pass
+  `reset_public_form_stats: true` to clear those counters explicitly.
+
   ## Examples
 
       iex> PhoenixKitEntities.update_entity(entity, %{display_name: "Updated"})
@@ -737,18 +741,46 @@ defmodule PhoenixKitEntities do
   @spec update_entity(t(), map(), keyword()) ::
           {:ok, t()} | {:error, Ecto.Changeset.t() | :managed_blueprint | :locked_key}
   def update_entity(%__MODULE__{} = entity, attrs, opts \\ []) do
-    # Managed blueprints (another module's contract riding entities —
-    # e.g. catalogue attribute sets): the write path itself refuses
-    # identity renames and locked-key changes from anyone but the owner.
-    case Managed.validate_mutation(entity, attrs, opts) do
-      :ok ->
-        entity
-        |> changeset(attrs)
-        |> repo().update()
-        |> notify_entity_event(:updated, opts)
+    txn =
+      repo().transaction(fn ->
+        stored = lock_entity(entity.uuid) || entity
+        attrs = keep_stored_form_stats(attrs, stored, opts)
 
-      {:error, reason} ->
-        {:error, reason}
+        with :ok <- Managed.validate_mutation(stored, attrs, opts),
+             {:ok, updated} <- stored |> changeset(attrs) |> repo().update() do
+          updated
+        else
+          {:error, %Ecto.Changeset{} = changeset} -> repo().rollback({:invalid, changeset})
+          {:error, reason} -> repo().rollback({:refused, reason})
+        end
+      end)
+
+    case txn do
+      {:ok, updated} -> notify_entity_event({:ok, updated}, :updated, opts)
+      {:error, {:invalid, changeset}} -> notify_entity_event({:error, changeset}, :updated, opts)
+      {:error, {:refused, reason}} -> {:error, reason}
+    end
+  end
+
+  # Runtime counters belong to the stored row, rather than the caller's
+  # snapshot. Keep the read and settings write in the same transaction.
+  defp keep_stored_form_stats(attrs, stored, opts) do
+    key = if Map.has_key?(attrs, :settings), do: :settings, else: "settings"
+
+    case Map.fetch(attrs, key) do
+      {:ok, settings} when is_map(settings) or is_nil(settings) ->
+        stats = (stored.settings || %{})["public_form_stats"]
+        settings = Map.delete(settings || %{}, "public_form_stats")
+
+        settings =
+          if is_nil(stats) or Keyword.get(opts, :reset_public_form_stats, false),
+            do: settings,
+            else: Map.put(settings, "public_form_stats", stats)
+
+        Map.put(attrs, key, settings)
+
+      _ ->
+        attrs
     end
   end
 

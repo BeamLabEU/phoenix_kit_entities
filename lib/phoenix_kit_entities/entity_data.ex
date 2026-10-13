@@ -2476,21 +2476,45 @@ defmodule PhoenixKitEntities.EntityData do
   def restore_from_trash(entity_data, opts \\ [])
 
   def restore_from_trash(%__MODULE__{status: @soft_delete_status} = entity_data, opts) do
+    # Like trash, restore must check the stored row: a stale tab may hold
+    # an older stash, or the record may no longer be in the trash at all.
+    txn =
+      repo().transaction(fn ->
+        from(d in __MODULE__, where: d.uuid == ^entity_data.uuid, lock: "FOR UPDATE")
+        |> repo().one()
+        |> restore_stored_row()
+      end)
+
+    case txn do
+      {:ok, restored} ->
+        notify_data_event({:ok, restored}, :restored, opts)
+
+      {:error, :not_trashed} ->
+        {:error, :not_trashed}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        notify_data_event({:error, changeset}, :restored, opts)
+    end
+  end
+
+  def restore_from_trash(%__MODULE__{}, _opts), do: {:error, :not_trashed}
+
+  defp restore_stored_row(%__MODULE__{status: @soft_delete_status} = row) do
     prior_status =
-      case entity_data.metadata do
+      case row.metadata do
         %{"trashed_from_status" => s} when s in @restorable_statuses -> s
         _ -> "draft"
       end
 
-    metadata = (entity_data.metadata || %{}) |> Map.delete("trashed_from_status")
+    metadata = Map.delete(row.metadata || %{}, "trashed_from_status")
 
-    entity_data
-    |> status_only_changeset(prior_status, metadata)
-    |> repo().update()
-    |> notify_data_event(:restored, opts)
+    case row |> status_only_changeset(prior_status, metadata) |> repo().update() do
+      {:ok, restored} -> restored
+      {:error, changeset} -> repo().rollback(changeset)
+    end
   end
 
-  def restore_from_trash(%__MODULE__{}, _opts), do: {:error, :not_trashed}
+  defp restore_stored_row(_row), do: repo().rollback(:not_trashed)
 
   # Focused changeset for trash / restore — only touches `:status`,
   # `:metadata`, and `:date_updated`. Skips the full per-field validation

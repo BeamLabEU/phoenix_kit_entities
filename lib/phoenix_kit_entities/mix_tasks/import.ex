@@ -190,7 +190,7 @@ defmodule Mix.Tasks.PhoenixKitEntities.Import do
 
       :conflict ->
         Mix.shell().info(
-          "  [CHANGED] #{entity.name} (existing id: #{entity.definition.existing_id})"
+          "  [CHANGED] #{entity.name} (existing id: #{entity.definition.existing_uuid})"
         )
 
       :error ->
@@ -230,7 +230,7 @@ defmodule Mix.Tasks.PhoenixKitEntities.Import do
 
       :conflict ->
         Mix.shell().info(
-          "  [CHANGED] #{entity_name}/#{record.slug} (existing id: #{record.existing_id})"
+          "  [CHANGED] #{entity_name}/#{record.slug} (existing id: #{record.existing_uuid})"
         )
 
       :error ->

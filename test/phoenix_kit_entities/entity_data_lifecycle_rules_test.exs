@@ -66,6 +66,30 @@ defmodule PhoenixKitEntities.EntityDataLifecycleRulesTest do
   defp restore(:bulk, record), do: {1, _} = EntityData.bulk_restore_from_trash([record.uuid])
 
   describe "trash then restore" do
+    test "a stale restore cannot republish a record restored and archived meanwhile", ctx do
+      record = record!(ctx, %{status: "published"})
+      {:ok, stale} = EntityData.trash(record)
+      {:ok, restored} = EntityData.restore_from_trash(stale)
+      {:ok, _} = EntityData.update(restored, %{status: "archived"})
+
+      assert EntityData.restore_from_trash(stale) == {:error, :not_trashed}
+      assert EntityData.get!(record.uuid).status == "archived"
+    end
+
+    test "restore uses the latest stash and keeps metadata saved after the page opened", ctx do
+      record = record!(ctx, %{status: "published"})
+      {:ok, stale} = EntityData.trash(record)
+      {:ok, restored} = EntityData.restore_from_trash(stale)
+      {:ok, draft} = EntityData.update(restored, %{status: "draft"})
+      {:ok, trashed} = EntityData.trash(draft)
+      {:ok, _} = EntityData.update(trashed, %{metadata: Map.put(trashed.metadata, "note", "new")})
+
+      assert {:ok, restored} = EntityData.restore_from_trash(stale)
+      assert restored.status == "draft"
+      assert restored.metadata == %{"note" => "new"}
+      assert EntityData.get!(record.uuid).metadata == %{"note" => "new"}
+    end
+
     for status <- ~w(draft published archived),
         trash <- [:single, :bulk],
         restore <- [:single, :bulk] do

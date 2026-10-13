@@ -117,6 +117,42 @@ defmodule Mix.Tasks.PhoenixKitEntities.ExportTest do
                exported("export_task_widget")["data"]
     end
 
+    test "--with-data exports portable relation targets and links", ctx do
+      target_entity = Entities.get_entity_by_name("export_task_gadget")
+
+      {:ok, target} =
+        EntityData.create(%{
+          entity_uuid: target_entity.uuid,
+          title: "Linked gadget",
+          slug: "linked-gadget",
+          created_by_uuid: ctx.actor_uuid
+        })
+
+      relation = %{
+        "type" => "relation",
+        "key" => "gadget",
+        "label" => "Gadget",
+        "target_entity" => target_entity.uuid
+      }
+
+      {:ok, _} =
+        Entities.update_entity(ctx.entity, %{
+          fields_definition: ctx.entity.fields_definition ++ [relation]
+        })
+
+      record = EntityData.get_by_slug(ctx.entity.uuid, "alpha")
+      {:ok, _} = EntityData.update(record, %{data: Map.put(record.data, "gadget", target.uuid)})
+
+      Export.run(["--with-data"])
+
+      content = exported("export_task_widget")
+
+      assert List.last(content["definition"]["fields_definition"])["target_entity"] ==
+               target_entity.name
+
+      assert hd(content["data"])["data"]["gadget"] == %{"slug" => "linked-gadget"}
+    end
+
     test "--no-data leaves records out although the setting is on" do
       Settings.update_setting("entities_mirror_data_enabled", "true")
 

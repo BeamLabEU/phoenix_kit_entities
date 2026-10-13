@@ -18,8 +18,6 @@ defmodule PhoenixKitEntities.Controllers.EntityFormControllerTest do
   alias PhoenixKitEntities.EntityData
   alias PhoenixKitEntities.FormBuilder
 
-  @endpoint PhoenixKitEntities.Test.Endpoint
-
   setup do
     # A real admin row, not a bare `Ecto.UUID.generate()`. The public form is
     # unauthenticated, so `EntityData.create/2` auto-fills the creator from the
@@ -74,15 +72,6 @@ defmodule PhoenixKitEntities.Controllers.EntityFormControllerTest do
       nil -> conn
       val -> Plug.Conn.put_req_header(conn, "x-forwarded-for", val)
     end
-  end
-
-  defp invoke_submit(conn, params) do
-    conn
-    |> Phoenix.ConnTest.put_format("html")
-    |> Phoenix.ConnTest.bypass_through(PhoenixKitEntities.Test.Router, [:browser])
-    |> tap(fn _c -> :ok end)
-    |> Plug.Conn.fetch_query_params()
-    |> EntityFormController.submit(params)
   end
 
   defp simple_invoke(conn, params) do

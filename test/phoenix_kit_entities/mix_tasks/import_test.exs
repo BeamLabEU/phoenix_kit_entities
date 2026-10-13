@@ -121,6 +121,23 @@ defmodule Mix.Tasks.PhoenixKitEntities.ImportTest do
   }
 
   describe "run/1 against the configured directory" do
+    test "dry-run reports conflicts using existing record uuids" do
+      Import.run(["-y", "-q"])
+      rewrite_widget(@changed)
+
+      Import.run(["--dry-run"])
+
+      assert Enum.any?(
+               info_lines(),
+               &String.contains?(&1, "[CHANGED] import_task_widget (existing id:")
+             )
+
+      assert Enum.any?(
+               info_lines(),
+               &String.contains?(&1, "[CHANGED] import_task_widget/alpha (existing id:")
+             )
+    end
+
     test "without -y it asks first, and 'no' imports nothing" do
       send(self(), {:mix_shell_input, :yes?, false})
 
