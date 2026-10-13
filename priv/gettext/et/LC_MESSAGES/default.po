@@ -3038,3 +3038,18 @@ msgstr "seose väli '%{key}' vajab sihtüksust (target_entity)"
 #, elixir-autogen, elixir-format
 msgid "relation fields are turned off (entities_allow_relations); cannot add '%{key}'"
 msgstr "seose väljad on välja lülitatud (entities_allow_relations); välja '%{key}' ei saa lisada"
+
+#: lib/phoenix_kit_entities/web/data_show.ex
+#, elixir-autogen, elixir-format
+msgid "Back"
+msgstr "Tagasi"
+
+#: lib/phoenix_kit_entities/web/data_show.ex
+#, elixir-autogen, elixir-format
+msgid "Record of the %{entity} entity"
+msgstr "Olemi „%{entity}“ kirje"
+
+#: lib/phoenix_kit_entities/web/data_show.ex
+#, elixir-autogen, elixir-format
+msgid "Video attached"
+msgstr "Video on lisatud"

@@ -33,7 +33,7 @@ defmodule PhoenixKitEntities.Test.Router do
       live("/:id/edit", EntityForm, :edit, as: :entity_edit)
       live("/:entity_slug/data", DataNavigator, :entity, as: :data_navigator)
       live("/:entity_slug/data/new", DataForm, :new, as: :data_new)
-      live("/:entity_slug/data/:uuid", DataForm, :show, as: :data_show)
+      live("/:entity_slug/data/:uuid", DataShow, :show, as: :data_show)
       live("/:entity_slug/data/:uuid/edit", DataForm, :edit, as: :data_edit)
     end
   end

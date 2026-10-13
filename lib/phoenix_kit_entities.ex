@@ -99,6 +99,7 @@ defmodule PhoenixKitEntities do
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKit.Utils.Date, as: UtilsDate
   alias PhoenixKit.Utils.Multilang
+  alias PhoenixKit.Utils.Routes
   alias PhoenixKit.Utils.UUID, as: UUIDUtils
   alias PhoenixKitEntities.EntityData
   alias PhoenixKitEntities.Events
@@ -1231,6 +1232,62 @@ defmodule PhoenixKitEntities do
   catch
     :exit, _ -> 0
   end
+
+  # ============================================================================
+  # Admin paths for hosts
+  # ============================================================================
+
+  @doc """
+  Path of a record's admin editor: `/admin/entities/<name>/data/<uuid>/edit`,
+  built through `PhoenixKit.Utils.Routes.path/2` so a mount prefix, locale
+  segment or renamed admin path still resolve.
+
+  `entity_or_slug` is an `%Entity{}` or the entity name; `record_or_uuid` is an
+  `%EntityData{}` or the record uuid. Options are passed to `Routes.path/2`
+  (`:locale`).
+
+  Raises `ArgumentError` when the name is not a valid entity name or the id is
+  not a uuid, so nothing a caller passes can add path segments.
+
+  A host page that renders a record offers admins an "Edit" entry in the avatar
+  menu with core's `PhoenixKitWeb.AdminEditHelper`. The `"entities"` permission
+  is this module's `permission_metadata/0` key; the helper shows the link only
+  to a scope that holds it:
+
+      PhoenixKitWeb.AdminEditHelper.assign_admin_edit(
+        socket,
+        PhoenixKitEntities.admin_edit_path(entity, record),
+        permission: "entities"
+      )
+
+  """
+  @spec admin_edit_path(t() | String.t(), EntityData.t() | String.t(), keyword()) :: String.t()
+  def admin_edit_path(entity_or_slug, record_or_uuid, opts \\ []) do
+    slug = entity_slug!(entity_or_slug)
+    uuid = record_uuid!(record_or_uuid)
+
+    Routes.path("/admin/entities/#{slug}/data/#{uuid}/edit", opts)
+  end
+
+  defp entity_slug!(%__MODULE__{name: name}), do: entity_slug!(name)
+
+  defp entity_slug!(name) when is_binary(name) do
+    if Regex.match?(~r/\A[a-z][a-z0-9_]*\z/, name),
+      do: name,
+      else: raise(ArgumentError, "not an entity name: #{inspect(name)}")
+  end
+
+  defp entity_slug!(other), do: raise(ArgumentError, "not an entity name: #{inspect(other)}")
+
+  defp record_uuid!(%EntityData{uuid: uuid}), do: record_uuid!(uuid)
+
+  defp record_uuid!(uuid) when is_binary(uuid) do
+    if UUIDUtils.valid?(uuid),
+      do: uuid,
+      else: raise(ArgumentError, "not a record uuid: #{inspect(uuid)}")
+  end
+
+  defp record_uuid!(other), do: raise(ArgumentError, "not a record uuid: #{inspect(other)}")
 
   # ============================================================================
   # Module Behaviour Callbacks

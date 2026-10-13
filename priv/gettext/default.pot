@@ -3038,3 +3038,18 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "relation fields are turned off (entities_allow_relations); cannot add '%{key}'"
 msgstr ""
+
+#: lib/phoenix_kit_entities/web/data_show.ex
+#, elixir-autogen, elixir-format
+msgid "Back"
+msgstr ""
+
+#: lib/phoenix_kit_entities/web/data_show.ex
+#, elixir-autogen, elixir-format
+msgid "Record of the %{entity} entity"
+msgstr ""
+
+#: lib/phoenix_kit_entities/web/data_show.ex
+#, elixir-autogen, elixir-format
+msgid "Video attached"
+msgstr ""
