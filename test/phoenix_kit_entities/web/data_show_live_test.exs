@@ -396,6 +396,88 @@ defmodule PhoenixKitEntities.Web.DataShowLiveTest do
     end
   end
 
+  describe "choice fields and blueprint changes" do
+    setup %{actor_uuid: actor_uuid} do
+      {:ok, entity} =
+        Entities.create_entity(
+          %{
+            name: "ds_choice",
+            display_name: "DS Choice",
+            display_name_plural: "DS Choices",
+            fields_definition: [
+              %{
+                "type" => "select",
+                "key" => "size",
+                "label" => "Size",
+                "options" => ["small", "large"],
+                "translations" => %{"es" => %{"options" => %{"small" => "pequeño"}}}
+              },
+              %{
+                "type" => "checkbox",
+                "key" => "tags",
+                "label" => "Tags",
+                "options" => ["a", "b", "c"]
+              },
+              %{"type" => "radio", "key" => "tone", "label" => "Tone", "options" => ["x", "y"]}
+            ],
+            status: "published",
+            created_by_uuid: actor_uuid
+          },
+          actor_uuid: actor_uuid
+        )
+
+      {:ok, record} =
+        EntityData.create(
+          %{
+            entity_uuid: entity.uuid,
+            title: "Choosy",
+            slug: "choosy",
+            status: "published",
+            data: %{"size" => "small", "tags" => ["a", "c"], "tone" => ""},
+            created_by_uuid: actor_uuid
+          },
+          actor_uuid: actor_uuid
+        )
+
+      {:ok, choice_entity: entity, choice_record: record}
+    end
+
+    test "select, radio and checkbox values read as their option labels",
+         %{conn: conn, choice_entity: entity, choice_record: record} = ctx do
+      {:ok, view, _html} = live(admin_conn(conn, ctx), show_url(entity, record))
+
+      assert has_element?(view, ~s|[data-field="size"]|, "small")
+      assert has_element?(view, ~s|[data-field="tags"]|, "a, c")
+      # an empty radio is a dash, not a blank cell
+      assert has_element?(view, ~s|[data-field="tone"]|, "—")
+    end
+
+    test "a schema change elsewhere refreshes the labels",
+         %{conn: conn, choice_entity: entity, choice_record: record} = ctx do
+      {:ok, view, _html} = live(admin_conn(conn, ctx), show_url(entity, record))
+      refute render(view) =~ "Dimension"
+
+      fields =
+        Enum.map(entity.fields_definition, fn
+          %{"key" => "size"} = f -> Map.put(f, "label", "Dimension")
+          f -> f
+        end)
+
+      {:ok, _} = Entities.update_entity(entity, %{fields_definition: fields})
+
+      assert render(view) =~ "Dimension"
+    end
+
+    test "deleting the entity elsewhere sends the viewer to the entities list",
+         %{conn: conn, choice_entity: entity, choice_record: record} = ctx do
+      {:ok, view, _html} = live(admin_conn(conn, ctx), show_url(entity, record))
+
+      send(view.pid, {:entity_deleted, entity.uuid})
+
+      assert_redirect(view, Routes.path("/admin/entities"))
+    end
+  end
+
   describe "route and gate" do
     test "the view URL is the read-only page in both route blocks, not the edit form" do
       source = routes_source()

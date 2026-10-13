@@ -126,7 +126,10 @@ defmodule PhoenixKitEntities.Web.EntityFormLiveTest do
       # The LV pushes navigate to /admin/entities under the configured
       # locale (or the referrer if one was captured at mount — none
       # here so it falls back to the list path).
-      assert_redirected(view, "/phoenix_kit/en-US/admin/entities")
+      # Core drops the locale segment for the primary language, so only the
+      # tail is stable across language setups.
+      {path, _flash} = assert_redirect(view)
+      assert path =~ ~r{/phoenix_kit/(?:[\w-]+/)?admin/entities\z}
     end
 
     test "plain Update keeps you on the edit page", %{conn: conn} = ctx do

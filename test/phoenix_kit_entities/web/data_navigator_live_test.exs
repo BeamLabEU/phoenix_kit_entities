@@ -238,7 +238,7 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
     # navigator with one already in scope.
 
     defp pk_navigator_url(entity, opts \\ []) do
-      base = "/phoenix_kit/en/admin/entities/#{entity.name}/data"
+      base = "/phoenix_kit/admin/entities/#{entity.name}/data"
 
       case Keyword.get(opts, :status) do
         nil -> base
@@ -279,7 +279,7 @@ defmodule PhoenixKitEntities.Web.DataNavigatorLiveTest do
 
       result = render_hook(view, "filter_by_entity", %{"entity_uuid" => ""})
       # The handler responds with a redirect; the test rendering
-      # succeeds because the target `/phoenix_kit/en/admin/entities`
+      # succeeds because the target `/phoenix_kit/admin/entities`
       # IS in our test router.
       assert is_binary(result) or match?({:error, _}, result)
     end

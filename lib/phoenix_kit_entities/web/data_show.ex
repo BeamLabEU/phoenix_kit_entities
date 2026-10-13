@@ -52,8 +52,11 @@ defmodule PhoenixKitEntities.Web.DataShow do
          gettext("Record of the %{entity} entity", entity: entity.display_name)
        )
        |> assign(:page_section, gettext("Entities"))
-       |> assign(:page_section_path, Routes.path("/admin/entities"))
-       |> assign(:page_crumbs, crumbs(entity, record))
+       |> assign(
+         :page_section_path,
+         Routes.path("/admin/entities", locale: socket.assigns.current_locale_base)
+       )
+       |> assign(:page_crumbs, crumbs(entity, record, socket.assigns.current_locale_base))
        |> assign(:entity, entity)
        |> assign_record(record)}
     else
@@ -72,7 +75,10 @@ defmodule PhoenixKitEntities.Web.DataShow do
           {:noreply,
            socket
            |> assign(:page_title, record.title)
-           |> assign(:page_crumbs, crumbs(socket.assigns.entity, record))
+           |> assign(
+             :page_crumbs,
+             crumbs(socket.assigns.entity, record, socket.assigns.current_locale_base)
+           )
            |> assign_record(record)}
       end
     else
@@ -85,7 +91,44 @@ defmodule PhoenixKitEntities.Web.DataShow do
       {:noreply,
        socket
        |> put_flash(:error, gettext("This record was removed in another session."))
-       |> push_navigate(to: back_path(socket.assigns.entity))}
+       |> push_navigate(to: back_path(socket.assigns.entity, socket.assigns.current_locale_base))}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # The blueprint changed: re-read it so the labels, option translations and
+  # field list match, and re-resolve the relation labels against the record.
+  def handle_info({:entity_updated, entity_uuid}, socket) do
+    if entity_uuid == socket.assigns.entity.uuid do
+      case Entities.get_entity(entity_uuid, lang: socket.assigns.current_locale) do
+        nil ->
+          {:noreply, socket}
+
+        entity ->
+          socket = assign(socket, :entity, entity)
+
+          {:noreply,
+           socket
+           |> assign(
+             :page_crumbs,
+             crumbs(entity, socket.assigns.record, socket.assigns.current_locale_base)
+           )
+           |> assign_record(socket.assigns.record)}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info({:entity_deleted, entity_uuid}, socket) do
+    if entity_uuid == socket.assigns.entity.uuid do
+      {:noreply,
+       socket
+       |> put_flash(:error, gettext("Entity was deleted in another session."))
+       |> push_navigate(
+         to: Routes.path("/admin/entities", locale: socket.assigns.current_locale_base)
+       )}
     else
       {:noreply, socket}
     end
@@ -113,17 +156,18 @@ defmodule PhoenixKitEntities.Web.DataShow do
     )
   end
 
-  defp crumbs(entity, record) do
+  defp crumbs(entity, record, locale) do
     [
       %{
         label: entity.display_name_plural || entity.display_name,
-        path: back_path(entity)
+        path: back_path(entity, locale)
       },
       %{label: record.title}
     ]
   end
 
-  defp back_path(entity), do: Routes.path("/admin/entities/#{entity.name}/data")
+  defp back_path(entity, locale),
+    do: Routes.path("/admin/entities/#{entity.name}/data", locale: locale)
 
   defp assign_record(socket, record) do
     entity = socket.assigns.entity
@@ -201,7 +245,7 @@ defmodule PhoenixKitEntities.Web.DataShow do
           <code :if={@record.slug} class="text-xs text-base-content/60">{@record.slug}</code>
         </div>
         <div class="flex gap-2">
-          <.link id="data-show-back" navigate={back_path(@entity)} class="btn btn-ghost">
+          <.link id="data-show-back" navigate={back_path(@entity, @current_locale_base)} class="btn btn-ghost">
             <.icon name="hero-arrow-left" class="w-4 h-4" /> {gettext("Back")}
           </.link>
           <.link
@@ -236,6 +280,7 @@ defmodule PhoenixKitEntities.Web.DataShow do
                     field={field}
                     value={(@record.data || %{})[field["key"]]}
                     link_labels={@link_labels}
+                    locale={@current_locale}
                   />
                 </dd>
               </div>
@@ -259,6 +304,7 @@ defmodule PhoenixKitEntities.Web.DataShow do
   attr(:field, :map, required: true)
   attr(:value, :any, default: nil)
   attr(:link_labels, :map, default: %{})
+  attr(:locale, :string, default: nil)
 
   defp field_value(%{field: %{"type" => "boolean"}, value: value} = assigns)
        when not is_nil(value) do
@@ -282,6 +328,22 @@ defmodule PhoenixKitEntities.Web.DataShow do
 
     ~H"""
     <div class="prose prose-sm max-w-none">{Phoenix.HTML.raw(@html)}</div>
+    """
+  end
+
+  defp field_value(%{field: %{"type" => type}} = assigns)
+       when type in ["select", "radio", "checkbox"] do
+    labels =
+      assigns.value
+      |> List.wrap()
+      |> Enum.filter(&(is_binary(&1) and &1 != ""))
+      |> Enum.map(&FormBuilder.translated_option_label(assigns.field, &1, assigns.locale))
+
+    assigns = assign(assigns, :labels, labels)
+
+    ~H"""
+    <span :if={@labels != []}>{Enum.join(@labels, ", ")}</span>
+    <span :if={@labels == []} class="text-base-content/40">—</span>
     """
   end
 
@@ -309,7 +371,7 @@ defmodule PhoenixKitEntities.Web.DataShow do
     <img
       :if={@media?}
       src={URLSigner.signed_url(@value, "thumbnail")}
-      alt={@field["label"]}
+      alt={field_label(@field, @locale)}
       class="w-24 h-24 object-cover rounded border border-base-content/10"
     />
     <span :if={not @media?} class="text-base-content/40">—</span>
