@@ -452,6 +452,7 @@ All defined in `Events`, broadcast via `PhoenixKit.PubSub.Manager`.
 | `entities_max_per_user` | integer | Entities one user may create (default 100) |
 | `entities_allow_relations` | boolean | Whether NEW relation fields may be added (default true); existing ones keep working. No settings UI |
 | `entities_file_upload` | boolean | File/image field uploads enabled (default false) |
+| `entities_settings_backfilled` | string | `"true"` once `migrate_legacy/0` has granted `entities.settings` to the roles holding `entities` |
 | `entities_mirror_path` | string | Base directory for filesystem mirroring (default `priv/entities` under the host) |
 | `sitemap_entities_pattern` | string | Global URL pattern when no per-entity one is set, e.g. `/:entity_name/:slug` |
 | `sitemap_entity_<name>_pattern` | string | Per-entity URL pattern override |
@@ -460,10 +461,20 @@ All defined in `Events`, broadcast via `PhoenixKit.PubSub.Manager`.
 
 ### Permissions
 
-One permission key, `"entities"` (no sub-permissions), declared by
-`permission_metadata/0` and carried by every tab; checked with
-`Scope.has_module_access?/2`. Its label renders translated in the permissions
-matrix via `gettext_backend: PhoenixKitEntities.Gettext`.
+`"entities"`, declared by `permission_metadata/0`, is carried by every admin
+tab and checked with `Scope.has_module_access?/2`. One sub-permission,
+`"entities.settings"` (`PhoenixKitEntities.settings_permission/0`), gates the
+settings page — system switch, mirror toggles, export, and an import that
+overwrites definitions and data. The settings tab carries it with
+`live_view: {Web.EntitiesSettings, :index}` (the tab is the page's route, so
+`Routes` must not register that path too), and `Web.EntitiesSettings` checks
+it with `Scope.can?/2` at mount and on every event. `can?/2` honours a sub-key
+only while the module is enabled, as core's admin gate does for the whole
+page, so the page cannot switch a disabled system back on. `migrate_legacy/0`
+grants it once to every role holding `entities`, flagged by
+`entities_settings_backfilled` (set only after every grant succeeded). Labels
+render translated in the permissions matrix via
+`gettext_backend: PhoenixKitEntities.Gettext`.
 
 ## Database & migrations
 

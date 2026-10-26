@@ -89,6 +89,8 @@ defmodule PhoenixKitEntities do
   use PhoenixKit.Module
   use Gettext, backend: PhoenixKitEntities.Gettext
 
+  require Logger
+
   import Ecto.Changeset
   import Ecto.Query, warn: false
 
@@ -1361,8 +1363,81 @@ defmodule PhoenixKitEntities do
       # Renders the label translated in the admin permissions matrix, the
       # same way the sidebar tabs below translate theirs.
       gettext_backend: PhoenixKitEntities.Gettext,
-      gettext_domain: "default"
+      gettext_domain: "default",
+      sub_permissions: [
+        # The settings page switches the system and every entity's mirror,
+        # exports, and imports files that overwrite definitions and data —
+        # more than the everyday key should carry. `migrate_legacy/0` grants
+        # it once to every role that held the base key before it existed.
+        %{
+          key: "settings",
+          label: gettext_noop("Change Entities settings"),
+          description:
+            gettext_noop(
+              "Switch the entities system and mirroring, export, and import files that overwrite definitions and data"
+            )
+        }
+      ]
     }
+  end
+
+  @doc """
+  The composed key of the settings sub-permission, for `Scope.can?/2`.
+  Gates `Web.EntitiesSettings` at mount and on every event.
+  """
+  @spec settings_permission() :: String.t()
+  def settings_permission, do: module_key() <> ".settings"
+
+  # Set once `entities.settings` has been carried to the roles that held the
+  # base key before it existed, so it never runs again and an Owner's revoke
+  # sticks.
+  @settings_backfill_key "entities_settings_backfilled"
+
+  @impl PhoenixKit.Module
+  @doc """
+  One-time data repairs core runs at boot. Grants `entities.settings` once
+  to every role that already holds `entities`, so nobody loses the settings
+  page they could reach before the key was split out; a role created or
+  granted `entities` later gets the narrow meaning. The flag is set only
+  after every grant succeeded, so a failed pass retries next boot.
+  """
+  def migrate_legacy do
+    if Settings.get_setting(@settings_backfill_key) == "true" do
+      {:ok, %{settings_backfill: :already_backfilled}}
+    else
+      backfill_settings_permission()
+    end
+  rescue
+    e ->
+      Logger.warning(
+        "[Entities] settings permission backfill raised: exception=#{inspect(e.__struct__)}"
+      )
+
+      {:error, :backfill_failed}
+  end
+
+  defp backfill_settings_permission do
+    alias PhoenixKit.Users.{Permissions, Roles}
+
+    key = settings_permission()
+
+    results =
+      for role <- Roles.list_roles(),
+          granted = Permissions.get_permissions_for_role(role.uuid),
+          module_key() in granted,
+          key not in granted do
+        Permissions.grant_permission(role.uuid, key, nil)
+      end
+
+    with true <- Enum.all?(results, &match?({:ok, _}, &1)),
+         {:ok, _} <-
+           Settings.update_setting_with_module(@settings_backfill_key, "true", module_key()) do
+      {:ok, %{settings_backfill: :backfilled}}
+    else
+      _ ->
+        Logger.warning("[Entities] settings permission backfill incomplete; retrying next boot")
+        {:error, :grant_failed}
+    end
   end
 
   # Project-extension catalog entry for the `phoenix_kit_projects` hub —
@@ -1559,8 +1634,11 @@ defmodule PhoenixKitEntities do
         priority: 935,
         level: :admin,
         parent: :admin_settings,
-        permission: "entities",
+        permission: settings_permission(),
         match: :prefix,
+        # Naming the view lets core's admin gate resolve the page to the
+        # sub-key; the tab is also the page's route.
+        live_view: {PhoenixKitEntities.Web.EntitiesSettings, :index},
         gettext_backend: PhoenixKitEntities.Gettext,
         gettext_domain: "default"
       )
