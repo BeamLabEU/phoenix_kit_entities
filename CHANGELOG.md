@@ -29,6 +29,12 @@
     them on a later save, and a reset already done is not repeated by a tab
     opened afterwards.
 
+## Unreleased
+
+### Added
+
+- **The module now tells core's orphan-file check which of its rows point at a stored file** (`file_references/0`, in `FileReferences`): `phoenix_kit_entity_data`. The SQL moved here verbatim from core's `PhoenixKit.Modules.Storage`; a test compares it with core's own copy. Core reads the callback from the first release after 2.64.1; before that, core's own list stays in force. No migration, no change in what counts as an orphan.
+
 ## 0.6.0 - 2026-10-13
 
 ### Added
