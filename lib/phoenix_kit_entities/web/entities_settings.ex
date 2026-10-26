@@ -9,7 +9,10 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
   sent to the entities list at mount, and every event re-checks the live
   scope, because a hidden page does not stop a crafted event. The check is
   `PhoenixKitEntities.can_manage_settings?/1` (held, not `Scope.can?/2`), so
-  a settings holder can switch a disabled system back on here.
+  the Enable switch keeps working on a page that was open when the system
+  was switched off. A fresh visit to a disabled module's page is refused by
+  core's admin gate before `mount/3`; re-enabling then goes through core's
+  Modules page.
   """
 
   use PhoenixKitWeb, :live_view

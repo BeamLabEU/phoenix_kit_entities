@@ -1393,10 +1393,12 @@ defmodule PhoenixKitEntities do
   Whether `scope` may use the settings page and the entity form's mirror
   and export controls (`entities.settings`).
 
-  Not `Scope.can?/2`: that also requires the module to be ENABLED, and the
-  settings page holds the module's on/off switch, so a disabled module could
-  never be switched back on from it. Held means held directly (or through
-  the `"*"` wildcard) together with its base key.
+  Not `Scope.can?/2`: that also requires the module to be ENABLED, so a
+  settings page that was open when the system was switched off could not
+  switch it back on. (A fresh visit to a disabled module's page is refused
+  by core's admin gate before mount; re-enabling then goes through core's
+  Modules page.) Held means held directly (or through the `"*"` wildcard)
+  together with its base key.
   """
   @spec can_manage_settings?(term()) :: boolean()
   def can_manage_settings?(%Auth.Scope{} = scope) do

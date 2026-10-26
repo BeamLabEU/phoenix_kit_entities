@@ -54,8 +54,11 @@ defmodule PhoenixKitEntities.Web.EntitiesSettingsLiveTest do
     end
 
     # The check is "held", not `Scope.can?/2` (which refuses every sub-key
-    # while the module is off), so the page can switch the system back on.
-    test "enable_entities toggles the setting + logs module.entities.enabled",
+    # while the module is off), so the switch works on an already-open page.
+    # This mount goes through Test.Hooks, not core's admin gate: in a real
+    # host a FRESH visit to a disabled module's page is refused before
+    # mount, and re-enabling goes through core's Modules page.
+    test "enable_entities on an open page re-enables a disabled system + logs it",
          %{conn: conn} = ctx do
       {:ok, _} = Entities.disable_system(actor_uuid: ctx.actor_uuid)
 

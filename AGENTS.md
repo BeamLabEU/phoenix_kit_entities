@@ -472,8 +472,11 @@ mount and on every event, and `Web.EntityForm` gates its backup toggles and
 "Export Now" (the same mirror writes and export) on it too, hiding them and
 re-checking each event. Both use `PhoenixKitEntities.can_manage_settings?/1`
 (base and sub-key held, through `Scope.has_module_access?/2`), never
-`Scope.can?/2`, which refuses every sub-key while the module is off and would
-leave the page unable to switch a disabled system back on. `migrate_legacy/0`
+`Scope.can?/2`, which refuses every sub-key while the module is off: on a page
+already open when the system is switched off, the Enable switch still works.
+A fresh visit to a disabled module's settings page is refused by core's admin
+gate before `mount/3`, so re-enabling a disabled module goes through core's
+Modules page. `migrate_legacy/0`
 grants it once to every role holding `entities`, flagged by
 `entities_settings_backfilled`; it reads grants with its own query that raises
 (`roles_lacking/2`), never core's `get_permissions_for_role/1`, which rescues
