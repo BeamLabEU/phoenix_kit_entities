@@ -7,7 +7,9 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
   not the everyday `entities` key: import overwrites definitions and data,
   and export and the mirror switches write files. A viewer without it is
   sent to the entities list at mount, and every event re-checks the live
-  scope, because a hidden page does not stop a crafted event.
+  scope, because a hidden page does not stop a crafted event. The check is
+  `PhoenixKitEntities.can_manage_settings?/1` (held, not `Scope.can?/2`), so
+  a settings holder can switch a disabled system back on here.
   """
 
   use PhoenixKitWeb, :live_view
@@ -20,7 +22,6 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
   require Logger
 
   alias PhoenixKit.Settings
-  alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKit.Utils.Routes
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.EntityData
@@ -105,8 +106,10 @@ defmodule PhoenixKitEntities.Web.EntitiesSettings do
     end
   end
 
+  # Held, not `can?/2`: the page holds the module's on/off switch, and
+  # `can?/2` refuses every sub-key while the module is off.
   defp can_manage_settings?(socket) do
-    Scope.can?(socket.assigns[:phoenix_kit_current_scope], Entities.settings_permission())
+    Entities.can_manage_settings?(socket.assigns[:phoenix_kit_current_scope])
   end
 
   defp refuse(socket) do

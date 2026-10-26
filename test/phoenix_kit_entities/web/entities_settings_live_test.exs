@@ -53,19 +53,34 @@ defmodule PhoenixKitEntities.Web.EntitiesSettingsLiveTest do
       assert render(view) =~ "disabled successfully"
     end
 
-    # `entities.settings` is a sub-key, and `Scope.can?/2` honours one only
-    # while its module is on — the same rule core's admin gate applies to the
-    # whole page. So the page cannot switch a disabled system back on; that is
-    # the Modules page's job.
-    test "enable_entities is refused while the system is off", %{conn: conn} = ctx do
-      conn = put_test_scope(conn, settings_scope(user_uuid: ctx.actor_uuid))
+    # The check is "held", not `Scope.can?/2` (which refuses every sub-key
+    # while the module is off), so the page can switch the system back on.
+    test "enable_entities toggles the setting + logs module.entities.enabled",
+         %{conn: conn} = ctx do
+      {:ok, _} = Entities.disable_system(actor_uuid: ctx.actor_uuid)
+
+      conn =
+        put_test_scope(
+          conn,
+          fake_scope(
+            user_uuid: ctx.actor_uuid,
+            permissions: ["entities", Entities.settings_permission()]
+          )
+        )
+
       {:ok, view, _html} = live(conn, "/en/admin/settings/entities")
 
-      {:ok, _} = Entities.disable_system(actor_uuid: ctx.actor_uuid)
-      render_hook(view, "enable_entities", %{})
+      view
+      |> element("button[phx-click='enable_entities']")
+      |> render_click()
 
-      assert_redirect(view, Routes.path("/admin/entities"))
-      refute Entities.enabled?()
+      assert_activity_logged("module.entities.enabled",
+        actor_uuid: ctx.actor_uuid,
+        metadata_has: %{"setting" => "entities_enabled"}
+      )
+
+      assert render(view) =~ "enabled successfully"
+      assert Entities.enabled?()
     end
 
     test "disable_entities button has phx-disable-with set", %{conn: conn} = ctx do

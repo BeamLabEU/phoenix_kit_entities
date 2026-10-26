@@ -99,6 +99,7 @@ defmodule PhoenixKitEntities do
   alias PhoenixKit.Settings
   alias PhoenixKit.Users.Auth
   alias PhoenixKit.Users.Auth.User
+  alias PhoenixKit.Users.RolePermission
   alias PhoenixKit.Utils.Date, as: UtilsDate
   alias PhoenixKit.Utils.Multilang
   alias PhoenixKit.Utils.Routes
@@ -1388,6 +1389,23 @@ defmodule PhoenixKitEntities do
   @spec settings_permission() :: String.t()
   def settings_permission, do: module_key() <> ".settings"
 
+  @doc """
+  Whether `scope` may use the settings page and the entity form's mirror
+  and export controls (`entities.settings`).
+
+  Not `Scope.can?/2`: that also requires the module to be ENABLED, and the
+  settings page holds the module's on/off switch, so a disabled module could
+  never be switched back on from it. Held means held directly (or through
+  the `"*"` wildcard) together with its base key.
+  """
+  @spec can_manage_settings?(term()) :: boolean()
+  def can_manage_settings?(%Auth.Scope{} = scope) do
+    Auth.Scope.has_module_access?(scope, module_key()) and
+      Auth.Scope.has_module_access?(scope, settings_permission())
+  end
+
+  def can_manage_settings?(_), do: false
+
   # Set once `entities.settings` has been carried to the roles that held the
   # base key before it existed, so it never runs again and an Owner's revoke
   # sticks.
@@ -1417,27 +1435,53 @@ defmodule PhoenixKitEntities do
   end
 
   defp backfill_settings_permission do
-    alias PhoenixKit.Users.{Permissions, Roles}
+    alias PhoenixKit.Users.Permissions
 
     key = settings_permission()
 
-    results =
-      for role <- Roles.list_roles(),
-          granted = Permissions.get_permissions_for_role(role.uuid),
-          module_key() in granted,
-          key not in granted do
-        Permissions.grant_permission(role.uuid, key, nil)
-      end
-
-    with true <- Enum.all?(results, &match?({:ok, _}, &1)),
+    with {:ok, role_uuids} <- roles_lacking(module_key(), key),
+         results = Enum.map(role_uuids, &Permissions.grant_permission(&1, key, nil)),
+         true <- Enum.all?(results, &match?({:ok, _}, &1)),
          {:ok, _} <-
            Settings.update_setting_with_module(@settings_backfill_key, "true", module_key()) do
       {:ok, %{settings_backfill: :backfilled}}
     else
+      {:error, :lookup_failed} = error ->
+        Logger.warning("[Entities] settings permission backfill could not read grants; retrying")
+        error
+
       _ ->
         Logger.warning("[Entities] settings permission backfill incomplete; retrying next boot")
         {:error, :grant_failed}
     end
+  end
+
+  # Roles holding `base` but not `key`, read with a query that RAISES on a
+  # database error. Core's `Permissions.get_permissions_for_role/1` rescues
+  # to `[]`, which would read as "nobody holds the base key" and set the
+  # flag for good.
+  @doc false
+  def roles_lacking(base, key) do
+    repo = PhoenixKit.RepoHelper.repo()
+
+    holders =
+      from(rp in RolePermission,
+        where: rp.module_key == ^base,
+        select: rp.role_uuid
+      )
+      |> repo.all()
+
+    have =
+      from(rp in RolePermission,
+        where: rp.module_key == ^key,
+        select: rp.role_uuid
+      )
+      |> repo.all()
+      |> MapSet.new()
+
+    {:ok, holders |> Enum.uniq() |> Enum.reject(&MapSet.member?(have, &1))}
+  rescue
+    _ -> {:error, :lookup_failed}
   end
 
   # Project-extension catalog entry for the `phoenix_kit_projects` hub —

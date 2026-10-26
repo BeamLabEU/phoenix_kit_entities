@@ -467,12 +467,17 @@ tab and checked with `Scope.has_module_access?/2`. One sub-permission,
 settings page — system switch, mirror toggles, export, and an import that
 overwrites definitions and data. The settings tab carries it with
 `live_view: {Web.EntitiesSettings, :index}` (the tab is the page's route, so
-`Routes` must not register that path too), and `Web.EntitiesSettings` checks
-it with `Scope.can?/2` at mount and on every event. `can?/2` honours a sub-key
-only while the module is enabled, as core's admin gate does for the whole
-page, so the page cannot switch a disabled system back on. `migrate_legacy/0`
+`Routes` must not register that path too). `Web.EntitiesSettings` checks it at
+mount and on every event, and `Web.EntityForm` gates its backup toggles and
+"Export Now" (the same mirror writes and export) on it too, hiding them and
+re-checking each event. Both use `PhoenixKitEntities.can_manage_settings?/1`
+(base and sub-key held, through `Scope.has_module_access?/2`), never
+`Scope.can?/2`, which refuses every sub-key while the module is off and would
+leave the page unable to switch a disabled system back on. `migrate_legacy/0`
 grants it once to every role holding `entities`, flagged by
-`entities_settings_backfilled` (set only after every grant succeeded). Labels
+`entities_settings_backfilled`; it reads grants with its own query that raises
+(`roles_lacking/2`), never core's `get_permissions_for_role/1`, which rescues
+to `[]` and would set the flag after a failed lookup. Labels
 render translated in the permissions matrix via
 `gettext_backend: PhoenixKitEntities.Gettext`.
 
