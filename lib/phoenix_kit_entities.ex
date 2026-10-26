@@ -1334,6 +1334,13 @@ defmodule PhoenixKitEntities do
   def migration_module, do: PhoenixKitEntities.Migrations
 
   @doc """
+  The manifest of this module's tables, for `mix phoenix_kit.repair` and
+  `mix phoenix_kit.doctor`; see `PhoenixKitEntities.ExpectedSchema`.
+  """
+  # No `@impl`, so this compiles against a core that lacks the callback.
+  def expected_schema, do: PhoenixKitEntities.ExpectedSchema
+
+  @doc """
   The places in this module's tables that point at a stored file; see
   `PhoenixKitEntities.FileReferences`.
   """
