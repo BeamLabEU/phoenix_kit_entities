@@ -29,7 +29,7 @@
     them on a later save, and a reset already done is not repeated by a tab
     opened afterwards.
 
-## 0.7.0 - 2026-11-13
+## 0.7.0 - 2026-10-27
 
 ### Changed
 
