@@ -320,8 +320,9 @@ Repo-local aliases:
   transaction aborts the whole run (Ecto nested-transaction semantics). The
   test sandbox turns nested transactions into savepoints and hides this, so
   a test passing is no proof. The internal `EntityData` options
-  (`relation_check: :defer`, `defer_notify: true`, `uuid:`) exist for the
-  importer only.
+  (`relation_check: :defer`, `uuid:`) exist for the importer only;
+  `defer_notify: true` is public (a caller writing inside its own
+  transaction runs `EntityData.notify_committed/2` after the commit).
 - **Rich-text field values are sanitized on the write path** through
   `PhoenixKit.Utils.HtmlSanitizer.sanitize_rich_text_fields/2` (per language
   too) — never store raw user HTML in the `data` JSONB.
