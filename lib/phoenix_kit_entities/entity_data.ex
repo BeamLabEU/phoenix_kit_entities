@@ -1723,9 +1723,9 @@ defmodule PhoenixKitEntities.EntityData do
       always announce at once.
 
   Inside a caller's transaction this function's own transaction is nested,
-  so a write that fails (`{:error, changeset}`) marks the caller's whole
-  transaction for rollback, even if the caller carries on: treat the error
-  as fatal for that transaction (`Repo.rollback/1`), as in the
+  so a write that fails inside it (`{:error, changeset}`) marks the caller's
+  whole transaction for rollback, even if the caller carries on: treat the
+  error as fatal for that transaction (`Repo.rollback/1`), as in the
   `notify_committed/2` example.
   """
   @spec create(map(), keyword()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
@@ -2186,7 +2186,10 @@ defmodule PhoenixKitEntities.EntityData do
       `CaseClauseError`.
     * `:defer_notify` — as for `create/2`: no broadcast or mirror export
       here; the caller runs `notify_committed(record, :updated)` after its
-      transaction commits. Works with `:require_status` too.
+      transaction commits. Works with `:require_status` too. A failed update
+      — `{:error, changeset}` or, with `:require_status`,
+      `{:error, :status_mismatch}` — marks the caller's whole transaction for
+      rollback, as described under `create/2`.
 
   ## Examples
 

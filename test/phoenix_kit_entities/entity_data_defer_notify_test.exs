@@ -12,8 +12,6 @@ defmodule PhoenixKitEntities.EntityDataDeferNotifyTest do
   alias PhoenixKitEntities.EntityData
   alias PhoenixKitEntities.Events
 
-  import PhoenixKitEntities.ActivityLogAssertions
-
   setup do
     actor_uuid = UUID.generate()
 
