@@ -150,7 +150,7 @@ Repo-local aliases:
   which stamps `module: "entities"` and hands the entry to core's
   `PhoenixKit.Activity`, which never raises, so a logging failure never crashes
   the mutation. Notification-side wiring lives in `notify_entity_event/2` and
-  `notify_data_event/2`, piped after every CRUD repo call so logging only fires
+  `notify_data_event/3`, piped after every CRUD repo call so logging only fires
   on `:ok` and an `:error` tuple flows through unchanged. Actions are
   `entity.{verb}` / `entity_data.{verb}` where verb is one of `created`,
   `updated`, `deleted`, `trashed`, `restored`, `reordered`,

@@ -1118,41 +1118,6 @@ defmodule PhoenixKitEntities.EntityData do
 
   defp notify_data_event(result, _event, _opts), do: result
 
-  @doc """
-  Announces a record written with `defer_notify: true`, once the caller's
-  transaction has committed: the `:data_created` or `:data_updated` broadcast
-  (`PhoenixKitEntities.Events`) and, when the entity mirrors its data, the
-  mirror export of the record — what `create/2` and `update/3` do themselves
-  without the option.
-
-  `event` is `:created` or `:updated`, after the write it follows. `nil` is
-  accepted and does nothing, for a caller whose write was optional.
-
-  ## Examples
-
-      Repo.transaction(fn ->
-        {:ok, record} = EntityData.create(attrs, defer_notify: true)
-        {:ok, _} = link_record_elsewhere(record)
-        record
-      end)
-      |> case do
-        {:ok, record} -> EntityData.notify_committed(record, :created)
-        {:error, _} = error -> error
-      end
-  """
-  @spec notify_committed(t() | nil, :created | :updated) :: :ok
-  def notify_committed(nil, _event), do: :ok
-
-  def notify_committed(%__MODULE__{} = entity_data, :created) do
-    Events.broadcast_data_created(entity_data.entity_uuid, entity_data.uuid)
-    maybe_mirror_data(entity_data)
-  end
-
-  def notify_committed(%__MODULE__{} = entity_data, :updated) do
-    Events.broadcast_data_updated(entity_data.entity_uuid, entity_data.uuid)
-    maybe_mirror_data(entity_data)
-  end
-
   # `opts[:activity_log]` defaults to `true`. Passing `false` skips the
   # activity-log entry for this update while leaving the PubSub
   # broadcast and mirror export (both above, in `notify_data_event/3`)
@@ -1745,13 +1710,23 @@ defmodule PhoenixKitEntities.EntityData do
   ## Options
 
     * `:actor_uuid` and `:activity_log` — as for `update/3`.
-    * `:defer_notify` — defaults to `false`. Pass `true` when the write runs
-      inside a transaction of the caller's own that has not committed yet:
-      the PubSub broadcast and the mirror export are then skipped here (a
+    * `:defer_notify` — a boolean, default `false`. Pass `true` when the write
+      runs inside a transaction of the caller's own that has not committed
+      yet: the PubSub broadcast and the mirror export are then skipped here (a
       listener reading the record before the commit would not find it, and a
       rolled-back record would still be announced), and the caller runs
-      `notify_committed/2` after the commit. The activity entry is written
-      either way. `update/3` takes it too.
+      `notify_committed/2` after the commit. The activity entry is still
+      written, on the caller's connection, so it commits or rolls back with
+      the caller's transaction (core announces the activity feed entry as it
+      is inserted). Honoured by `create/2`, `update/3` and `update_data/3`;
+      `trash/2`, `restore_from_trash/2`, `delete/2` and the bulk functions
+      always announce at once.
+
+  Inside a caller's transaction this function's own transaction is nested,
+  so a write that fails (`{:error, changeset}`) marks the caller's whole
+  transaction for rollback, even if the caller carries on: treat the error
+  as fatal for that transaction (`Repo.rollback/1`), as in the
+  `notify_committed/2` example.
   """
   @spec create(map(), keyword()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
   def create(attrs \\ %{}, opts \\ []) do
@@ -1773,6 +1748,50 @@ defmodule PhoenixKitEntities.EntityData do
       end
     end)
     |> notify_data_event(:created, opts)
+  end
+
+  @doc """
+  Announces a record written with `defer_notify: true`, once the caller's
+  transaction has committed: the `:data_created` or `:data_updated` broadcast
+  (`PhoenixKitEntities.Events`) and, when the entity mirrors its data, the
+  mirror export of the record — what `create/2` and `update/3` do themselves
+  without the option.
+
+  `event` is `:created` or `:updated`, after the write it follows; no other
+  event is accepted. `nil` is accepted and does nothing, for a caller whose
+  write was optional. Returns `:ok`.
+
+  ## Examples
+
+      # `Repo` is the host's own repo.
+      Repo.transaction(fn ->
+        with {:ok, record} <- EntityData.create(attrs, defer_notify: true),
+             {:ok, _link} <- link_record_elsewhere(record) do
+          record
+        else
+          {:error, reason} -> Repo.rollback(reason)
+        end
+      end)
+      |> case do
+        {:ok, record} ->
+          :ok = EntityData.notify_committed(record, :created)
+          {:ok, record}
+
+        {:error, _reason} = error ->
+          error
+      end
+  """
+  @spec notify_committed(t() | nil, :created | :updated) :: :ok
+  def notify_committed(nil, _event), do: :ok
+
+  def notify_committed(%__MODULE__{} = entity_data, :created) do
+    Events.broadcast_data_created(entity_data.entity_uuid, entity_data.uuid)
+    maybe_mirror_data(entity_data)
+  end
+
+  def notify_committed(%__MODULE__{} = entity_data, :updated) do
+    Events.broadcast_data_updated(entity_data.entity_uuid, entity_data.uuid)
+    maybe_mirror_data(entity_data)
   end
 
   # Auto-fill created_by_uuid with the first admin when the caller did not name
@@ -2167,7 +2186,7 @@ defmodule PhoenixKitEntities.EntityData do
       `CaseClauseError`.
     * `:defer_notify` — as for `create/2`: no broadcast or mirror export
       here; the caller runs `notify_committed(record, :updated)` after its
-      transaction commits.
+      transaction commits. Works with `:require_status` too.
 
   ## Examples
 
