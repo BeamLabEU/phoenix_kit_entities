@@ -88,11 +88,25 @@ defmodule PhoenixKitEntities.PublicFormTurnstileTest do
   defp info_flash(conn), do: Phoenix.Flash.get(conn.assigns.flash, :info)
 
   describe "PublicFormTurnstile settings helper" do
-    test "off unless the switch is exactly true" do
+    test "on for true and for the string a hand-edited or imported setting would hold" do
       refute PublicFormTurnstile.enabled?(nil)
       refute PublicFormTurnstile.enabled?(%{})
-      refute PublicFormTurnstile.enabled?(%{"public_form_turnstile" => "true"})
+      refute PublicFormTurnstile.enabled?(%{"public_form_turnstile" => false})
+      refute PublicFormTurnstile.enabled?(%{"public_form_turnstile" => "false"})
+      refute PublicFormTurnstile.enabled?(%{"public_form_turnstile" => 1})
       assert PublicFormTurnstile.enabled?(%{"public_form_turnstile" => true})
+      assert PublicFormTurnstile.enabled?(%{"public_form_turnstile" => "true"})
+    end
+
+    test "an upper-case UUID names the same connection", %{connection: connection} do
+      settings = %{
+        "public_form_turnstile" => true,
+        "public_form_turnstile_connection" => String.upcase(connection)
+      }
+
+      assert PublicFormTurnstile.connection(settings) == connection
+      assert PublicFormTurnstile.status(settings, [{connection, "Contact forms"}]) == :ready
+      assert PublicFormTurnstile.site_key(settings) == "0x4AAAA-site-key"
     end
 
     test "status names why a switched-on form is not protected", %{connection: connection} do
@@ -174,6 +188,30 @@ defmodule PhoenixKitEntities.PublicFormTurnstileTest do
       assert entity |> render_form() |> widget() |> Enum.empty?()
     end
 
+    test "the form carries the submit gate and its message while the widget is drawn", ctx do
+      document = ctx |> protected_entity() |> render_form()
+
+      assert [_] = LazyHTML.query(document, "form[data-turnstile-gate]") |> Enum.to_list()
+
+      assert [message] =
+               LazyHTML.query(document, "form [data-turnstile-gate-message]") |> Enum.to_list()
+
+      assert LazyHTML.attribute(message, "hidden") != []
+      assert LazyHTML.text(message) =~ "wait for the verification to finish"
+    end
+
+    test "the gate is absent without the widget", %{admin: admin} do
+      for settings <- [%{}, %{"public_form_turnstile" => true}] do
+        entity = create_entity(admin, settings)
+        document = render_form(entity)
+
+        assert document |> LazyHTML.query("form[data-turnstile-gate]") |> Enum.empty?()
+        assert document |> LazyHTML.query("[data-turnstile-gate-message]") |> Enum.empty?()
+
+        {:ok, _} = Entities.delete_entity(entity)
+      end
+    end
+
     test "is absent, and the form still renders, when the option is on without a usable connection",
          %{admin: admin} do
       for settings <- [
@@ -229,10 +267,11 @@ defmodule PhoenixKitEntities.PublicFormTurnstileTest do
 
       conn = submit(entity, :none)
 
-      assert error_flash(conn) =~ "complete the verification"
+      assert error_flash(conn) =~ "wait for the verification to finish"
       assert records(entity) == []
       refute_received {:siteverify, _}
-      assert %{"rejected_submissions" => 1, "turnstile_triggers" => 1} = stats(entity)
+      assert %{"rejected_submissions" => 1, "turnstile_missing_triggers" => 1} = stats(entity)
+      refute Map.has_key?(stats(entity), "turnstile_triggers")
     end
 
     test "a blank or crafted token counts as no token", ctx do
@@ -240,7 +279,7 @@ defmodule PhoenixKitEntities.PublicFormTurnstileTest do
 
       for token <- ["", "   ", %{"x" => "1"}, ["good-token"]] do
         conn = submit(entity, token)
-        assert error_flash(conn) =~ "complete the verification"
+        assert error_flash(conn) =~ "wait for the verification to finish"
       end
 
       assert records(entity) == []
@@ -255,6 +294,8 @@ defmodule PhoenixKitEntities.PublicFormTurnstileTest do
       assert error_flash(conn) =~ "complete the verification"
       assert records(entity) == []
       assert_received {:siteverify, %{"response" => "forged-token"}}
+      assert %{"turnstile_triggers" => 1} = stats(entity)
+      refute Map.has_key?(stats(entity), "turnstile_missing_triggers")
     end
 
     test "debug mode names the check", ctx do
@@ -376,32 +417,77 @@ defmodule PhoenixKitEntities.PublicFormTurnstileTest do
   end
 
   describe "when the option is on but the connection cannot verify" do
-    test "no connection selected: submissions go through, with a logged error", %{admin: admin} do
-      entity = create_entity(admin, %{"public_form_turnstile" => true})
+    defp assert_unchecked(entity, log) do
+      assert [%{status: "published", metadata: metadata}] = records(entity)
 
-      log =
-        capture_log(fn ->
-          conn = submit(entity, :none)
-          assert info_flash(conn)
-        end)
+      assert [%{"type" => "turnstile_unchecked", "action" => "save_log"}] =
+               metadata["security_warnings"]
 
-      assert [%{status: "published"}] = records(entity)
-      assert log =~ "was not checked"
+      assert %{"turnstile_unchecked_triggers" => 1, "successful_submissions" => 1} = stats(entity)
       refute_received {:siteverify, _}
+
+      # The log line says which form it was.
+      assert log =~ "was not checked"
+      assert log =~ entity.name
+      assert log =~ entity.uuid
     end
 
-    test "a connection that was removed: submissions go through, with a logged error", ctx do
+    defp submit_logged(entity, token \\ :none) do
+      capture_log(fn -> assert info_flash(submit(entity, token)) end)
+    end
+
+    test "no connection selected: the submission goes through, flagged and counted", %{
+      admin: admin
+    } do
+      entity = create_entity(admin, %{"public_form_turnstile" => true})
+
+      assert_unchecked(entity, submit_logged(entity))
+    end
+
+    test "a connection that was removed", ctx do
       entity = protected_entity(ctx)
       :ok = Integrations.remove_connection(ctx.connection)
 
-      log =
-        capture_log(fn ->
-          conn = submit(entity, :none)
-          assert info_flash(conn)
-        end)
+      assert_unchecked(entity, submit_logged(entity))
+    end
 
-      assert [_] = records(entity)
-      assert log =~ "was not checked"
+    test "a connection that exists but is no longer connected", ctx do
+      entity = protected_entity(ctx)
+      :ok = Integrations.record_validation(ctx.connection, {:error, "Cloudflare refused the key"})
+
+      refute ctx.connection in Enum.map(PublicFormTurnstile.choices(), &elem(&1, 0))
+      assert_unchecked(entity, submit_logged(entity))
+    end
+
+    test "a token is not looked at either", ctx do
+      entity = protected_entity(ctx)
+      :ok = Integrations.remove_connection(ctx.connection)
+
+      assert_unchecked(entity, submit_logged(entity, "forged-token"))
+    end
+
+    test "the flag does not hide another check's flag", ctx do
+      entity =
+        protected_entity(ctx, %{
+          "public_form_honeypot" => true,
+          "public_form_honeypot_action" => "save_suspicious"
+        })
+
+      :ok = Integrations.remove_connection(ctx.connection)
+      capture_log(fn -> submit(entity, :none, %{"_hp_website" => "filled"}) end)
+
+      assert [%{status: "draft", metadata: metadata}] = records(entity)
+      types = Enum.map(metadata["security_warnings"], & &1["type"])
+      assert Enum.sort(types) == ["honeypot", "turnstile_unchecked"]
+    end
+  end
+
+  describe "the option stored as a string" do
+    test "is on, and checks the token", ctx do
+      entity = protected_entity(ctx, %{"public_form_turnstile" => "true"})
+
+      assert error_flash(submit(entity, "forged-token"))
+      assert records(entity) == []
     end
   end
 end

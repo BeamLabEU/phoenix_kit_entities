@@ -187,7 +187,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
       |> assign(:page_section, gettext("Entities"))
       |> assign(:page_section_path, Routes.path("/admin/entities"))
       |> assign(:page_crumbs, entity_crumbs(entity))
-      |> assign(:turnstile_choices, PublicFormTurnstile.choices())
+      |> assign(:turnstile_choices, turnstile_choices(entity.settings))
       |> assign(:project_title, project_title)
       |> assign(:entity, entity)
       |> assign(:changeset, changeset)
@@ -816,6 +816,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
         socket
         |> assign(:entity, updated_entity)
         |> assign(:changeset, changeset)
+        |> refresh_turnstile_choices(setting_key, updated_settings)
 
       reply_with_broadcast(socket)
     else
@@ -823,25 +824,20 @@ defmodule PhoenixKitEntities.Web.EntityForm do
     end
   end
 
+  # The selects that set one security setting each. A `phx-change` on a select
+  # delivers that select's own `name => value` (never a `phx-value-*`), so the
+  # setting is whichever of these names the payload carries.
+  @security_action_keys ~w(public_form_honeypot_action public_form_time_check_action public_form_rate_limit_action public_form_turnstile_action)
+  @security_actions ~w(reject_silent reject_error save_suspicious save_log)
+  @turnstile_connection_key "public_form_turnstile_connection"
+
   def handle_event("update_security_action", params, socket) do
     if socket.assigns[:lock_owner?] do
-      # Extract the setting key and value from params
-      # The select sends the setting name in phx-value-setting and value in the form field
-      setting_key = params["setting"]
-      # The value comes from the select with the same name as the setting
-      value = params[setting_key]
-
-      current_settings = socket.assigns.entity.settings || %{}
-      updated_settings = Map.put(current_settings, setting_key, value)
-      updated_entity = Map.put(socket.assigns.entity, :settings, updated_settings)
-      changeset = settings_changeset(socket, updated_entity)
-
-      socket =
-        socket
-        |> assign(:entity, updated_entity)
-        |> assign(:changeset, changeset)
-
-      reply_with_broadcast(socket)
+      case security_select_change(params, socket) do
+        {:put, key, value} -> put_setting(socket, &Map.put(&1, key, value))
+        {:delete, key} -> put_setting(socket, &Map.delete(&1, key))
+        :ignore -> {:noreply, socket}
+      end
     else
       {:noreply, put_flash(socket, :error, gettext("Cannot edit - you are spectating"))}
     end
@@ -1642,6 +1638,56 @@ defmodule PhoenixKitEntities.Web.EntityForm do
     gettext(
       "The selected Turnstile connection is gone or no longer verified. Select another; until then submissions are not checked."
     )
+  end
+
+  # What a security select's change event asks for, or `:ignore` when it names
+  # no known setting or carries a value the select could not have offered
+  # (a crafted event): an action must be one of the four, a connection one of
+  # the verified ones listed on the page, or empty to clear it.
+  defp security_select_change(params, socket) do
+    cond do
+      key = Enum.find(@security_action_keys, &Map.has_key?(params, &1)) ->
+        if params[key] in @security_actions, do: {:put, key, params[key]}, else: :ignore
+
+      Map.has_key?(params, @turnstile_connection_key) ->
+        case params[@turnstile_connection_key] do
+          "" -> {:delete, @turnstile_connection_key}
+          uuid when is_binary(uuid) -> turnstile_connection_change(uuid, socket)
+          _ -> :ignore
+        end
+
+      true ->
+        :ignore
+    end
+  end
+
+  defp turnstile_connection_change(uuid, socket) do
+    case Enum.find(socket.assigns.turnstile_choices, fn {id, _name} -> id == uuid end) do
+      {id, _name} -> {:put, @turnstile_connection_key, id}
+      nil -> :ignore
+    end
+  end
+
+  defp put_setting(socket, fun) do
+    updated_settings = fun.(socket.assigns.entity.settings || %{})
+    updated_entity = Map.put(socket.assigns.entity, :settings, updated_settings)
+
+    socket
+    |> assign(:entity, updated_entity)
+    |> assign(:changeset, settings_changeset(socket, updated_entity))
+    |> reply_with_broadcast()
+  end
+
+  # The verified connections are listed only while the option is on, and
+  # re-read when it is switched on (one may have been added meanwhile).
+  defp refresh_turnstile_choices(socket, "public_form_turnstile", settings) do
+    assign(socket, :turnstile_choices, turnstile_choices(settings))
+  end
+
+  defp refresh_turnstile_choices(socket, _setting_key, _settings), do: socket
+
+  defp turnstile_choices(settings) do
+    if PublicFormTurnstile.enabled?(settings), do: PublicFormTurnstile.choices(), else: []
   end
 
   defp ensure_live_source(socket) do
@@ -2694,7 +2740,6 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                             <select
                               name="public_form_honeypot_action"
                               phx-change="update_security_action"
-                              phx-value-setting="public_form_honeypot_action"
                               disabled={@readonly?}
                             >
                               <option
@@ -2773,7 +2818,6 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                             <select
                               name="public_form_time_check_action"
                               phx-change="update_security_action"
-                              phx-value-setting="public_form_time_check_action"
                               disabled={@readonly?}
                             >
                               <option
@@ -2852,7 +2896,6 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                             <select
                               name="public_form_rate_limit_action"
                               phx-change="update_security_action"
-                              phx-value-setting="public_form_rate_limit_action"
                               disabled={@readonly?}
                             >
                               <option
@@ -2903,7 +2946,10 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                       <%!-- Cloudflare Turnstile --%>
                       <% turnstile_status =
                         PublicFormTurnstile.status(@entity.settings, @turnstile_choices) %>
-                      <div id="public-form-turnstile" class="border border-base-300 rounded-lg p-4">
+                      <div
+                        id="public-form-turnstile"
+                        class="border border-base-300 rounded-lg p-4"
+                      >
                         <div class="fieldset">
                           <label class="label cursor-pointer justify-start gap-4">
                             <input
@@ -2921,7 +2967,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                               </span>
                               <p class="text-xs text-base-content/60 mt-1">
                                 {gettext(
-                                  "Ask visitors to pass a Cloudflare Turnstile check. Needs a Turnstile connection configured in the core Integrations settings, and a page that is a LiveView."
+                                  "Ask visitors to pass a Cloudflare Turnstile check. Needs a Turnstile connection configured in the core Integrations settings, and the site's JavaScript bundle on the page that shows the form."
                                 )}
                               </p>
                             </div>
@@ -2951,7 +2997,6 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                                 <select
                                   name="public_form_turnstile_connection"
                                   phx-change="update_security_action"
-                                  phx-value-setting="public_form_turnstile_connection"
                                   disabled={@readonly?}
                                 >
                                   <option
@@ -2977,7 +3022,6 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                                 <select
                                   name="public_form_turnstile_action"
                                   phx-change="update_security_action"
-                                  phx-value-setting="public_form_turnstile_action"
                                   disabled={@readonly?}
                                 >
                                   <option
@@ -3042,7 +3086,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                     </div>
 
                     <%!-- Security trigger breakdown --%>
-                    <%= if stats["honeypot_triggers"] || stats["too_fast_triggers"] || stats["rate_limited_triggers"] || stats["turnstile_triggers"] || stats["turnstile_unavailable_triggers"] do %>
+                    <%= if Enum.any?(~w(honeypot_triggers too_fast_triggers rate_limited_triggers turnstile_triggers turnstile_missing_triggers turnstile_unavailable_triggers turnstile_unchecked_triggers), &stats[&1]) do %>
                       <div class="mt-4">
                         <h4 class="text-sm font-medium text-base-content/70 mb-2">
                           {gettext("Security Triggers")}
@@ -3072,6 +3116,22 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                             <div class="badge badge-warning gap-1">
                               <.icon name="hero-shield-exclamation" class="w-3 h-3" />
                               {gettext("Turnstile: %{count}", count: stats["turnstile_triggers"])}
+                            </div>
+                          <% end %>
+                          <%= if stats["turnstile_missing_triggers"] do %>
+                            <div id="turnstile-missing-count" class="badge badge-warning gap-1">
+                              <.icon name="hero-question-mark-circle" class="w-3 h-3" />
+                              {gettext("Turnstile (no token): %{count}",
+                                count: stats["turnstile_missing_triggers"]
+                              )}
+                            </div>
+                          <% end %>
+                          <%= if stats["turnstile_unchecked_triggers"] do %>
+                            <div id="turnstile-unchecked-count" class="badge badge-error gap-1">
+                              <.icon name="hero-exclamation-triangle" class="w-3 h-3" />
+                              {gettext("Turnstile not checked: %{count}",
+                                count: stats["turnstile_unchecked_triggers"]
+                              )}
                             </div>
                           <% end %>
                           <%= if stats["turnstile_unavailable_triggers"] do %>

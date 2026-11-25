@@ -259,8 +259,12 @@ Repo-local aliases:
   Authorization page's auth-forms switch). Turnstile runs last and is skipped
   once another check rejects; no Cloudflare verdict fails closed, but a
   switched-on option whose connection cannot verify lets the request through
-  with a logged error, as core does for its auth forms. The client address (rate-limit key and stored metadata alike) comes
-  from core's `PhoenixKit.Utils.IpAddress.extract_from_conn/1`, never from a
+  as core does for its auth forms — with a logged error naming the entity, a
+  `turnstile_unchecked_triggers` count and a `security_warnings` flag on the
+  stored submission. The widget is core's hook element; this module's JS
+  bundle starts it on pages that are not LiveViews and keeps a tokenless
+  submit from leaving the page. The client address (rate-limit key and stored
+  metadata alike) comes from core's `PhoenixKit.Utils.IpAddress.extract_from_conn/1`, never from a
   header read here: `X-Forwarded-For` counts only when the TCP peer is a
   loopback or private address, and then only its LAST entry, so a direct
   client rotating the header stays in one bucket. Stored metadata (user-agent,

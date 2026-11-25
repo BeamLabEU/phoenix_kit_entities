@@ -24,31 +24,42 @@ defmodule PhoenixKitEntities.PublicFormTurnstile do
       success would swallow a real visitor's message over an outage that is not
       theirs.
     * The switch is on but the connection is missing, was removed, or no
-      longer verifies (`:not_configured`): the form is **not** checked and the
-      request is let through with a logged error. This is what core does for
-      its auth forms: the widget is hidden in that state, so refusing every
-      submit would lock the form for everyone, with nothing on the page to
-      fix. The builder shows a warning while the option is on and the
-      connection is not usable.
+      longer verifies (`:not_configured`): `verify/3` answers `:unchecked`, and
+      the form is **not** checked: the controller lets the request through,
+      logs an error naming the entity, counts it in the form statistics
+      (`turnstile_unchecked_triggers`) and flags the stored submission
+      (`security_warnings`). This is what core does for its auth forms: the
+      widget is hidden in that state, so refusing every submit would lock the
+      form for everyone, with nothing on the page to fix. The builder shows a
+      warning while the option is on and the connection is not usable.
+
+  The switch itself is `true` (or the string `"true"`, as a hand-edited or
+  imported value would read); anything else is off.
   """
 
   alias PhoenixKit.Integrations
   alias PhoenixKit.Integrations.Turnstile, as: Cloudflare
 
-  require Logger
-
   @type status :: :off | :ready | :no_connections | :no_selection | :stale_selection
 
   @doc "Whether the entity's settings turn Turnstile on."
   @spec enabled?(map() | nil) :: boolean()
-  def enabled?(settings), do: get(settings, "public_form_turnstile") == true
+  def enabled?(settings), do: get(settings, "public_form_turnstile") in [true, "true"]
 
   @doc "The selected connection UUID, or nil."
   @spec connection(map() | nil) :: String.t() | nil
   def connection(settings) do
     case get(settings, "public_form_turnstile_connection") do
-      uuid when is_binary(uuid) and uuid != "" -> uuid
+      uuid when is_binary(uuid) and uuid != "" -> canonical(uuid)
       _ -> nil
+    end
+  end
+
+  # Core resolves a UUID however it is cased; compare it the same way.
+  defp canonical(uuid) do
+    case Ecto.UUID.cast(uuid) do
+      {:ok, cast} -> cast
+      :error -> uuid
     end
   end
 
@@ -90,37 +101,22 @@ defmodule PhoenixKitEntities.PublicFormTurnstile do
   end
 
   @doc """
-  Checks the token a submit carried. `:ok` also covers an option that is off
-  and a connection that cannot verify (see the moduledoc).
+  Checks the token a submit carried. `:unchecked` means the option is on but
+  its connection cannot verify (see the moduledoc), so nothing was checked.
   """
   @spec verify(map() | nil, term(), String.t() | nil) ::
-          :ok | {:error, :missing | :rejected | :unavailable}
+          :ok | :unchecked | {:error, :missing | :rejected | :unavailable}
   def verify(settings, token, ip_address) do
     with true <- enabled?(settings),
          uuid when is_binary(uuid) <- connection(settings) do
-      uuid |> Cloudflare.verify(token, ip_address) |> unconfigured_passes()
+      case Cloudflare.verify(uuid, token, ip_address) do
+        {:error, :not_configured} -> :unchecked
+        verdict -> verdict
+      end
     else
-      false ->
-        :ok
-
-      nil ->
-        log_unprotected()
-        :ok
+      false -> :ok
+      nil -> :unchecked
     end
-  end
-
-  defp unconfigured_passes({:error, :not_configured}) do
-    log_unprotected()
-    :ok
-  end
-
-  defp unconfigured_passes(verdict), do: verdict
-
-  defp log_unprotected do
-    Logger.error(
-      "[PublicFormTurnstile] Turnstile is switched on for a public form but its " <>
-        "connection cannot verify tokens, so this submission was not checked"
-    )
   end
 
   defp get(settings, key) when is_map(settings), do: Map.get(settings, key)

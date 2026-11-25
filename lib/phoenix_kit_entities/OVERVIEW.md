@@ -592,19 +592,42 @@ address it already derives. Behaviour:
 | Situation | Result |
 |-----------|--------|
 | Option off | Unchanged: no widget, no token is looked at |
-| No token, or a token Cloudflare refuses | The configured action applies; stats count `turnstile_triggers` |
+| No token | The configured action applies, with a message telling the visitor to wait for the verification (or reload); stats count `turnstile_missing_triggers`. A steady count here means the widget is not starting (see below) |
+| A token Cloudflare refuses | The configured action applies; stats count `turnstile_triggers` |
 | Cloudflare cannot be reached (no verdict) | Fails closed with a "try again in a few minutes" message and applies the configured action, except `reject_silent`, which becomes `reject_error` so a real visitor is not told a lost message was sent; stats count `turnstile_unavailable_triggers` |
-| Option on, but no connection is selected, or the selected one was removed or no longer verifies | The widget is not drawn and submissions are **not checked** (a logged error per submission). This matches core's auth forms: refusing would lock the form for everyone with nothing on the page to fix. The builder shows a warning while this is the case |
+| Option on, but no connection is selected, or the selected one was removed or no longer verifies | The widget is not drawn and submissions are **not checked**. This matches core's auth forms: refusing would lock the form for everyone with nothing on the page to fix. Unlike core's single switch, there is one such state per form, so it is made visible: an error is logged naming the entity, stats count `turnstile_unchecked_triggers` (shown in the builder), the stored submission carries a `turnstile_unchecked` entry in `security_warnings`, and the builder warns while the option is on |
+
+The switch is `true` (or the string `"true"`); anything else is off. An action
+nobody understands refuses with an error.
 
 Order: Turnstile is the last check, and it is skipped when another check
 already rejects the submission, so a request that is dropped anyway costs no
-call to Cloudflare.
+call to Cloudflare. A request with a garbage token that nothing else rejects
+does cost one call to Cloudflare (blank, oversize and non-string tokens do
+not); with rate limiting off there is nothing else to bound them, so keep it
+on for a public form.
 
-The widget is a LiveView hook from core's JS bundle, so the page embedding the
-form must be a LiveView with core's hooks loaded. On a controller-rendered
-page the widget never starts, no token is sent, and every submission is
-refused as unverified. Tokens are single-use; a refused submit redirects back,
-which renders a fresh widget.
+#### Where the widget works
+
+The widget is core's (`phx-hook="Turnstile"`). Inside a LiveView, core's hook
+starts it. On a controller-rendered page - which includes a form embedded in a
+Publishing post - nothing would start it, so this module's own JS bundle
+(`phoenix_kit_entities.js`, folded into the host's JavaScript by core like
+every module bundle) renders the same element the way core's hook does, and
+does nothing inside a LiveView. Either way the host's JS bundle must be loaded
+on the page; without it no token is sent and every submission is refused with
+the "wait for the verification" message (and counted as above).
+
+The same bundle stops a submit that has no token yet from leaving the page, so
+a visitor who is too quick keeps what they typed and sees the same message;
+without JavaScript the form is simply refused by the server, and a `<noscript>`
+note says JavaScript is needed. Tokens are single-use; a refused submit
+redirects back, which renders a fresh widget.
+
+A host with a Content-Security-Policy must allow `https://challenges.cloudflare.com`
+in `script-src` and `frame-src` (Turnstile loads its script from there and
+renders in an iframe). When the script is blocked the widget box shows core's
+"cannot be sent" notice.
 
 ### Embedding in pages
 

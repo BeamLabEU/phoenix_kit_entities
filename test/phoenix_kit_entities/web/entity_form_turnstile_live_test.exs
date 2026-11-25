@@ -46,12 +46,22 @@ defmodule PhoenixKitEntities.Web.EntityFormTurnstileLiveTest do
     {view, html}
   end
 
-  defp pick_connection(view, uuid) do
-    render_hook(view, "update_security_action", %{
-      "setting" => "public_form_turnstile_connection",
-      "public_form_turnstile_connection" => uuid
-    })
+  # What a browser sends when a select with its own `phx-change` changes: that
+  # select's name and value, nothing else. Driven through the real element.
+  defp change_select(view, name, value) do
+    view |> element("select[name=#{name}]") |> render_change(%{name => value})
   end
+
+  defp pick_connection(view, uuid),
+    do: change_select(view, "public_form_turnstile_connection", uuid)
+
+  defp save(view) do
+    view
+    |> form("form[phx-change='validate']", %{"entities" => %{"display_name" => "Saved"}})
+    |> render_submit()
+  end
+
+  defp socket_settings(view), do: :sys.get_state(view.pid).socket.assigns.entity.settings
 
   test "the option is offered next to the other security options, off by default",
        %{conn: conn, actor_uuid: actor_uuid} do
@@ -73,7 +83,7 @@ defmodule PhoenixKitEntities.Web.EntityFormTurnstileLiveTest do
     entity = create_entity(actor_uuid, %{})
     {view, _html} = edit(conn, entity, actor_uuid)
 
-    render_hook(view, "toggle_security_setting", %{"setting" => "public_form_turnstile"})
+    view |> element("#public-form-turnstile input[name=public_form_turnstile]") |> render_click()
 
     assert has_element?(
              view,
@@ -83,14 +93,9 @@ defmodule PhoenixKitEntities.Web.EntityFormTurnstileLiveTest do
 
     pick_connection(view, connection)
 
-    render_hook(view, "update_security_action", %{
-      "setting" => "public_form_turnstile_action",
-      "public_form_turnstile_action" => "save_log"
-    })
+    change_select(view, "public_form_turnstile_action", "save_log")
 
-    view
-    |> form("form[phx-change='validate']", %{"entities" => %{"display_name" => "Saved"}})
-    |> render_submit()
+    save(view)
 
     assert %{
              "public_form_turnstile" => true,
@@ -155,5 +160,102 @@ defmodule PhoenixKitEntities.Web.EntityFormTurnstileLiveTest do
 
     assert html =~ "Turnstile: 1"
     assert html =~ "Turnstile unavailable: 1"
+  end
+
+  test "the older action selects save from a real change event too, and survive Save",
+       %{conn: conn, actor_uuid: actor_uuid} do
+    entity =
+      create_entity(actor_uuid, %{
+        "public_form_honeypot" => true,
+        "public_form_time_check" => true,
+        "public_form_rate_limit" => true
+      })
+
+    {view, _html} = edit(conn, entity, actor_uuid)
+
+    change_select(view, "public_form_honeypot_action", "save_suspicious")
+    change_select(view, "public_form_time_check_action", "save_log")
+    change_select(view, "public_form_rate_limit_action", "reject_silent")
+
+    save(view)
+
+    stored = Entities.get_entity!(entity.uuid).settings
+    assert stored["public_form_honeypot_action"] == "save_suspicious"
+    assert stored["public_form_time_check_action"] == "save_log"
+    assert stored["public_form_rate_limit_action"] == "reject_silent"
+    refute Map.has_key?(stored, "nil")
+    refute Map.has_key?(stored, nil)
+  end
+
+  test "a change event that is not one of the selects' own is ignored",
+       %{conn: conn, actor_uuid: actor_uuid} do
+    entity = create_entity(actor_uuid, %{"public_form_turnstile" => true})
+    {view, _html} = edit(conn, entity, actor_uuid)
+    before = socket_settings(view)
+
+    select = view |> element("select[name=public_form_turnstile_action]")
+    render_change(select, %{"public_form_turnstile_action" => "let_it_through"})
+    render_change(select, %{"public_form_turnstile_action" => %{"x" => "1"}})
+    render_hook(view, "update_security_action", %{"somebody_elses_setting" => "x"})
+    render_hook(view, "update_security_action", %{"setting" => "sort_mode", "value" => "manual"})
+
+    connection = view |> element("select[name=public_form_turnstile_connection]")
+    render_change(connection, %{"public_form_turnstile_connection" => Ecto.UUID.generate()})
+    render_change(connection, %{"public_form_turnstile_connection" => ["x"]})
+
+    assert socket_settings(view) == before
+  end
+
+  test "clearing the connection removes it", %{
+    conn: conn,
+    actor_uuid: actor_uuid,
+    connection: connection
+  } do
+    entity =
+      create_entity(actor_uuid, %{
+        "public_form_turnstile" => true,
+        "public_form_turnstile_connection" => connection
+      })
+
+    {view, _html} = edit(conn, entity, actor_uuid)
+    pick_connection(view, "")
+    save(view)
+
+    refute Map.has_key?(
+             Entities.get_entity!(entity.uuid).settings,
+             "public_form_turnstile_connection"
+           )
+
+    assert has_element?(view, "#turnstile-not-ready")
+  end
+
+  test "the connections are read only while the option is on, and when it is switched on",
+       %{conn: conn, actor_uuid: actor_uuid, connection: connection} do
+    entity = create_entity(actor_uuid, %{})
+    {view, _html} = edit(conn, entity, actor_uuid)
+
+    assert :sys.get_state(view.pid).socket.assigns.turnstile_choices == []
+
+    # One added while the page was open shows up when the option is switched on.
+    other = TurnstileStub.verified_connection!("Added later", "0x4AAAA-later-key")
+    view |> element("#public-form-turnstile input[name=public_form_turnstile]") |> render_click()
+
+    uuids = Enum.map(:sys.get_state(view.pid).socket.assigns.turnstile_choices, &elem(&1, 0))
+    assert Enum.sort(uuids) == Enum.sort([connection, other])
+  end
+
+  test "the counters of missing tokens and unchecked submissions show, the latter as an error",
+       %{conn: conn, actor_uuid: actor_uuid} do
+    entity = create_entity(actor_uuid, %{})
+
+    Entities.bump_public_form_stats(entity.uuid, [
+      "turnstile_missing_triggers",
+      "turnstile_unchecked_triggers"
+    ])
+
+    {view, _html} = edit(conn, entity, actor_uuid)
+
+    assert has_element?(view, "#turnstile-missing-count", "1")
+    assert has_element?(view, "#turnstile-unchecked-count.badge-error", "1")
   end
 end

@@ -832,6 +832,10 @@ Statistics are automatically tracked in `settings["public_form_stats"]`:
   "honeypot_triggers" => 5,
   "too_fast_triggers" => 2,
   "rate_limited_triggers" => 1,
+  "turnstile_triggers" => 3,             # token refused by Cloudflare
+  "turnstile_missing_triggers" => 4,     # no token sent
+  "turnstile_unavailable_triggers" => 0, # Cloudflare gave no verdict
+  "turnstile_unchecked_triggers" => 0,   # option on, connection cannot verify
   "last_submission_at" => "2025-01-15T10:30:00Z"
 }
 ```

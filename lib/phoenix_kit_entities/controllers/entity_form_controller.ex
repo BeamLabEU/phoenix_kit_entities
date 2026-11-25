@@ -97,7 +97,7 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
     checks =
       if Enum.any?(local_checks, &rejecting?/1),
         do: local_checks,
-        else: local_checks ++ [check_turnstile(conn, settings, params)]
+        else: local_checks ++ [check_turnstile(conn, entity, settings, params)]
 
     # Find any triggered checks that require action
     triggered =
@@ -194,10 +194,10 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
     do: gettext("[Debug] Submission rejected: Rate limit exceeded (5 submissions per minute).")
 
   defp get_error_message(:turnstile, true),
-    do:
-      gettext(
-        "[Debug] Submission rejected: Turnstile verification token missing or not accepted."
-      )
+    do: gettext("[Debug] Submission rejected: Turnstile verification token not accepted.")
+
+  defp get_error_message(:turnstile_missing, true),
+    do: gettext("[Debug] Submission rejected: Turnstile verification token missing.")
 
   defp get_error_message(:turnstile_unavailable, true),
     do: gettext("[Debug] Submission rejected: Turnstile verification service unavailable.")
@@ -216,6 +216,12 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
 
   defp get_error_message(:turnstile, false),
     do: gettext("Please complete the verification and try again.")
+
+  defp get_error_message(:turnstile_missing, false),
+    do:
+      gettext(
+        "Please wait for the verification to finish, then try again. If you do not see it, reload the page."
+      )
 
   defp get_error_message(:turnstile_unavailable, false),
     do:
@@ -314,16 +320,33 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
   # refused token triggers the configured action; no verdict from Cloudflare
   # fails closed (see `PhoenixKitEntities.PublicFormTurnstile` for the policy,
   # including an unusable connection).
-  defp check_turnstile(conn, settings, params) do
+  defp check_turnstile(conn, entity, settings, params) do
     if PublicFormTurnstile.enabled?(settings) do
       token = Map.get(params, PublicFormTurnstile.response_field())
       ip = IpAddress.extract_from_conn(conn)
       action = security_action(Map.get(settings, "public_form_turnstile_action"))
 
       case PublicFormTurnstile.verify(settings, token, ip) do
-        :ok -> :ok
-        {:error, :unavailable} -> {:triggered, :turnstile_unavailable, loud(action)}
-        {:error, _missing_or_rejected} -> {:triggered, :turnstile, action}
+        :ok ->
+          :ok
+
+        :unchecked ->
+          Logger.error(
+            "[EntityFormController] Turnstile is switched on for entity #{entity.name} " <>
+              "(#{entity.uuid}) but its connection cannot verify tokens, so this " <>
+              "submission was not checked"
+          )
+
+          {:triggered, :turnstile_unchecked, "save_log"}
+
+        {:error, :unavailable} ->
+          {:triggered, :turnstile_unavailable, loud(action)}
+
+        {:error, :missing} ->
+          {:triggered, :turnstile_missing, action}
+
+        {:error, :rejected} ->
+          {:triggered, :turnstile, action}
       end
     else
       :ok
