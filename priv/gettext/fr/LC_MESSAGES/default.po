@@ -34,12 +34,12 @@ msgstr "Ce formulaire est actuellement indisponible."
 #: lib/phoenix_kit_entities/controllers/entity_form_controller.ex
 #, elixir-autogen, elixir-format
 msgid "Entity not found"
-msgstr "Entité introuvable"
+msgstr "Formulaire introuvable"
 
 #: lib/phoenix_kit_entities/controllers/entity_form_controller.ex
 #, elixir-autogen, elixir-format
 msgid "Public form is not enabled for this entity"
-msgstr "Le formulaire public n'est pas activé pour cette entité"
+msgstr "Le formulaire public n'est pas activé"
 
 #: lib/phoenix_kit_entities/controllers/entity_form_controller.ex
 #, elixir-autogen, elixir-format
@@ -59,7 +59,7 @@ msgstr "Trop d'envois. Veuillez réessayer plus tard."
 #: lib/phoenix_kit_entities/controllers/entity_form_controller.ex
 #, elixir-autogen, elixir-format
 msgid "Form submitted successfully!"
-msgstr "Formulaire envoyé avec succès !"
+msgstr "Formulaire envoyé avec succès !"
 
 #: lib/phoenix_kit_entities/controllers/entity_form_controller.ex
 #, elixir-autogen, elixir-format

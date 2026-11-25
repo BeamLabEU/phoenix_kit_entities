@@ -85,6 +85,32 @@ defmodule PhoenixKitEntities.PublicFormLocaleTest do
       refute PublicFormLocale.resolve("es-ES") == "es-ES"
     end
 
+    test "a base code shared by several enabled dialects names the primary, then the page's" do
+      {:ok, _} = Languages.add_language("en-GB")
+      {:ok, _} = Languages.add_language("de-AT")
+
+      # primary language en-US shares the base with en-GB
+      assert PublicFormLocale.resolve("en") == "en-US"
+
+      # no primary among the de-* dialects: the page's own dialect, else the first by code
+      Languages.put_request_locale("de-DE")
+      assert PublicFormLocale.resolve("de") == "de-DE"
+
+      Languages.put_request_locale("fr-FR")
+      assert PublicFormLocale.resolve("de") == "de-AT"
+    end
+
+    test "with_gettext/2 restores the locale, also when the function raises" do
+      alias PhoenixKitEntities.Gettext, as: Backend
+      Gettext.put_locale(Backend, "et")
+
+      assert_raise RuntimeError, fn ->
+        PublicFormLocale.with_gettext("de-DE", fn -> raise "boom" end)
+      end
+
+      assert Gettext.get_locale(Backend) == "et"
+    end
+
     test "text/4 takes the language's own text, else the flat one, else the default" do
       assert PublicFormLocale.text(@settings, "public_form_title", "de-DE") == "Kontakt"
       assert PublicFormLocale.text(@settings, "public_form_title", "fr-FR") == "Contactez-nous"

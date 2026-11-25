@@ -347,11 +347,11 @@ defmodule PhoenixKitEntities.PublicFormTranslationsTest do
       assert entity |> post(%{"_locale" => "de-DE"}) |> info() == "Formular erfolgreich gesendet!"
 
       assert entity |> post(%{"_locale" => "fr-FR"}) |> info() ==
-               "Formulaire envoyé avec succès !"
+               "Formulaire envoyé avec succès !"
 
       missing = %{entity | name: "nope"}
-      assert missing |> post(%{"_locale" => "de-DE"}) |> error() == "Entität nicht gefunden"
-      assert missing |> post(%{"_locale" => "fr-FR"}) |> error() == "Entité introuvable"
+      assert missing |> post(%{"_locale" => "de-DE"}) |> error() == "Formular nicht gefunden"
+      assert missing |> post(%{"_locale" => "fr-FR"}) |> error() == "Formulaire introuvable"
       assert missing |> post() |> error() == "Entity not found"
     end
 
@@ -364,6 +364,36 @@ defmodule PhoenixKitEntities.PublicFormTranslationsTest do
         conn = post(entity, %{"_locale" => crafted})
         assert info(conn) == "Thanks, we will be in touch"
       end
+    end
+
+    test "a catalogue the module ships is not a language the site enables", %{admin: admin} do
+      # Russian has a catalogue here but is not an enabled language: if the
+      # check were missing, the module's own flashes would come out in Russian.
+      entity = create_entity(admin)
+      missing = %{entity | name: "nope"}
+
+      for locale <- ["ru-RU", "ru", "et", "et-EE"] do
+        assert missing |> post(%{"_locale" => locale}) |> error() == "Entity not found"
+      end
+
+      plain = %{entity | settings: Map.drop(entity.settings, ["public_form_success_message"])}
+      {:ok, plain} = Entities.update_entity(entity, %{settings: plain.settings})
+
+      for locale <- ["ru-RU", "ru", "et", "et-EE"] do
+        assert plain |> post(%{"_locale" => locale}) |> info() == "Form submitted successfully!"
+      end
+    end
+
+    test "the process's Gettext locale is put back after the request", %{admin: admin} do
+      entity = create_entity(admin)
+      Gettext.put_locale(PhoenixKitEntities.Gettext, "et")
+
+      post(entity, %{"_locale" => "de-DE"})
+      assert Gettext.get_locale(PhoenixKitEntities.Gettext) == "et"
+
+      # also when the request never reaches the entity
+      post(%{entity | name: "nope"}, %{"_locale" => "fr-FR"})
+      assert Gettext.get_locale(PhoenixKitEntities.Gettext) == "et"
     end
 
     test "a refused submission answers in the posted language too", %{admin: admin} do

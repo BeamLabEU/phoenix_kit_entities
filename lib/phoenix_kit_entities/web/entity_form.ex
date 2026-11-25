@@ -724,47 +724,35 @@ defmodule PhoenixKitEntities.Web.EntityForm do
     end
   end
 
-  def handle_event("update_public_form_setting", params, socket) do
+  # The four public-form texts of the primary language. The inputs carry
+  # `phx-value-setting` because a `phx-blur` event delivers the element's
+  # `phx-value-*` attributes and its `value`, never its `name`.
+  @public_form_text_keys ~w(public_form_title public_form_description public_form_submit_text public_form_success_message)
+
+  def handle_event(
+        "update_public_form_setting",
+        %{"setting" => setting_name, "value" => value},
+        socket
+      )
+      when setting_name in @public_form_text_keys and is_binary(value) do
     if socket.assigns[:lock_owner?] do
       current_settings = socket.assigns.entity.settings || %{}
+      updated_settings = Map.put(current_settings, setting_name, value)
+      updated_entity = Map.put(socket.assigns.entity, :settings, updated_settings)
+      changeset = settings_changeset(socket, updated_entity)
 
-      # Extract the setting name and value from params
-      {setting_name, value} =
-        cond do
-          Map.has_key?(params, "public_form_title") ->
-            {"public_form_title", params["public_form_title"]}
+      socket =
+        socket
+        |> assign(:entity, updated_entity)
+        |> assign(:changeset, changeset)
 
-          Map.has_key?(params, "public_form_description") ->
-            {"public_form_description", params["public_form_description"]}
-
-          Map.has_key?(params, "public_form_submit_text") ->
-            {"public_form_submit_text", params["public_form_submit_text"]}
-
-          Map.has_key?(params, "public_form_success_message") ->
-            {"public_form_success_message", params["public_form_success_message"]}
-
-          true ->
-            {nil, nil}
-        end
-
-      if setting_name do
-        updated_settings = Map.put(current_settings, setting_name, value)
-        updated_entity = Map.put(socket.assigns.entity, :settings, updated_settings)
-        changeset = settings_changeset(socket, updated_entity)
-
-        socket =
-          socket
-          |> assign(:entity, updated_entity)
-          |> assign(:changeset, changeset)
-
-        reply_with_broadcast(socket)
-      else
-        {:noreply, socket}
-      end
+      reply_with_broadcast(socket)
     else
       {:noreply, socket}
     end
   end
+
+  def handle_event("update_public_form_setting", _params, socket), do: {:noreply, socket}
 
   def handle_event("toggle_public_form_field", %{"field" => field_key}, socket) do
     if socket.assigns[:lock_owner?] do
@@ -1633,18 +1621,23 @@ defmodule PhoenixKitEntities.Web.EntityForm do
     # Extract translation params from form (e.g., %{"es-ES" => %{"display_name" => "Marcas"}})
     new_translations = entity_params["translations"] || %{}
 
-    # Merge new translations into existing, stripping empty values
+    # Merge per key: a posted value is put, a posted empty one removes its key
+    # (the language falls back to the primary text), and a key that was not
+    # posted stays. Replacing the whole language entry would delete what the
+    # page did not post — the public-form texts, whose inputs exist only while
+    # that section is on screen.
     updated_translations =
       Enum.reduce(new_translations, existing_translations, fn {lang_code, fields}, acc ->
-        cleaned =
-          fields
-          |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
-          |> Map.new()
+        merged =
+          Enum.reduce(fields, Map.get(acc, lang_code) || %{}, fn
+            {k, v}, entry when is_nil(v) or v == "" -> Map.delete(entry, k)
+            {k, v}, entry -> Map.put(entry, k, v)
+          end)
 
-        if map_size(cleaned) == 0 do
+        if map_size(merged) == 0 do
           Map.delete(acc, lang_code)
         else
-          Map.put(acc, lang_code, cleaned)
+          Map.put(acc, lang_code, merged)
         end
       end)
 
@@ -2475,6 +2468,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                         type="text"
                         id={"public-form-title-#{@current_lang}"}
                         name="public_form_title"
+                        phx-value-setting="public_form_title"
                         value={get_in(@entity.settings, ["public_form_title"]) || @entity.display_name}
                         placeholder={@entity.display_name}
                         class="input w-full"
@@ -2502,6 +2496,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                       <textarea
                         id={"public-form-description-#{@current_lang}"}
                         name="public_form_description"
+                        phx-value-setting="public_form_description"
                         placeholder={gettext("Describe what this form is for...")}
                         class="textarea w-full"
                         rows="2"
@@ -2533,6 +2528,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                         type="text"
                         id={"public-form-submit-text-#{@current_lang}"}
                         name="public_form_submit_text"
+                        phx-value-setting="public_form_submit_text"
                         value={
                           get_in(@entity.settings, ["public_form_submit_text"]) || gettext("Submit")
                         }
@@ -2565,6 +2561,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                       <textarea
                         id={"public-form-success-message-#{@current_lang}"}
                         name="public_form_success_message"
+                        phx-value-setting="public_form_success_message"
                         placeholder={gettext("Thank you for your submission!")}
                         class="textarea w-full"
                         rows="2"

@@ -34,12 +34,12 @@ msgstr "Dieses Formular ist derzeit nicht verfügbar."
 #: lib/phoenix_kit_entities/controllers/entity_form_controller.ex
 #, elixir-autogen, elixir-format
 msgid "Entity not found"
-msgstr "Entität nicht gefunden"
+msgstr "Formular nicht gefunden"
 
 #: lib/phoenix_kit_entities/controllers/entity_form_controller.ex
 #, elixir-autogen, elixir-format
 msgid "Public form is not enabled for this entity"
-msgstr "Das öffentliche Formular ist für diese Entität nicht aktiviert"
+msgstr "Das öffentliche Formular ist nicht aktiviert"
 
 #: lib/phoenix_kit_entities/controllers/entity_form_controller.ex
 #, elixir-autogen, elixir-format

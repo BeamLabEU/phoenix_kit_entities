@@ -62,15 +62,17 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
   shown in: the posted `_locale`, if it names an enabled language, else the
   request's own. See `PhoenixKitEntities.PublicFormLocale`.
   """
-  def submit(conn, %{"entity_slug" => _entity_slug} = params) do
+  def submit(conn, %{"entity_slug" => entity_slug} = params) do
     locale = PublicFormLocale.resolve(Map.get(params, "_locale"))
 
     PublicFormLocale.with_gettext(locale, fn ->
-      conn |> put_private(:phoenix_kit_entities_form_locale, locale) |> do_submit(params)
+      conn
+      |> put_private(:phoenix_kit_entities_form_locale, locale)
+      |> do_submit(entity_slug, params)
     end)
   end
 
-  defp do_submit(conn, %{"entity_slug" => entity_slug} = params) do
+  defp do_submit(conn, entity_slug, params) do
     entity = Entities.get_entity_by_name(entity_slug)
 
     cond do

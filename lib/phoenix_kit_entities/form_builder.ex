@@ -433,7 +433,12 @@ defmodule PhoenixKitEntities.FormBuilder do
   # 1. Exact key match (`"ru-RU"` -> `"ru-RU"`).
   # 2. Same base code (`"ru"` -> first `"ru-*"` translation, deterministic
   #    via sort).
-  @doc false
+  @doc """
+  The entry of a `"translations"` map for `lang_code`: an exact key, else the
+  first key (by code) with the same base language, else `%{}`. This is the
+  lookup behind `translated_label/2` and the other field resolvers, and what
+  `PhoenixKitEntities.PublicFormLocale` uses for the entity-level texts.
+  """
   @spec lookup_translation(map(), String.t()) :: map()
   def lookup_translation(translations_map, lang_code) do
     case Map.get(translations_map, lang_code) do

@@ -103,22 +103,37 @@ defmodule PhoenixKitEntities.PublicFormLocale do
     Gettext.with_locale(PhoenixKitEntities.Gettext, RecipientLocale.global_locale(locale), fun)
   end
 
-  # The enabled code `candidate` names: exact, else the first enabled code with
-  # the same base language ("de" -> "de-DE").
+  # The enabled code `candidate` names: exact, else an enabled code with the
+  # same base language ("de" -> "de-DE"). When several share the base, the
+  # primary language wins, then the page's own dialect, then the first by code.
   defp match_enabled(candidate, enabled) when is_binary(candidate) and candidate != "" do
     if candidate in enabled do
       candidate
     else
       base = base(candidate)
-      base && enabled |> Enum.sort() |> Enum.find(&(base(&1) == base))
+      same_base(enabled, base)
     end
   end
 
   defp match_enabled(_candidate, _enabled), do: nil
 
-  defp base(code) do
-    DialectMapper.extract_base(code)
-  rescue
-    _ -> nil
+  defp same_base(enabled, base) do
+    case Enum.filter(enabled, &(base(&1) == base)) do
+      [] -> nil
+      same -> prefer(same)
+    end
   end
+
+  defp prefer(same) do
+    primary = Multilang.primary_language()
+    page = Multilang.current_locale()
+
+    cond do
+      primary in same -> primary
+      page in same -> page
+      true -> Enum.min(same)
+    end
+  end
+
+  defp base(code), do: DialectMapper.extract_base(code)
 end
