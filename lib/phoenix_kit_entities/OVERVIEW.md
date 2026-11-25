@@ -524,7 +524,7 @@ Records that are never edited continue to work — read paths use the embedded p
 ### Limitations
 
 - **Search** queries primary language data only; secondary translations are not searched.
-- **Public form builder** creates flat (non-multilang) data. Use the admin UI or API to add translations afterward.
+- **Public form builder** stores submissions flat (non-multilang): the form is *shown and answered* in the visitor's language (see "Languages of the public form"), but what a visitor types is saved as one flat value. Use the admin UI or API to add translations afterward.
 - **Clearing a secondary field** makes it inherit the primary value (by design — override-only storage).
 - See `DEEP_DIVE.md § Known Limitations` for the full table.
 
@@ -547,6 +547,7 @@ The Entities system includes a public form builder for creating embeddable forms
 
 - **Embeddable Component**: Use `<EntityForm entity_slug="contact" />` in publishing pages
 - **Field Selection**: Choose which entity fields appear on the public form
+- **Languages**: Renders in the page's language, with per-language title, description, submit text, success message and field texts
 - **Security Options**: Honeypot, time-based validation (3s minimum), rate limiting (5/min)
 - **Configurable Actions**: reject_silent, reject_error, save_suspicious, save_log
 - **Statistics**: Track submissions, rejections, and security triggers
@@ -569,6 +570,35 @@ The Entities system includes a public form builder for creating embeddable forms
 | `public_form_rate_limit` | Enable rate limiting |
 | `public_form_debug_mode` | Show detailed error messages |
 | `public_form_collect_metadata` | Collect submission metadata |
+
+### Languages of the public form
+
+On a multilingual site (Languages module with two or more enabled languages)
+the form renders, and answers after the submit, in the page's language. The
+language is the page's own (`PhoenixKit.Utils.Multilang.current_locale/0`) or
+the `locale` attribute (`<EntityForm entity_slug="contact" locale="de" />`);
+it must be an enabled language, anything else is ignored.
+
+Where each text comes from, in the language of the page (the primary language
+always reads the flat value):
+
+| Text | Per-language source | Falls back to |
+|------|---------------------|---------------|
+| Title, description, submit text, success message | `settings["translations"][lang]["public_form_title" / "public_form_description" / "public_form_submit_text" / "public_form_success_message"]`, edited on the language tabs of the builder's public-form section | the flat `public_form_*` setting |
+| Field label, placeholder, help text, option texts | the field's own `"translations"[lang]` (`"label"`, `"placeholder"`, `"description"`, `"options"`) | the field's own text |
+| The module's own strings (default submit text, flash messages, "unavailable" notice) | the `phoenix_kit_entities` Gettext catalogues (`en`, `et`, `ru`; `de` and `fr` for the visitor-facing strings) | English |
+
+The form carries the language it was shown in as a hidden `_locale` field; the
+controller accepts it only if it names an enabled language (the posted value is
+never trusted further than that choice) and answers the submit - the success
+message and the error flashes - in it, falling back to the request's own
+language. Entities without translations render exactly as before. Field
+translations are display-only: the stored value of a select or radio is
+always the canonical option string.
+
+Not covered: the field editor of the builder has no UI for the fields'
+`"translations"` yet (set them in the field definitions, or by mirror import),
+and a validation error shown to a visitor is generic and not field-specific.
 
 ### Embedding in pages
 

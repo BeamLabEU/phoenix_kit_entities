@@ -11,6 +11,16 @@ msgstr ""
 "Language: en\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
+#: lib/phoenix_kit_entities/components/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Leave this field empty"
+msgstr "Leave this field empty"
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "These texts are for the selected language. Leave one empty to use the primary language's text."
+msgstr "These texts are for the selected language. Leave one empty to use the primary language's text."
+
 #: lib/phoenix_kit_entities/web/entity_form.ex:2209
 #, elixir-autogen, elixir-format
 msgid "%{count} Field Definition"

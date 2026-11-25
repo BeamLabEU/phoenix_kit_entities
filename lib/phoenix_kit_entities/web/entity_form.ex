@@ -2432,64 +2432,147 @@ defmodule PhoenixKitEntities.Web.EntityForm do
 
                 <%!-- Form Configuration --%>
                 <div class="space-y-4">
+                  <%!-- The texts exist per language: the primary language's are the
+                       flat settings, every other language's live in
+                       settings["translations"][lang] (posted with the form like the
+                       entity's own translations) and fall back to the primary text. --%>
+                  <% form_texts =
+                    if @multilang_enabled && @current_lang != @primary_language do
+                      ((@entity.settings || %{})["translations"] || %{})[@current_lang] || %{}
+                    end %>
+                  <.multilang_tabs
+                    multilang_enabled={@multilang_enabled}
+                    language_tabs={@language_tabs}
+                    current_lang={@current_lang}
+                    show_header={false}
+                    show_info={false}
+                    class="mb-2"
+                  />
+                  <p :if={form_texts} id="public-form-texts-hint" class="text-xs text-base-content/60">
+                    {gettext(
+                      "These texts are for the selected language. Leave one empty to use the primary language's text."
+                    )}
+                  </p>
+
                   <%!-- Form Title --%>
                   <div>
                     <.label>{gettext("Form Title")}</.label>
-                    <input
-                      type="text"
-                      name="public_form_title"
-                      value={get_in(@entity.settings, ["public_form_title"]) || @entity.display_name}
-                      placeholder={@entity.display_name}
-                      class="input w-full"
-                      phx-blur="update_public_form_setting"
-                      phx-debounce="500"
-                      disabled={@readonly?}
-                    />
+                    <%= if form_texts do %>
+                      <input
+                        type="text"
+                        id={"public-form-title-#{@current_lang}"}
+                        name={"entities[translations][#{@current_lang}][public_form_title]"}
+                        value={form_texts["public_form_title"]}
+                        placeholder={
+                          get_in(@entity.settings, ["public_form_title"]) || @entity.display_name
+                        }
+                        class="input w-full"
+                        phx-debounce="500"
+                        disabled={@readonly?}
+                      />
+                    <% else %>
+                      <input
+                        type="text"
+                        id={"public-form-title-#{@current_lang}"}
+                        name="public_form_title"
+                        value={get_in(@entity.settings, ["public_form_title"]) || @entity.display_name}
+                        placeholder={@entity.display_name}
+                        class="input w-full"
+                        phx-blur="update_public_form_setting"
+                        phx-debounce="500"
+                        disabled={@readonly?}
+                      />
+                    <% end %>
                   </div>
 
                   <%!-- Form Description --%>
                   <div>
                     <.label>{gettext("Form Description (Optional)")}</.label>
-                    <textarea
-                      name="public_form_description"
-                      placeholder={gettext("Describe what this form is for...")}
-                      class="textarea w-full"
-                      rows="2"
-                      phx-blur="update_public_form_setting"
-                      phx-debounce="500"
-                      disabled={@readonly?}
-                    >{get_in(@entity.settings, ["public_form_description"]) || ""}</textarea>
+                    <%= if form_texts do %>
+                      <textarea
+                        id={"public-form-description-#{@current_lang}"}
+                        name={"entities[translations][#{@current_lang}][public_form_description]"}
+                        placeholder={get_in(@entity.settings, ["public_form_description"]) || ""}
+                        class="textarea w-full"
+                        rows="2"
+                        phx-debounce="500"
+                        disabled={@readonly?}
+                      >{form_texts["public_form_description"] || ""}</textarea>
+                    <% else %>
+                      <textarea
+                        id={"public-form-description-#{@current_lang}"}
+                        name="public_form_description"
+                        placeholder={gettext("Describe what this form is for...")}
+                        class="textarea w-full"
+                        rows="2"
+                        phx-blur="update_public_form_setting"
+                        phx-debounce="500"
+                        disabled={@readonly?}
+                      >{get_in(@entity.settings, ["public_form_description"]) || ""}</textarea>
+                    <% end %>
                   </div>
 
                   <%!-- Submit Button Text --%>
                   <div>
                     <.label>{gettext("Submit Button Text")}</.label>
-                    <input
-                      type="text"
-                      name="public_form_submit_text"
-                      value={
-                        get_in(@entity.settings, ["public_form_submit_text"]) || gettext("Submit")
-                      }
-                      placeholder={gettext("Submit")}
-                      class="input w-full"
-                      phx-blur="update_public_form_setting"
-                      phx-debounce="500"
-                      disabled={@readonly?}
-                    />
+                    <%= if form_texts do %>
+                      <input
+                        type="text"
+                        id={"public-form-submit-text-#{@current_lang}"}
+                        name={"entities[translations][#{@current_lang}][public_form_submit_text]"}
+                        value={form_texts["public_form_submit_text"]}
+                        placeholder={
+                          get_in(@entity.settings, ["public_form_submit_text"]) || gettext("Submit")
+                        }
+                        class="input w-full"
+                        phx-debounce="500"
+                        disabled={@readonly?}
+                      />
+                    <% else %>
+                      <input
+                        type="text"
+                        id={"public-form-submit-text-#{@current_lang}"}
+                        name="public_form_submit_text"
+                        value={
+                          get_in(@entity.settings, ["public_form_submit_text"]) || gettext("Submit")
+                        }
+                        placeholder={gettext("Submit")}
+                        class="input w-full"
+                        phx-blur="update_public_form_setting"
+                        phx-debounce="500"
+                        disabled={@readonly?}
+                      />
+                    <% end %>
                   </div>
 
                   <%!-- Success Message --%>
                   <div>
                     <.label>{gettext("Success Message")}</.label>
-                    <textarea
-                      name="public_form_success_message"
-                      placeholder={gettext("Thank you for your submission!")}
-                      class="textarea w-full"
-                      rows="2"
-                      phx-blur="update_public_form_setting"
-                      phx-debounce="500"
-                      disabled={@readonly?}
-                    >{get_in(@entity.settings, ["public_form_success_message"]) || gettext("Thank you for your submission!")}</textarea>
+                    <%= if form_texts do %>
+                      <textarea
+                        id={"public-form-success-message-#{@current_lang}"}
+                        name={"entities[translations][#{@current_lang}][public_form_success_message]"}
+                        placeholder={
+                          get_in(@entity.settings, ["public_form_success_message"]) ||
+                            gettext("Thank you for your submission!")
+                        }
+                        class="textarea w-full"
+                        rows="2"
+                        phx-debounce="500"
+                        disabled={@readonly?}
+                      >{form_texts["public_form_success_message"] || ""}</textarea>
+                    <% else %>
+                      <textarea
+                        id={"public-form-success-message-#{@current_lang}"}
+                        name="public_form_success_message"
+                        placeholder={gettext("Thank you for your submission!")}
+                        class="textarea w-full"
+                        rows="2"
+                        phx-blur="update_public_form_setting"
+                        phx-debounce="500"
+                        disabled={@readonly?}
+                      >{get_in(@entity.settings, ["public_form_success_message"]) || gettext("Thank you for your submission!")}</textarea>
+                    <% end %>
                   </div>
 
                   <%!-- Field Selection --%>

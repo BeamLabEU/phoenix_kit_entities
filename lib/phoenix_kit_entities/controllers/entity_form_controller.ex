@@ -11,6 +11,7 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.EntityData
   alias PhoenixKitEntities.FormBuilder
+  alias PhoenixKitEntities.PublicFormLocale
 
   require Logger
 
@@ -56,8 +57,20 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
 
   @doc """
   Handles public form submission for entities.
+
+  Answers (flash messages, the success text) in the language the form was
+  shown in: the posted `_locale`, if it names an enabled language, else the
+  request's own. See `PhoenixKitEntities.PublicFormLocale`.
   """
-  def submit(conn, %{"entity_slug" => entity_slug} = params) do
+  def submit(conn, %{"entity_slug" => _entity_slug} = params) do
+    locale = PublicFormLocale.resolve(Map.get(params, "_locale"))
+
+    PublicFormLocale.with_gettext(locale, fn ->
+      conn |> put_private(:phoenix_kit_entities_form_locale, locale) |> do_submit(params)
+    end)
+  end
+
+  defp do_submit(conn, %{"entity_slug" => entity_slug} = params) do
     entity = Entities.get_entity_by_name(entity_slug)
 
     cond do
@@ -163,7 +176,7 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
     else
       # Silent rejection - show fake success
       conn
-      |> put_flash(:info, get_success_message(entity))
+      |> put_flash(:info, get_success_message(conn, entity))
       |> redirect_back(conn)
     end
   end
@@ -280,9 +293,13 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
       :ok
   end
 
-  defp get_success_message(entity) do
-    settings = entity.settings || %{}
-    Map.get(settings, "public_form_success_message", gettext("Form submitted successfully!"))
+  defp get_success_message(conn, entity) do
+    PublicFormLocale.text(
+      entity.settings,
+      "public_form_success_message",
+      conn.private[:phoenix_kit_entities_form_locale],
+      gettext("Form submitted successfully!")
+    )
   end
 
   defp apply_security_flags(metadata, [], _logger) do
@@ -397,7 +414,7 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
       increment_form_stats(entity, :submitted, security_flags)
 
       conn
-      |> put_flash(:info, get_success_message(entity))
+      |> put_flash(:info, get_success_message(conn, entity))
       |> redirect_back(conn)
     else
       _too_large_or_invalid ->

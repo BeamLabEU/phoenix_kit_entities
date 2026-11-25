@@ -122,7 +122,9 @@ Repo-local aliases:
 - **All LiveView templates are inline `~H` sigils** (no separate `.heex`
   files), so Tailwind's scanner sees every class.
 - **Gettext:** own backend `PhoenixKitEntities.Gettext` over `priv/gettext`
-  (`en`, `et`, `ru`). The catalogues are **hand-maintained** — there is no
+  (`en`, `et`, `ru`, plus `de` and `fr`, which carry only the strings a
+  visitor of the public form can see — an msgid they lack renders in English,
+  as for any locale). The catalogues are **hand-maintained** — there is no
   `mix gettext.extract` step in this repo's workflow; add msgids by hand.
   `gettext_noop/1` anchors extraction at definition sites (permission label,
   tab labels) so they survive rewording elsewhere. Three invariants are pinned
@@ -249,6 +251,18 @@ Repo-local aliases:
   primary language gets no prefix; other locales get `/<base>/…`.
   `public_alternates/3` returns `%{canonical, alternates: [%{locale, href}, …,
   %{locale: "x-default", href}]}` for hreflang/canonical tags.
+- **The public form speaks the page's language, and stores flat data.**
+  `PublicFormLocale` resolves one of the site's ENABLED language codes (the
+  `locale` attribute or the hidden `_locale` field, only if it names an enabled
+  language; else `Multilang.current_locale/0`; `nil` on a single-language site).
+  Title, description, submit text and success message: the primary language is
+  the flat `public_form_*` setting, every other language
+  `settings["translations"][lang][<same key>]` (the builder edits them on the
+  language tabs, through the `entities[translations][lang][...]` form params
+  `merge_translation_params/2` already handles), blank falls back to flat.
+  Field texts go through `FormBuilder`'s `lang_code`. The controller wraps
+  `submit/2` in the posted language's Gettext locale. Never pass the posted
+  value on unchecked, and never store a translation in the submitted data.
 - **Public form controller defense** — the POST at
   `/entities/:entity_slug/submit` is intentionally un-authed. Protection is a
   honeypot field, a minimum submission time and a Hammer per-IP-per-entity rate

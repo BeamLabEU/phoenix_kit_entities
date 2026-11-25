@@ -10,6 +10,21 @@ defmodule PhoenixKitEntities.Components.EntityForm do
   ## Attributes
 
   - `entity_slug` (required) - The slug/name of the entity to render form for
+  - `locale` (optional) - a language code to render in (`"de"` or `"de-DE"`);
+    must be one of the site's enabled languages, anything else is ignored
+
+  ## Language
+
+  The form renders in the page's language
+  (`PhoenixKit.Utils.Multilang.current_locale/0`) or in `locale`: the title,
+  description, submit text and success message come from
+  `settings["translations"][<lang>]` and the fields' labels, placeholders, help
+  and option texts from each field's own `"translations"`, each falling back to
+  the primary-language value when the language has none. The module's own
+  strings (default submit text, "unavailable" notice) follow the process Gettext
+  locale core sets for the page. The language rides in a hidden `_locale` field
+  so the controller answers in it. Submissions are stored flat. See
+  `PhoenixKitEntities.PublicFormLocale`.
   """
   use Phoenix.Component
   use Gettext, backend: PhoenixKitEntities.Gettext
@@ -18,6 +33,7 @@ defmodule PhoenixKitEntities.Components.EntityForm do
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.EntityData
   alias PhoenixKitEntities.FormBuilder
+  alias PhoenixKitEntities.PublicFormLocale
 
   attr(:content, :string, default: nil)
   attr(:attributes, :map, default: %{})
@@ -25,6 +41,7 @@ defmodule PhoenixKitEntities.Components.EntityForm do
 
   def render(assigns) do
     entity_slug = Map.get(assigns.attributes, "entity_slug", "")
+    locale = PublicFormLocale.resolve(Map.get(assigns.attributes, "locale"))
 
     # Load entity and check if public form is enabled
     entity = if entity_slug != "", do: Entities.get_entity_by_name(entity_slug), else: nil
@@ -35,9 +52,12 @@ defmodule PhoenixKitEntities.Components.EntityForm do
         fields = Map.get(settings, "public_form_fields", [])
         actually_enabled = form_available?(entity, settings, fields)
 
-        title = Map.get(settings, "public_form_title", "")
-        description = Map.get(settings, "public_form_description", "")
-        submit_text = Map.get(settings, "public_form_submit_text", gettext("Submit"))
+        title = PublicFormLocale.text(settings, "public_form_title", locale, "")
+        description = PublicFormLocale.text(settings, "public_form_description", locale, "")
+
+        submit_text =
+          PublicFormLocale.text(settings, "public_form_submit_text", locale, gettext("Submit"))
+
         honeypot = Map.get(settings, "public_form_honeypot", false)
         {actually_enabled, fields, title, description, submit_text, honeypot}
       else
@@ -62,6 +82,7 @@ defmodule PhoenixKitEntities.Components.EntityForm do
     assigns =
       assigns
       |> assign(:entity_slug, entity_slug)
+      |> assign(:locale, locale)
       |> assign(:entity, entity)
       |> assign(:form_entity, form_entity)
       |> assign(:form_enabled, form_enabled)
@@ -114,10 +135,15 @@ defmodule PhoenixKitEntities.Components.EntityForm do
                 <%!-- Form loaded timestamp (always included for metadata) --%>
                 <input type="hidden" name="_form_loaded_at" value={@form_timestamp} />
 
+                <%!-- The language the form was shown in, so the answer after the
+                     submit is in it too (the controller only accepts an enabled
+                     language). --%>
+                <input :if={@locale} type="hidden" name="_locale" value={@locale} />
+
                 <%!-- Honeypot field (hidden from humans, bots will fill it) --%>
                 <%= if @honeypot_enabled do %>
                   <div style="position: absolute; left: -9999px;" aria-hidden="true">
-                    <label for="_hp_website">Leave this field empty</label>
+                    <label for="_hp_website">{gettext("Leave this field empty")}</label>
                     <input
                       type="text"
                       name="_hp_website"
@@ -129,7 +155,8 @@ defmodule PhoenixKitEntities.Components.EntityForm do
                 <% end %>
 
                 {FormBuilder.build_fields(@form_entity, build_empty_changeset(@entity),
-                  wrapper_class: "mb-4"
+                  wrapper_class: "mb-4",
+                  lang_code: PublicFormLocale.field_language(@locale)
                 )}
 
                 <div class="fieldset mt-6">
