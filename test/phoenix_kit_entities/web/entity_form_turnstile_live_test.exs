@@ -258,4 +258,77 @@ defmodule PhoenixKitEntities.Web.EntityFormTurnstileLiveTest do
     assert has_element?(view, "#turnstile-missing-count", "1")
     assert has_element?(view, "#turnstile-unchecked-count.badge-error", "1")
   end
+
+  describe "the connections stay current in every copy of the page" do
+    defp edit_as(conn, entity, user_uuid) do
+      conn = put_test_scope(conn, fake_scope(user_uuid: user_uuid))
+      {:ok, view, _html} = live(conn, "/en/admin/entities/#{entity.uuid}/edit")
+      view
+    end
+
+    defp choice_ids(view),
+      do: Enum.map(:sys.get_state(view.pid).socket.assigns.turnstile_choices, &elem(&1, 0))
+
+    test "a spectator sees the connection the owner picked, not a false warning",
+         %{conn: conn, actor_uuid: owner, connection: connection} do
+      entity = create_entity(owner, %{})
+      owner_view = edit_as(conn, entity, owner)
+      spectator = edit_as(conn, entity, Ecto.UUID.generate())
+
+      # The spectator opened with the option off, so it read no connections.
+      assert choice_ids(spectator) == []
+
+      owner_view
+      |> element("#public-form-turnstile input[name=public_form_turnstile]")
+      |> render_click()
+
+      pick_connection(owner_view, connection)
+
+      assert choice_ids(spectator) == [connection]
+      refute has_element?(spectator, "#turnstile-not-ready")
+
+      assert has_element?(
+               spectator,
+               "#public-form-turnstile select[name=public_form_turnstile_connection] option[selected]",
+               "Contact forms"
+             )
+    end
+
+    test "a spectator promoted to owner gets a picker that works",
+         %{conn: conn, actor_uuid: owner, connection: connection} do
+      entity = create_entity(owner, %{})
+      view = edit_as(conn, entity, owner)
+      assert choice_ids(view) == []
+
+      # Meanwhile another session switched the option on and saved, then left:
+      # this page, a spectator until now, is promoted and reloads the entity.
+      {:ok, _} =
+        Entities.update_entity(entity, %{
+          settings: Map.put(entity.settings, "public_form_turnstile", true)
+        })
+
+      :sys.replace_state(view.pid, &put_in(&1.socket.assigns[:lock_owner?], false))
+      send(view.pid, %Phoenix.Socket.Broadcast{event: "presence_diff", payload: %{}})
+      _ = render(view)
+
+      assert :sys.get_state(view.pid).socket.assigns.lock_owner?
+      assert choice_ids(view) == [connection]
+
+      pick_connection(view, connection)
+      save(view)
+
+      assert Entities.get_entity!(entity.uuid).settings["public_form_turnstile_connection"] ==
+               connection
+    end
+
+    test "a reset keeps them", %{conn: conn, actor_uuid: actor_uuid, connection: connection} do
+      entity = create_entity(actor_uuid, %{"public_form_turnstile" => true})
+      {view, _html} = edit(conn, entity, actor_uuid)
+      :sys.replace_state(view.pid, &put_in(&1.socket.assigns[:turnstile_choices], []))
+
+      render_click(view, "reset", %{})
+
+      assert choice_ids(view) == [connection]
+    end
+  end
 end

@@ -3098,11 +3098,6 @@ msgstr "[Debug] Submission rejected: Turnstile verification token missing."
 msgid "Please wait for the verification to finish, then try again. If you do not see it, reload the page."
 msgstr "Please wait for the verification to finish, then try again. If you do not see it, reload the page."
 
-#: lib/phoenix_kit_entities/components/entity_form.ex
-#, elixir-autogen, elixir-format
-msgid "JavaScript is required for the verification."
-msgstr "JavaScript is required for the verification."
-
 #: lib/phoenix_kit_entities/web/entity_form.ex
 #, elixir-autogen, elixir-format
 msgid "Turnstile (no token): %{count}"
@@ -3112,3 +3107,13 @@ msgstr "Turnstile (no token): %{count}"
 #, elixir-autogen, elixir-format
 msgid "Turnstile not checked: %{count}"
 msgstr "Turnstile not checked: %{count}"
+
+#: lib/phoenix_kit_entities/components/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "The verification could not load, so this form cannot be sent. Your browser or network is blocking challenges.cloudflare.com: allow it (a content blocker is the usual cause), then reload the page."
+msgstr "The verification could not load, so this form cannot be sent. Your browser or network is blocking challenges.cloudflare.com: allow it (a content blocker is the usual cause), then reload the page."
+
+#: lib/phoenix_kit_entities/components/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "The verification could not start. Please reload the page."
+msgstr "The verification could not start. Please reload the page."

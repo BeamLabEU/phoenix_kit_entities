@@ -16,8 +16,12 @@ defmodule PhoenixKitEntities.PublicFormTurnstile do
 
   ## Policy
 
-    * No token, or a token Cloudflare refuses: the check is triggered and the
-      configured action applies.
+    * A token Cloudflare refuses: the check is triggered and the configured
+      action applies.
+    * No token: the same, except that `reject_silent` becomes `reject_error`.
+      A visitor without a token is overwhelmingly a real one whose widget did
+      not start (no JavaScript, a blocked script, the host bundle missing), and
+      a fake success would swallow their message.
     * Cloudflare gives no verdict (`:unavailable`): fail closed, with a
       "try again in a few minutes" message — the action applies as well, except
       that `reject_silent` becomes `reject_error`, because a silent fake
@@ -28,10 +32,11 @@ defmodule PhoenixKitEntities.PublicFormTurnstile do
       the form is **not** checked: the controller lets the request through,
       logs an error naming the entity, counts it in the form statistics
       (`turnstile_unchecked_triggers`) and flags the stored submission
-      (`security_warnings`). This is what core does for its auth forms: the
-      widget is hidden in that state, so refusing every submit would lock the
-      form for everyone, with nothing on the page to fix. The builder shows a
-      warning while the option is on and the connection is not usable.
+      (`security_warnings`, action `none`). This is what core does for its
+      auth forms: the widget is hidden in that state, so refusing every submit
+      would lock the form for everyone, with nothing on the page to fix. The
+      builder shows a warning while the option is on and the connection is
+      not usable.
 
   The switch itself is `true` (or the string `"true"`, as a hand-edited or
   imported value would read); anything else is off.

@@ -15,14 +15,17 @@ defmodule PhoenixKitEntities.Components.EntityForm do
 
   With `public_form_turnstile` on and a verified connection selected, the form
   carries core's Turnstile widget (`cf-turnstile-response` rides in the POST).
-  The widget is core's (`phx-hook="Turnstile"`): inside a LiveView core's hook
-  starts it; on a controller-rendered page (a Publishing post, for instance)
-  this module's own bundle (`priv/static/assets/phoenix_kit_entities.js`,
-  folded into the host's JS by core) starts the same element, so the host's
-  JavaScript bundle must be loaded on the page either way. The same bundle
-  keeps a submit that has no token yet from leaving the page. Without any of
-  that no token is sent and the controller refuses the submission with a
-  message saying so. See `PhoenixKitEntities.PublicFormTurnstile`.
+  Inside a LiveView, core's hook (`phx-hook="Turnstile"`) starts it. On a
+  controller-rendered page this module's own bundle
+  (`priv/static/assets/phoenix_kit_entities.js`, folded into the host's JS by
+  core) starts it, and it also keeps a submit that has no token yet from
+  leaving the page. The bundle finds the form's parts by class and by a hidden
+  `_turnstile_sitekey` field, never by `data-*`/`phx-*` attributes, so the
+  markup survives Publishing's page sanitizer (which keeps `class`, `id`,
+  `style`, `aria-*` and `input` `type`/`name`/`value`, and drops the rest). The
+  host's JavaScript bundle must be on the page either way; without it no
+  token is sent and the controller refuses the submission with a message
+  saying so. See `PhoenixKitEntities.PublicFormTurnstile`.
   """
   use Phoenix.Component
   use Gettext, backend: PhoenixKitEntities.Gettext
@@ -124,7 +127,6 @@ defmodule PhoenixKitEntities.Components.EntityForm do
               <form
                 action={PhoenixKit.Utils.Routes.path("/entities/#{@entity_slug}/submit")}
                 method="post"
-                data-turnstile-gate={if @turnstile_site_key, do: "true"}
               >
                 <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
 
@@ -149,31 +151,40 @@ defmodule PhoenixKitEntities.Components.EntityForm do
                   wrapper_class: "mb-4"
                 )}
 
-                <TurnstileWidget.turnstile_widget
-                  :if={@turnstile_site_key}
-                  id={"entity-form-turnstile-#{@entity_slug}"}
-                  site_key={@turnstile_site_key}
-                />
-                <%!-- Shown by the module's JS when a submit is attempted before the
-                     challenge produced a token: the visitor keeps what they typed.
-                     Without JS the server refuses the submit with the same words. --%>
-                <p
-                  :if={@turnstile_site_key}
-                  id={"entity-form-turnstile-wait-#{@entity_slug}"}
-                  data-turnstile-gate-message
-                  role="alert"
-                  class="text-sm text-error mt-2"
-                  hidden
-                >
-                  {gettext(
-                    "Please wait for the verification to finish, then try again. If you do not see it, reload the page."
-                  )}
-                </p>
-                <noscript :if={@turnstile_site_key}>
-                  <p class="text-sm text-error mt-2">
-                    {gettext("JavaScript is required for the verification.")}
-                  </p>
-                </noscript>
+                <%!-- Turnstile. The module's JS finds these by class and by the hidden
+                     site-key field only, never by a `data-*` or `phx-*` attribute,
+                     because Publishing's page sanitizer strips those from an inline
+                     form (it keeps `class`, `id`, `style`, `aria-*`, and `input`
+                     `type`/`name`/`value`). Core's widget keeps its own
+                     `phx-hook` attributes for LiveViews. --%>
+                <%= if @turnstile_site_key do %>
+                  <input type="hidden" name="_turnstile_sitekey" value={@turnstile_site_key} />
+                  <TurnstileWidget.turnstile_widget
+                    id={"entity-form-turnstile-#{@entity_slug}"}
+                    site_key={@turnstile_site_key}
+                    class="mt-4 entity-turnstile-widget"
+                  />
+                  <%!-- A live region that exists before it has anything to say. --%>
+                  <div class="entity-turnstile-status text-sm text-error mt-2" role="status" aria-live="polite">
+                  </div>
+                  <%!-- The words the JS puts there. Hidden with an inline style (the
+                       sanitizer keeps a plain one), not with `hidden`. --%>
+                  <div style="display: none" aria-hidden="true">
+                    <span class="entity-turnstile-text-wait">
+                      {gettext(
+                        "Please wait for the verification to finish, then try again. If you do not see it, reload the page."
+                      )}
+                    </span>
+                    <span class="entity-turnstile-text-blocked">
+                      {gettext(
+                        "The verification could not load, so this form cannot be sent. Your browser or network is blocking challenges.cloudflare.com: allow it (a content blocker is the usual cause), then reload the page."
+                      )}
+                    </span>
+                    <span class="entity-turnstile-text-error">
+                      {gettext("The verification could not start. Please reload the page.")}
+                    </span>
+                  </div>
+                <% end %>
 
                 <div class="fieldset mt-6">
                   <button type="submit" class="btn btn-primary">

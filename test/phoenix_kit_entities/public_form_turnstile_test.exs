@@ -188,25 +188,51 @@ defmodule PhoenixKitEntities.PublicFormTurnstileTest do
       assert entity |> render_form() |> widget() |> Enum.empty?()
     end
 
-    test "the form carries the submit gate and its message while the widget is drawn", ctx do
+    test "the form carries what the bundle finds it by, and the texts it shows", ctx do
       document = ctx |> protected_entity() |> render_form()
 
-      assert [_] = LazyHTML.query(document, "form[data-turnstile-gate]") |> Enum.to_list()
+      assert [key] =
+               LazyHTML.query(document, "form input[name=_turnstile_sitekey]") |> Enum.to_list()
 
-      assert [message] =
-               LazyHTML.query(document, "form [data-turnstile-gate-message]") |> Enum.to_list()
+      assert LazyHTML.attribute(key, "value") == ["0x4AAAA-site-key"]
+      assert LazyHTML.attribute(key, "type") == ["hidden"]
 
-      assert LazyHTML.attribute(message, "hidden") != []
-      assert LazyHTML.text(message) =~ "wait for the verification to finish"
+      assert [_] = LazyHTML.query(document, "form .entity-turnstile-widget") |> Enum.to_list()
+
+      assert [status] =
+               LazyHTML.query(document, "form .entity-turnstile-status") |> Enum.to_list()
+
+      assert LazyHTML.attribute(status, "role") == ["status"]
+      # Empty until the JS speaks: nothing alarming on a page that never loads it.
+      assert String.trim(LazyHTML.text(status)) == ""
+
+      for {kind, words} <- [
+            {"wait", "wait for the verification to finish"},
+            {"blocked", "blocking challenges.cloudflare.com"},
+            {"error", "could not start"}
+          ] do
+        assert [text] =
+                 LazyHTML.query(document, "form .entity-turnstile-text-#{kind}") |> Enum.to_list()
+
+        assert LazyHTML.text(text) =~ words
+        # Hidden by an inline style, which a sanitizer keeps; `hidden` it would not.
+        assert [_] =
+                 LazyHTML.query(
+                   document,
+                   "form div[style='display: none'] .entity-turnstile-text-#{kind}"
+                 )
+                 |> Enum.to_list()
+      end
     end
 
-    test "the gate is absent without the widget", %{admin: admin} do
+    test "none of it is drawn without the widget", %{admin: admin} do
       for settings <- [%{}, %{"public_form_turnstile" => true}] do
         entity = create_entity(admin, settings)
         document = render_form(entity)
 
-        assert document |> LazyHTML.query("form[data-turnstile-gate]") |> Enum.empty?()
-        assert document |> LazyHTML.query("[data-turnstile-gate-message]") |> Enum.empty?()
+        for selector <- ["input[name=_turnstile_sitekey]", "[class*=entity-turnstile]"] do
+          assert document |> LazyHTML.query(selector) |> Enum.empty?()
+        end
 
         {:ok, _} = Entities.delete_entity(entity)
       end
@@ -315,6 +341,30 @@ defmodule PhoenixKitEntities.PublicFormTurnstileTest do
       assert records(entity) == []
     end
 
+    test "reject_silent never swallows a missing token: that visitor's widget did not start",
+         ctx do
+      entity = protected_entity(ctx, %{"public_form_turnstile_action" => "reject_silent"})
+
+      for token <- [:none, "", "   ", %{"x" => "1"}] do
+        conn = submit(entity, token)
+
+        assert error_flash(conn) =~ "wait for the verification to finish"
+        refute info_flash(conn)
+      end
+
+      assert records(entity) == []
+      assert %{"turnstile_missing_triggers" => 4} = stats(entity)
+    end
+
+    test "a missing token under save_suspicious still saves, flagged", ctx do
+      entity = protected_entity(ctx, %{"public_form_turnstile_action" => "save_suspicious"})
+
+      submit(entity, :none)
+
+      assert [%{status: "draft", metadata: metadata}] = records(entity)
+      assert [%{"type" => "turnstile_missing"}] = metadata["security_warnings"]
+    end
+
     test "save_suspicious saves a draft carrying the warning", ctx do
       entity = protected_entity(ctx, %{"public_form_turnstile_action" => "save_suspicious"})
 
@@ -420,7 +470,7 @@ defmodule PhoenixKitEntities.PublicFormTurnstileTest do
     defp assert_unchecked(entity, log) do
       assert [%{status: "published", metadata: metadata}] = records(entity)
 
-      assert [%{"type" => "turnstile_unchecked", "action" => "save_log"}] =
+      assert [%{"type" => "turnstile_unchecked", "action" => "none"}] =
                metadata["security_warnings"]
 
       assert %{"turnstile_unchecked_triggers" => 1, "successful_submissions" => 1} = stats(entity)

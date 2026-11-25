@@ -592,10 +592,10 @@ address it already derives. Behaviour:
 | Situation | Result |
 |-----------|--------|
 | Option off | Unchanged: no widget, no token is looked at |
-| No token | The configured action applies, with a message telling the visitor to wait for the verification (or reload); stats count `turnstile_missing_triggers`. A steady count here means the widget is not starting (see below) |
+| No token | The configured action applies, with a message telling the visitor to wait for the verification (or reload); stats count `turnstile_missing_triggers`. A steady count here means the widget is not starting (see below). A missing token is never silent: with `reject_silent` it is refused with that message like the no-verdict case, because it is overwhelmingly a real visitor whose widget did not start; `reject_silent` applies only to a token Cloudflare actually refused |
 | A token Cloudflare refuses | The configured action applies; stats count `turnstile_triggers` |
 | Cloudflare cannot be reached (no verdict) | Fails closed with a "try again in a few minutes" message and applies the configured action, except `reject_silent`, which becomes `reject_error` so a real visitor is not told a lost message was sent; stats count `turnstile_unavailable_triggers` |
-| Option on, but no connection is selected, or the selected one was removed or no longer verifies | The widget is not drawn and submissions are **not checked**. This matches core's auth forms: refusing would lock the form for everyone with nothing on the page to fix. Unlike core's single switch, there is one such state per form, so it is made visible: an error is logged naming the entity, stats count `turnstile_unchecked_triggers` (shown in the builder), the stored submission carries a `turnstile_unchecked` entry in `security_warnings`, and the builder warns while the option is on |
+| Option on, but no connection is selected, or the selected one was removed or no longer verifies | The widget is not drawn and submissions are **not checked**. This matches core's auth forms: refusing would lock the form for everyone with nothing on the page to fix. Unlike core's single switch, there is one such state per form, so it is made visible: an error is logged naming the entity, stats count `turnstile_unchecked_triggers` (shown in the builder), the stored submission carries a `turnstile_unchecked` entry (action `none`: nobody chose it) in `security_warnings`; a submission another check rejected never carries it, since Turnstile is skipped then, and the builder warns while the option is on |
 
 The switch is `true` (or the string `"true"`); anything else is off. An action
 nobody understands refuses with an error.
@@ -610,19 +610,32 @@ on for a public form.
 #### Where the widget works
 
 The widget is core's (`phx-hook="Turnstile"`). Inside a LiveView, core's hook
-starts it. On a controller-rendered page - which includes a form embedded in a
-Publishing post - nothing would start it, so this module's own JS bundle
+starts it. On a controller-rendered page, including a form embedded in a
+Publishing post, nothing would start it, so this module's own JS bundle
 (`phoenix_kit_entities.js`, folded into the host's JavaScript by core like
-every module bundle) renders the same element the way core's hook does, and
-does nothing inside a LiveView. Either way the host's JS bundle must be loaded
-on the page; without it no token is sent and every submission is refused with
-the "wait for the verification" message (and counted as above).
+every module bundle) starts it the way core's hook does, except that it does
+not wait for a closed modal to open. It does nothing for a widget that core's
+hook owns.
+
+Publishing runs every post through an allow-list HTML sanitizer that keeps
+`class`, `id`, `style`, `aria-*` and `input` `type`/`name`/`value` and drops
+`data-*`, `phx-*`, `hidden` and `<noscript>`. The form therefore carries the
+site key in a hidden `_turnstile_sitekey` field and the bundle finds the
+widget box, the live region and its texts by class; nothing it needs is an
+attribute that sanitizer removes (`public_form_turnstile_sanitized_test.exs`
+runs the component's output through a copy of Publishing 0.20.0's allow-list).
+If Publishing changes that list, re-check the selectors.
+
+Either way the host's JS bundle must be on the page; without it no token is
+sent and every submission is refused with the "wait for the verification"
+message (and counted as above). There is no `<noscript>` note: the sanitizer
+would turn it into visible markup, and a visitor without JavaScript gets the
+same message from the server.
 
 The same bundle stops a submit that has no token yet from leaving the page, so
-a visitor who is too quick keeps what they typed and sees the same message;
-without JavaScript the form is simply refused by the server, and a `<noscript>`
-note says JavaScript is needed. Tokens are single-use; a refused submit
-redirects back, which renders a fresh widget.
+a visitor who is too quick keeps what they typed and sees the same message in
+a live region. Tokens are single-use; a refused submit redirects back, which
+renders a fresh widget.
 
 A host with a Content-Security-Policy must allow `https://challenges.cloudflare.com`
 in `script-src` and `frame-src` (Turnstile loads its script from there and

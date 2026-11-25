@@ -129,7 +129,7 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
 
     save_flags =
       Enum.filter(flags, fn {:triggered, _type, action} ->
-        action in ["save_suspicious", "save_log"]
+        action in ["save_suspicious", "save_log", "none"]
       end)
 
     cond do
@@ -337,13 +337,14 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
               "submission was not checked"
           )
 
-          {:triggered, :turnstile_unchecked, "save_log"}
+          # Not an action anybody chose: it saves, flags the record, and stops there.
+          {:triggered, :turnstile_unchecked, "none"}
 
         {:error, :unavailable} ->
           {:triggered, :turnstile_unavailable, loud(action)}
 
         {:error, :missing} ->
-          {:triggered, :turnstile_missing, action}
+          {:triggered, :turnstile_missing, loud(action)}
 
         {:error, :rejected} ->
           {:triggered, :turnstile, action}
@@ -361,8 +362,9 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
 
   defp security_action(_action), do: "reject_error"
 
-  # An outage is not the visitor's doing: never swallow their submission with
-  # a fake success.
+  # An outage, or a widget that never started (no token), is not the visitor's
+  # doing: never swallow their submission with a fake success. `reject_silent`
+  # stays for a token Cloudflare actually refused.
   defp loud("reject_silent"), do: "reject_error"
   defp loud(action), do: action
 

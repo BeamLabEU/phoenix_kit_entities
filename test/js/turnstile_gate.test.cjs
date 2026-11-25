@@ -1,11 +1,14 @@
 "use strict";
 
-// Unit tests for the Turnstile helpers in the bundle
-// (priv/static/assets/phoenix_kit_entities.js): when a submit has no token yet
-// and which widgets belong to a LiveView (and so to core's hook).
+// Tests for the Turnstile code in the bundle
+// (priv/static/assets/phoenix_kit_entities.js): which widgets it starts, what
+// it does when loading or rendering fails, and the submit gate.
 //
-// The bundle is browser code, so the globals it touches at load time are
-// stubbed and the helpers are fed plain objects.
+// The runner has no DOM, so the bundle's decisions are plain functions of a
+// `document`-like object, and these tests feed them small stand-ins: an
+// element has attributes, an ancestor test (`closest`) and children found by
+// selector. The browser-only parts (the script tag, `document` listeners) are
+// not exercised here.
 //
 // Run: mix test.js
 
@@ -15,48 +18,149 @@ const assert = require("node:assert/strict");
 global.window = {};
 global.document = { querySelector: () => null, activeElement: null };
 
-const { tokenMissing, insideLiveView, guardSubmit } = require("../../priv/static/assets/phoenix_kit_entities.js");
+const {
+  tokenMissing,
+  insideLiveView,
+  shouldStart,
+  widgetsToStart,
+  startWidgets,
+  guardSubmit
+} = require("../../priv/static/assets/phoenix_kit_entities.js");
 
-const formWith = (field, gate = true) => ({
-  hasAttribute: (name) => gate && name === "data-turnstile-gate",
-  querySelector: (selector) => {
-    if (selector === '[name="cf-turnstile-response"]') return field;
-    if (selector === "[data-turnstile-gate-message]") return formWith.message;
-    return null;
-  }
-});
+const SITEKEY = 'input[name="_turnstile_sitekey"]';
+
+// A widget element: `attrs` are its attributes, `inLiveView` whether a LiveView
+// container is among its ancestors.
+function widget({ attrs = [], inLiveView = false } = {}) {
+  const set = new Set(attrs);
+  return {
+    hasAttribute: (name) => set.has(name),
+    setAttribute: (name) => set.add(name),
+    closest: (selector) => (inLiveView && selector === "[data-phx-session]" ? {} : null)
+  };
+}
+
+// A form with the site-key field, the widget, a live region and the texts.
+function form({ el = widget(), sitekey = "0x4AAA-key", token } = {}) {
+  const field = { value: sitekey };
+  const tokenField = token === undefined ? null : { value: token };
+  const status = { textContent: "" };
+  const texts = {
+    wait: { textContent: "wait" },
+    blocked: { textContent: "blocked" },
+    error: { textContent: "error" }
+  };
+
+  const f = {
+    status,
+    widget: el,
+    querySelector(selector) {
+      if (selector === SITEKEY) return field;
+      if (selector === '[name="cf-turnstile-response"]') return tokenField;
+      if (selector === ".entity-turnstile-widget") return el;
+      if (selector === ".entity-turnstile-status") return status;
+      const text = selector.match(/^\.entity-turnstile-text-(\w+)$/);
+      return text ? texts[text[1]] : null;
+    }
+  };
+  field.form = f;
+  f.field = field;
+  return f;
+}
+
+const docOf = (...forms) => ({ querySelectorAll: () => forms.map((f) => f.field) });
 
 test("a submit has no token when the field is absent, empty or blank", () => {
-  assert.equal(tokenMissing(formWith(null)), true);
-  assert.equal(tokenMissing(formWith({ value: "" })), true);
-  assert.equal(tokenMissing(formWith({ value: "   " })), true);
-  assert.equal(tokenMissing(formWith({ value: undefined })), true);
+  for (const token of [undefined, "", "   "]) {
+    assert.equal(tokenMissing(form({ token })), true);
+  }
+  assert.equal(tokenMissing(form({ token: "0.abc" })), false);
 });
 
-test("a submit with a token is left alone", () => {
-  assert.equal(tokenMissing(formWith({ value: "0.abc" })), false);
-});
-
-test("an element belongs to a LiveView when it sits under a LiveView container", () => {
-  assert.equal(insideLiveView({ closest: (s) => (s === "[data-phx-session]" ? {} : null) }), true);
-  assert.equal(insideLiveView({ closest: () => null }), false);
+test("an element is in a LiveView when a LiveView container is among its ancestors", () => {
+  assert.equal(insideLiveView(widget({ inLiveView: true })), true);
+  assert.equal(insideLiveView(widget()), false);
   assert.equal(insideLiveView({}), false);
 });
 
-test("guardSubmit stops a tokenless submit and shows the message, keeping the page", () => {
-  formWith.message = { hidden: true };
-  let prevented = false;
-  guardSubmit({ target: formWith({ value: "" }), preventDefault: () => (prevented = true) });
-  assert.equal(prevented, true);
-  assert.equal(formWith.message.hidden, false);
+test("core's hook owns a widget in a LiveView that still has its hook attribute", () => {
+  assert.equal(shouldStart(widget({ attrs: ["phx-hook"], inLiveView: true })), false);
 });
 
-test("guardSubmit lets a submit with a token, or a form without the gate, through", () => {
-  let prevented = false;
-  const event = (form) => ({ target: form, preventDefault: () => (prevented = true) });
+test("a controller-rendered page's widget is started, with or without its hook attribute", () => {
+  assert.equal(shouldStart(widget({ attrs: ["phx-hook"] })), true);
+  // Publishing's sanitizer removes the attribute.
+  assert.equal(shouldStart(widget()), true);
+});
 
-  guardSubmit(event(formWith({ value: "0.abc" })));
-  guardSubmit(event(formWith({ value: "" }, false)));
+test("a widget in a LiveView whose hook attribute was stripped is started: nothing else will", () => {
+  assert.equal(shouldStart(widget({ inLiveView: true })), true);
+});
+
+test("a widget already started is not started twice", () => {
+  assert.equal(shouldStart(widget({ attrs: ["data-entity-turnstile"] })), false);
+});
+
+test("widgetsToStart pairs each form's widget with the site key that form carries", () => {
+  const a = form({ sitekey: "key-a" });
+  const b = form({ sitekey: "key-b", el: widget({ attrs: ["phx-hook"], inLiveView: true }) });
+  const c = form({ sitekey: "key-c" });
+
+  const found = widgetsToStart(docOf(a, b, c));
+
+  assert.deepEqual(found.map((w) => w.sitekey), ["key-a", "key-c"]);
+  assert.equal(found[0].el, a.widget);
+});
+
+test("startWidgets renders each started widget once, with its own site key", async () => {
+  const rendered = [];
+  const turnstile = { render: (el, options) => rendered.push([el, options.sitekey]) };
+  const a = form({ sitekey: "key-a" });
+  const b = form({ sitekey: "key-b", el: widget({ attrs: ["phx-hook"], inLiveView: true }) });
+  const doc = docOf(a, b);
+  const load = () => Promise.resolve(turnstile);
+
+  startWidgets(doc, load);
+  await Promise.resolve();
+  startWidgets(doc, load);
+  await Promise.resolve();
+
+  assert.deepEqual(rendered, [[a.widget, "key-a"]]);
+});
+
+test("a script that cannot load says so, and is not mistaken for a render error", async () => {
+  const f = form();
+  startWidgets(docOf(f), () => Promise.reject(new Error("blocked")));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(f.status.textContent, "blocked");
+});
+
+test("a render that throws says so, and is not mistaken for a blocked script", async () => {
+  const f = form();
+  const turnstile = { render: () => { throw new Error("bad site key"); } };
+  startWidgets(docOf(f), () => Promise.resolve(turnstile));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(f.status.textContent, "error");
+});
+
+test("guardSubmit stops a tokenless submit and says why, keeping the page", () => {
+  const f = form({ token: "" });
+  let prevented = false;
+
+  guardSubmit({ target: f, preventDefault: () => (prevented = true) });
+
+  assert.equal(prevented, true);
+  assert.equal(f.status.textContent, "wait");
+});
+
+test("guardSubmit lets a submit with a token, or a form that is not a Turnstile form, through", () => {
+  let prevented = false;
+  const event = (target) => ({ target, preventDefault: () => (prevented = true) });
+
+  guardSubmit(event(form({ token: "0.abc" })));
+  guardSubmit(event({ querySelector: () => null }));
   guardSubmit(event({}));
   guardSubmit(event(null));
 

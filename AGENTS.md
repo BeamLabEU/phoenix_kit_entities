@@ -263,13 +263,18 @@ Repo-local aliases:
   `turnstile_unchecked_triggers` count and a `security_warnings` flag on the
   stored submission. The widget is core's hook element; this module's JS
   bundle starts it on pages that are not LiveViews and keeps a tokenless
-  submit from leaving the page. The client address (rate-limit key and stored
-  metadata alike) comes from core's `PhoenixKit.Utils.IpAddress.extract_from_conn/1`, never from a
-  header read here: `X-Forwarded-For` counts only when the TCP peer is a
-  loopback or private address, and then only its LAST entry, so a direct
-  client rotating the header stays in one bucket. Stored metadata (user-agent,
-  referer) is capped at 255 chars to prevent JSONB bloat. Every submitted
-  value is size-capped (the field's `max_length`, else a flat ceiling);
+  submit from leaving the page. It finds its parts by class and by a hidden
+  `_turnstile_sitekey` field, never by `data-*`/`phx-*`/`hidden`/`<noscript>`,
+  because Publishing's page sanitizer strips those from an inline form
+  (`public_form_turnstile_sanitized_test.exs` pins it against a copy of that
+  allow-list). A missing token is refused loudly even under `reject_silent`.
+  The client address (rate-limit key and stored metadata alike) comes from
+  core's `PhoenixKit.Utils.IpAddress.extract_from_conn/1`, never from a header
+  read here: `X-Forwarded-For` counts only when the TCP peer is a loopback or
+  private address, and then only its LAST entry, so a direct client rotating
+  the header stays in one bucket. Stored metadata (user-agent, referer) is
+  capped at 255 chars to prevent JSONB bloat. Every submitted value is
+  size-capped (the field's `max_length`, else a flat ceiling);
   `relation`, `file` and `heading` fields never take a public value; an
   archived entity refuses submissions.
 - **Public-form statistics are one atomic bump**

@@ -20,6 +20,13 @@ defmodule PhoenixKitEntities.Web.EntityForm do
 
   import PhoenixKitWeb.Components.MultilangForm
 
+  # The selects that set one security setting each. A `phx-change` on a select
+  # delivers that select's own `name => value` (never a `phx-value-*`), so the
+  # setting is whichever of these names the payload carries.
+  @security_action_keys ~w(public_form_honeypot_action public_form_time_check_action public_form_rate_limit_action public_form_turnstile_action)
+  @security_actions ~w(reject_silent reject_error save_suspicious save_log)
+  @turnstile_connection_key "public_form_turnstile_connection"
+
   alias PhoenixKit.Settings
   alias PhoenixKit.Utils.HeroIcons
   alias PhoenixKit.Utils.Number
@@ -323,6 +330,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
         |> assign(:show_icon_picker, false)
         |> assign(:delete_confirm_index, nil)
         |> assign(:form_stats_reset?, false)
+        |> sync_turnstile_choices()
         |> put_flash(:info, gettext("Changes reset to last saved state"))
 
       reply_with_broadcast(socket)
@@ -824,13 +832,6 @@ defmodule PhoenixKitEntities.Web.EntityForm do
     end
   end
 
-  # The selects that set one security setting each. A `phx-change` on a select
-  # delivers that select's own `name => value` (never a `phx-value-*`), so the
-  # setting is whichever of these names the payload carries.
-  @security_action_keys ~w(public_form_honeypot_action public_form_time_check_action public_form_rate_limit_action public_form_turnstile_action)
-  @security_actions ~w(reject_silent reject_error save_suspicious save_log)
-  @turnstile_connection_key "public_form_turnstile_connection"
-
   def handle_event("update_security_action", params, socket) do
     if socket.assigns[:lock_owner?] do
       case security_select_change(params, socket) do
@@ -1247,6 +1248,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
         |> assign(:fields, entity.fields_definition || [])
         |> assign(:has_unsaved_changes, false)
         |> assign(:form_stats_reset?, false)
+        |> sync_turnstile_choices()
         |> cache_entity_form_state(nil)
         |> then(&{:noreply, &1})
       else
@@ -1366,6 +1368,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
     |> assign(:form_stats_reset?, reset? == true)
     |> assign(:delete_confirm_index, nil)
     |> assign(:has_unsaved_changes, true)
+    |> sync_turnstile_choices()
     # The FIFO owner's snapshot must stay current even when a different
     # editable tab sent the change; new joiners read that owner's metadata.
     |> cache_entity_form_state(payload)
@@ -1408,6 +1411,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
     |> assign(:fields, fields)
     |> assign(:changeset, changeset)
     |> assign(:form_stats_reset?, false)
+    |> sync_turnstile_choices()
     |> maybe_update_available_icons()
   end
 
@@ -1685,6 +1689,18 @@ defmodule PhoenixKitEntities.Web.EntityForm do
   end
 
   defp refresh_turnstile_choices(socket, _setting_key, _settings), do: socket
+
+  # Keeps the page's list of verified connections in step with whichever copy
+  # of the settings the page now shows (a peer's change, a promotion to owner,
+  # a reset): a page that did not read them while the option was off would
+  # otherwise warn of "no connection" and ignore a pick.
+  defp sync_turnstile_choices(socket) do
+    settings = socket.assigns.entity.settings
+
+    if PublicFormTurnstile.enabled?(settings) and socket.assigns.turnstile_choices == [],
+      do: assign(socket, :turnstile_choices, PublicFormTurnstile.choices()),
+      else: socket
+  end
 
   defp turnstile_choices(settings) do
     if PublicFormTurnstile.enabled?(settings), do: PublicFormTurnstile.choices(), else: []
