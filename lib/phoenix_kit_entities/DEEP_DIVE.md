@@ -797,6 +797,18 @@ Limits submissions per IP address (5 per minute):
 | `public_form_rate_limit` | boolean | false | Enable rate limiting |
 | `public_form_rate_limit_action` | string | "reject_error" | Action when triggered |
 
+#### Cloudflare Turnstile
+
+Needs a verified Turnstile connection in the core Integrations settings
+(core 3.7.0+); see "Cloudflare Turnstile" in `OVERVIEW.md` for the failure
+policy.
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `public_form_turnstile` | boolean | false | Render the widget and verify the token |
+| `public_form_turnstile_connection` | string (uuid) | nil | The connection that supplies the site key and verifies |
+| `public_form_turnstile_action` | string | "reject_error" | Action when the check fails |
+
 ### Security Actions
 
 Each security option can be configured with one of four actions:

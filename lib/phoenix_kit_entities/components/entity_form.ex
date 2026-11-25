@@ -10,6 +10,16 @@ defmodule PhoenixKitEntities.Components.EntityForm do
   ## Attributes
 
   - `entity_slug` (required) - The slug/name of the entity to render form for
+
+  ## Cloudflare Turnstile
+
+  With `public_form_turnstile` on and a verified connection selected, the form
+  carries core's Turnstile widget (`cf-turnstile-response` rides in the POST).
+  The widget is a LiveView hook shipped in core's JS bundle, so the page that
+  embeds this form must be a LiveView with core's hooks loaded; on a dead
+  (controller-rendered) page the widget never starts, no token is sent, and
+  the controller refuses the submission as an unverified one. See
+  `PhoenixKitEntities.PublicFormTurnstile`.
   """
   use Phoenix.Component
   use Gettext, backend: PhoenixKitEntities.Gettext
@@ -18,6 +28,8 @@ defmodule PhoenixKitEntities.Components.EntityForm do
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.EntityData
   alias PhoenixKitEntities.FormBuilder
+  alias PhoenixKitEntities.PublicFormTurnstile
+  alias PhoenixKitWeb.Components.Core.TurnstileWidget
 
   attr(:content, :string, default: nil)
   attr(:attributes, :map, default: %{})
@@ -69,6 +81,7 @@ defmodule PhoenixKitEntities.Components.EntityForm do
       |> assign(:form_description, form_description)
       |> assign(:form_submit_text, form_submit_text)
       |> assign(:honeypot_enabled, honeypot_enabled)
+      |> assign(:turnstile_site_key, turnstile_site_key(entity, form_enabled))
       |> assign(:form_timestamp, UtilsDate.utc_now() |> DateTime.to_iso8601())
 
     ~H"""
@@ -132,6 +145,12 @@ defmodule PhoenixKitEntities.Components.EntityForm do
                   wrapper_class: "mb-4"
                 )}
 
+                <TurnstileWidget.turnstile_widget
+                  :if={@turnstile_site_key}
+                  id={"entity-form-turnstile-#{@entity_slug}"}
+                  site_key={@turnstile_site_key}
+                />
+
                 <div class="fieldset mt-6">
                   <button type="submit" class="btn btn-primary">
                     {@form_submit_text}
@@ -144,6 +163,11 @@ defmodule PhoenixKitEntities.Components.EntityForm do
     </div>
     """
   end
+
+  # nil unless the form is live and Turnstile is on for it with a connection
+  # that can verify.
+  defp turnstile_site_key(%{settings: settings}, true), do: PublicFormTurnstile.site_key(settings)
+  defp turnstile_site_key(_entity, _form_enabled), do: nil
 
   # Enabled, with at least one field selected, on an entity that is not
   # archived — the same three things the submit endpoint requires.

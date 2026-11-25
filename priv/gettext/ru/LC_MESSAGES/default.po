@@ -3022,3 +3022,73 @@ msgstr "Включение и выключение системы сущност
 #, elixir-autogen, elixir-format
 msgid "You do not have permission to change Entities settings."
 msgstr "У вас нет прав на изменение настроек сущностей."
+
+#: lib/phoenix_kit_entities/controllers/entity_form_controller.ex
+#, elixir-autogen, elixir-format
+msgid "[Debug] Submission rejected: Turnstile verification token missing or not accepted."
+msgstr "[Отладка] Отправка отклонена: токен проверки Turnstile отсутствует или не принят."
+
+#: lib/phoenix_kit_entities/controllers/entity_form_controller.ex
+#, elixir-autogen, elixir-format
+msgid "[Debug] Submission rejected: Turnstile verification service unavailable."
+msgstr "[Отладка] Отправка отклонена: сервис проверки Turnstile недоступен."
+
+#: lib/phoenix_kit_entities/controllers/entity_form_controller.ex
+#, elixir-autogen, elixir-format
+msgid "Please complete the verification and try again."
+msgstr "Пожалуйста, пройдите проверку и попробуйте снова."
+
+#: lib/phoenix_kit_entities/controllers/entity_form_controller.ex
+#, elixir-autogen, elixir-format
+msgid "The verification service is not available right now. Please try again in a few minutes."
+msgstr "Сервис проверки сейчас недоступен. Пожалуйста, попробуйте снова через несколько минут."
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Cloudflare Turnstile"
+msgstr "Cloudflare Turnstile"
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Ask visitors to pass a Cloudflare Turnstile check. Needs a Turnstile connection configured in the core Integrations settings, and a page that is a LiveView."
+msgstr "Просить посетителей пройти проверку Cloudflare Turnstile. Нужно подключение Turnstile, настроенное в разделе интеграций ядра, и страница на LiveView."
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Open integrations"
+msgstr "Открыть интеграции"
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Turnstile connection:"
+msgstr "Подключение Turnstile:"
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Select a connection"
+msgstr "Выберите подключение"
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "No verified Cloudflare Turnstile connection exists. Add one in the core Integrations settings; until then submissions are not checked."
+msgstr "Проверенного подключения Cloudflare Turnstile нет. Добавьте его в разделе интеграций ядра; до тех пор отправки не проверяются."
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Select a Turnstile connection below; until then submissions are not checked."
+msgstr "Выберите подключение Turnstile ниже; до тех пор отправки не проверяются."
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "The selected Turnstile connection is gone or no longer verified. Select another; until then submissions are not checked."
+msgstr "Выбранное подключение Turnstile удалено или больше не проверено. Выберите другое; до тех пор отправки не проверяются."
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Turnstile: %{count}"
+msgstr "Turnstile: %{count}"
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Turnstile unavailable: %{count}"
+msgstr "Turnstile недоступен: %{count}"

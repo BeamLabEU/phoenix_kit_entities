@@ -11,6 +11,7 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.EntityData
   alias PhoenixKitEntities.FormBuilder
+  alias PhoenixKitEntities.PublicFormTurnstile
 
   require Logger
 
@@ -83,12 +84,20 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
   defp run_security_checks(conn, entity, params) do
     settings = entity.settings || %{}
 
-    # Collect all security check results
-    checks = [
+    # Collect all security check results. Turnstile goes last and is skipped
+    # once another check already refuses the submission: it is the only check
+    # that calls out to another service, and a request that is dropped anyway
+    # must not cost one.
+    local_checks = [
       check_honeypot(settings, params),
       check_submission_time(settings, params),
       check_rate_limit(conn, settings, entity)
     ]
+
+    checks =
+      if Enum.any?(local_checks, &rejecting?/1),
+        do: local_checks,
+        else: local_checks ++ [check_turnstile(conn, settings, params)]
 
     # Find any triggered checks that require action
     triggered =
@@ -103,6 +112,9 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
       flags -> {:flagged, flags}
     end
   end
+
+  defp rejecting?({:triggered, _type, action}), do: action in ["reject_silent", "reject_error"]
+  defp rejecting?(_check), do: false
 
   defp handle_security_result(conn, entity, params, :ok) do
     handle_submission(conn, entity, params, [])
@@ -181,6 +193,15 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
   defp get_error_message(:rate_limited, true),
     do: gettext("[Debug] Submission rejected: Rate limit exceeded (5 submissions per minute).")
 
+  defp get_error_message(:turnstile, true),
+    do:
+      gettext(
+        "[Debug] Submission rejected: Turnstile verification token missing or not accepted."
+      )
+
+  defp get_error_message(:turnstile_unavailable, true),
+    do: gettext("[Debug] Submission rejected: Turnstile verification service unavailable.")
+
   defp get_error_message(type, true),
     do: gettext("[Debug] Submission rejected: Security check failed (%{type}).", type: type)
 
@@ -192,6 +213,15 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
 
   defp get_error_message(:rate_limited, false),
     do: gettext("Too many submissions. Please try again later.")
+
+  defp get_error_message(:turnstile, false),
+    do: gettext("Please complete the verification and try again.")
+
+  defp get_error_message(:turnstile_unavailable, false),
+    do:
+      gettext(
+        "The verification service is not available right now. Please try again in a few minutes."
+      )
 
   defp get_error_message(_, false), do: gettext("There was an error submitting the form.")
 
@@ -279,6 +309,39 @@ defmodule PhoenixKitEntities.Controllers.EntityFormController do
 
       :ok
   end
+
+  # The token rides in the POST as `cf-turnstile-response`. A missing or
+  # refused token triggers the configured action; no verdict from Cloudflare
+  # fails closed (see `PhoenixKitEntities.PublicFormTurnstile` for the policy,
+  # including an unusable connection).
+  defp check_turnstile(conn, settings, params) do
+    if PublicFormTurnstile.enabled?(settings) do
+      token = Map.get(params, PublicFormTurnstile.response_field())
+      ip = IpAddress.extract_from_conn(conn)
+      action = security_action(Map.get(settings, "public_form_turnstile_action"))
+
+      case PublicFormTurnstile.verify(settings, token, ip) do
+        :ok -> :ok
+        {:error, :unavailable} -> {:triggered, :turnstile_unavailable, loud(action)}
+        {:error, _missing_or_rejected} -> {:triggered, :turnstile, action}
+      end
+    else
+      :ok
+    end
+  end
+
+  # A stored action nobody understands (hand-edited settings) must not open the
+  # form: anything but the four known actions refuses with an error.
+  defp security_action(action)
+       when action in ~w(reject_silent reject_error save_suspicious save_log),
+       do: action
+
+  defp security_action(_action), do: "reject_error"
+
+  # An outage is not the visitor's doing: never swallow their submission with
+  # a fake success.
+  defp loud("reject_silent"), do: "reject_error"
+  defp loud(action), do: action
 
   defp get_success_message(entity) do
     settings = entity.settings || %{}

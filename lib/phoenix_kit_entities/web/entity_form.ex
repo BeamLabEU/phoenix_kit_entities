@@ -32,6 +32,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
   alias PhoenixKitEntities.Mirror.Storage
   alias PhoenixKitEntities.Presence
   alias PhoenixKitEntities.PresenceHelpers
+  alias PhoenixKitEntities.PublicFormTurnstile
   alias PhoenixKitEntities.Relations
   alias PhoenixKitWeb.Actor
 
@@ -186,6 +187,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
       |> assign(:page_section, gettext("Entities"))
       |> assign(:page_section_path, Routes.path("/admin/entities"))
       |> assign(:page_crumbs, entity_crumbs(entity))
+      |> assign(:turnstile_choices, PublicFormTurnstile.choices())
       |> assign(:project_title, project_title)
       |> assign(:entity, entity)
       |> assign(:changeset, changeset)
@@ -1615,6 +1617,33 @@ defmodule PhoenixKitEntities.Web.EntityForm do
 
   def format_stats_datetime(_), do: "-"
 
+  # The four security actions every public-form check offers, in menu order.
+  defp security_action_options do
+    [
+      {"reject_error", gettext("Reject with error message")},
+      {"reject_silent", gettext("Reject silently (fake success)")},
+      {"save_suspicious", gettext("Save but mark as suspicious")},
+      {"save_log", gettext("Save and log warning")}
+    ]
+  end
+
+  # Why a switched-on Turnstile check is not protecting the form.
+  defp turnstile_notice(:no_connections) do
+    gettext(
+      "No verified Cloudflare Turnstile connection exists. Add one in the core Integrations settings; until then submissions are not checked."
+    )
+  end
+
+  defp turnstile_notice(:no_selection) do
+    gettext("Select a Turnstile connection below; until then submissions are not checked.")
+  end
+
+  defp turnstile_notice(:stale_selection) do
+    gettext(
+      "The selected Turnstile connection is gone or no longer verified. Select another; until then submissions are not checked."
+    )
+  end
+
   defp ensure_live_source(socket) do
     socket.assigns[:live_source] ||
       (socket.id ||
@@ -2870,6 +2899,103 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                           </div>
                         <% end %>
                       </div>
+
+                      <%!-- Cloudflare Turnstile --%>
+                      <% turnstile_status =
+                        PublicFormTurnstile.status(@entity.settings, @turnstile_choices) %>
+                      <div id="public-form-turnstile" class="border border-base-300 rounded-lg p-4">
+                        <div class="fieldset">
+                          <label class="label cursor-pointer justify-start gap-4">
+                            <input
+                              type="checkbox"
+                              name="public_form_turnstile"
+                              class="toggle toggle-primary"
+                              checked={PublicFormTurnstile.enabled?(@entity.settings)}
+                              phx-click="toggle_security_setting"
+                              phx-value-setting="public_form_turnstile"
+                              disabled={@readonly?}
+                            />
+                            <div>
+                              <span class="fieldset-legend font-medium">
+                                {gettext("Cloudflare Turnstile")}
+                              </span>
+                              <p class="text-xs text-base-content/60 mt-1">
+                                {gettext(
+                                  "Ask visitors to pass a Cloudflare Turnstile check. Needs a Turnstile connection configured in the core Integrations settings, and a page that is a LiveView."
+                                )}
+                              </p>
+                            </div>
+                          </label>
+                        </div>
+
+                        <%= if turnstile_status != :off do %>
+                          <div class="mt-3 pl-14 space-y-3">
+                            <div :if={turnstile_status != :ready} id="turnstile-not-ready" class="alert alert-warning">
+                              <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
+                              <span class="text-sm">
+                                {turnstile_notice(turnstile_status)}
+                                <.pk_link
+                                  href="/admin/settings/integrations"
+                                  target="_blank"
+                                  rel="noopener"
+                                  class="link link-primary"
+                                >
+                                  {gettext("Open integrations")}
+                                </.pk_link>
+                              </span>
+                            </div>
+
+                            <div>
+                              <.label class="text-sm">{gettext("Turnstile connection:")}</.label>
+                              <label class="select select-sm w-full max-w-xs mt-1">
+                                <select
+                                  name="public_form_turnstile_connection"
+                                  phx-change="update_security_action"
+                                  phx-value-setting="public_form_turnstile_connection"
+                                  disabled={@readonly?}
+                                >
+                                  <option
+                                    value=""
+                                    selected={is_nil(PublicFormTurnstile.connection(@entity.settings))}
+                                  >
+                                    {gettext("Select a connection")}
+                                  </option>
+                                  <option
+                                    :for={{uuid, name} <- @turnstile_choices}
+                                    value={uuid}
+                                    selected={PublicFormTurnstile.connection(@entity.settings) == uuid}
+                                  >
+                                    {name}
+                                  </option>
+                                </select>
+                              </label>
+                            </div>
+
+                            <div>
+                              <.label class="text-sm">{gettext("When triggered:")}</.label>
+                              <label class="select select-sm w-full max-w-xs mt-1">
+                                <select
+                                  name="public_form_turnstile_action"
+                                  phx-change="update_security_action"
+                                  phx-value-setting="public_form_turnstile_action"
+                                  disabled={@readonly?}
+                                >
+                                  <option
+                                    :for={{value, label} <- security_action_options()}
+                                    value={value}
+                                    selected={
+                                      (get_in(@entity.settings, ["public_form_turnstile_action"]) ||
+                                         "reject_error") == value
+                                    }
+                                  >
+                                    {label}
+                                  </option>
+                                </select>
+                              </label>
+                            </div>
+                          </div>
+                        <% end %>
+                      </div>
                     </div>
                   </div>
 
@@ -2916,7 +3042,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                     </div>
 
                     <%!-- Security trigger breakdown --%>
-                    <%= if stats["honeypot_triggers"] || stats["too_fast_triggers"] || stats["rate_limited_triggers"] do %>
+                    <%= if stats["honeypot_triggers"] || stats["too_fast_triggers"] || stats["rate_limited_triggers"] || stats["turnstile_triggers"] || stats["turnstile_unavailable_triggers"] do %>
                       <div class="mt-4">
                         <h4 class="text-sm font-medium text-base-content/70 mb-2">
                           {gettext("Security Triggers")}
@@ -2939,6 +3065,20 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                               <.icon name="hero-clock" class="w-3 h-3" />
                               {gettext("Rate Limited: %{count}",
                                 count: stats["rate_limited_triggers"]
+                              )}
+                            </div>
+                          <% end %>
+                          <%= if stats["turnstile_triggers"] do %>
+                            <div class="badge badge-warning gap-1">
+                              <.icon name="hero-shield-exclamation" class="w-3 h-3" />
+                              {gettext("Turnstile: %{count}", count: stats["turnstile_triggers"])}
+                            </div>
+                          <% end %>
+                          <%= if stats["turnstile_unavailable_triggers"] do %>
+                            <div class="badge badge-warning gap-1">
+                              <.icon name="hero-cloud" class="w-3 h-3" />
+                              {gettext("Turnstile unavailable: %{count}",
+                                count: stats["turnstile_unavailable_triggers"]
                               )}
                             </div>
                           <% end %>

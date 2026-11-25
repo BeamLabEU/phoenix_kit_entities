@@ -547,7 +547,7 @@ The Entities system includes a public form builder for creating embeddable forms
 
 - **Embeddable Component**: Use `<EntityForm entity_slug="contact" />` in publishing pages
 - **Field Selection**: Choose which entity fields appear on the public form
-- **Security Options**: Honeypot, time-based validation (3s minimum), rate limiting (5/min)
+- **Security Options**: Honeypot, time-based validation (3s minimum), rate limiting (5/min), Cloudflare Turnstile
 - **Configurable Actions**: reject_silent, reject_error, save_suspicious, save_log
 - **Statistics**: Track submissions, rejections, and security triggers
 - **Debug Mode**: Detailed error messages for troubleshooting
@@ -567,8 +567,44 @@ The Entities system includes a public form builder for creating embeddable forms
 | `public_form_honeypot` | Enable honeypot protection |
 | `public_form_time_check` | Enable time-based validation |
 | `public_form_rate_limit` | Enable rate limiting |
+| `public_form_turnstile` | Enable Cloudflare Turnstile (needs a connection, see below) |
+| `public_form_turnstile_connection` | UUID of the verified Turnstile connection to use |
+| `public_form_turnstile_action` | Action when the check fails (default `reject_error`) |
 | `public_form_debug_mode` | Show detailed error messages |
 | `public_form_collect_metadata` | Collect submission metadata |
+
+### Cloudflare Turnstile
+
+An optional captcha for the public form, built on core's website integrations
+(`PhoenixKit.Integrations.Turnstile`, core 3.7.0+). It is independent of the
+Authorization page's switch, which only protects core's own auth forms.
+
+1. Add a Cloudflare Turnstile connection in the core Integrations settings
+   (site key and secret key) and test it.
+2. In the entity builder, switch on **Cloudflare Turnstile** under Security,
+   pick the connection and the action for a failed check (same four actions
+   as the other checks).
+
+With the option on and a usable connection, the form carries core's Turnstile
+widget and the controller verifies the token server-side with the client
+address it already derives. Behaviour:
+
+| Situation | Result |
+|-----------|--------|
+| Option off | Unchanged: no widget, no token is looked at |
+| No token, or a token Cloudflare refuses | The configured action applies; stats count `turnstile_triggers` |
+| Cloudflare cannot be reached (no verdict) | Fails closed with a "try again in a few minutes" message and applies the configured action, except `reject_silent`, which becomes `reject_error` so a real visitor is not told a lost message was sent; stats count `turnstile_unavailable_triggers` |
+| Option on, but no connection is selected, or the selected one was removed or no longer verifies | The widget is not drawn and submissions are **not checked** (a logged error per submission). This matches core's auth forms: refusing would lock the form for everyone with nothing on the page to fix. The builder shows a warning while this is the case |
+
+Order: Turnstile is the last check, and it is skipped when another check
+already rejects the submission, so a request that is dropped anyway costs no
+call to Cloudflare.
+
+The widget is a LiveView hook from core's JS bundle, so the page embedding the
+form must be a LiveView with core's hooks loaded. On a controller-rendered
+page the widget never starts, no token is sent, and every submission is
+refused as unverified. Tokens are single-use; a refused submit redirects back,
+which renders a fresh widget.
 
 ### Embedding in pages
 

@@ -3017,3 +3017,73 @@ msgstr "Üksuste süsteemi ja peegeldamise sisse- ja väljalülitamine, eksport 
 #, elixir-autogen, elixir-format
 msgid "You do not have permission to change Entities settings."
 msgstr "Teil pole õigust üksuste seadeid muuta."
+
+#: lib/phoenix_kit_entities/controllers/entity_form_controller.ex
+#, elixir-autogen, elixir-format
+msgid "[Debug] Submission rejected: Turnstile verification token missing or not accepted."
+msgstr "[Silumine] Esitamine lükati tagasi: Turnstile'i kinnitustõend puudub või ei kõlvanud."
+
+#: lib/phoenix_kit_entities/controllers/entity_form_controller.ex
+#, elixir-autogen, elixir-format
+msgid "[Debug] Submission rejected: Turnstile verification service unavailable."
+msgstr "[Silumine] Esitamine lükati tagasi: Turnstile'i kinnitusteenus pole saadaval."
+
+#: lib/phoenix_kit_entities/controllers/entity_form_controller.ex
+#, elixir-autogen, elixir-format
+msgid "Please complete the verification and try again."
+msgstr "Palun läbige kinnitus ja proovige uuesti."
+
+#: lib/phoenix_kit_entities/controllers/entity_form_controller.ex
+#, elixir-autogen, elixir-format
+msgid "The verification service is not available right now. Please try again in a few minutes."
+msgstr "Kinnitusteenus pole praegu saadaval. Palun proovige mõne minuti pärast uuesti."
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Cloudflare Turnstile"
+msgstr "Cloudflare Turnstile"
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Ask visitors to pass a Cloudflare Turnstile check. Needs a Turnstile connection configured in the core Integrations settings, and a page that is a LiveView."
+msgstr "Paluge külastajatel läbida Cloudflare Turnstile'i kontroll. Vajab Turnstile'i ühendust, mis on seadistatud tuuma integratsioonide seadetes, ning lehte, mis on LiveView."
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Open integrations"
+msgstr "Ava integratsioonid"
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Turnstile connection:"
+msgstr "Turnstile'i ühendus:"
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Select a connection"
+msgstr "Valige ühendus"
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "No verified Cloudflare Turnstile connection exists. Add one in the core Integrations settings; until then submissions are not checked."
+msgstr "Kinnitatud Cloudflare Turnstile'i ühendust pole. Lisage see tuuma integratsioonide seadetes; seni esitusi ei kontrollita."
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Select a Turnstile connection below; until then submissions are not checked."
+msgstr "Valige allpool Turnstile'i ühendus; seni esitusi ei kontrollita."
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "The selected Turnstile connection is gone or no longer verified. Select another; until then submissions are not checked."
+msgstr "Valitud Turnstile'i ühendus on kadunud või pole enam kinnitatud. Valige mõni teine; seni esitusi ei kontrollita."
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Turnstile: %{count}"
+msgstr "Turnstile: %{count}"
+
+#: lib/phoenix_kit_entities/web/entity_form.ex
+#, elixir-autogen, elixir-format
+msgid "Turnstile unavailable: %{count}"
+msgstr "Turnstile pole saadaval: %{count}"

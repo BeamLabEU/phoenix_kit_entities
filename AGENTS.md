@@ -10,8 +10,9 @@ entity are stored as *entity data* rows sharing one JSONB shape. It implements
 the `PhoenixKit.Module` behaviour, so a host app gets the admin UI, settings,
 permissions, migrations and routes by adding the dependency — no wiring.
 
-- **Depends on:** `phoenix_kit` `>= 3.5.0 and < 4.0.0` (Hex; floor 3.5.0, the
-  ecosystem-wide minimum, ceiling open through core 3.x), `phoenix_live_view` `~> 1.0`,
+- **Depends on:** `phoenix_kit` `>= 3.7.0 and < 4.0.0` (Hex; floor 3.7.0 — the
+  first core with `PhoenixKit.Integrations.Turnstile`, which the public form's
+  Turnstile option calls — ceiling open through core 3.x), `phoenix_live_view` `~> 1.0`,
   `gettext` `~> 1.0`. `lazy_html` is test-only (`Phoenix.LiveViewTest`'s HTML
   parser). No sibling `phoenix_kit_*` deps.
 - **Consumed by:** `phoenix_kit_catalogue` (attribute sets are MANAGED
@@ -40,7 +41,8 @@ permissions, migrations and routes by adding the dependency — no wiring.
 - **Authentication on public form submissions** — the public POST
   endpoint at `/entities/:entity_slug/submit` accepts un-authed
   submissions on purpose (it is the public-form contract). Defense is
-  honeypot + minimum submission time + rate limiting, not auth.
+  honeypot + minimum submission time + rate limiting + optional Cloudflare
+  Turnstile, not auth.
 - **Per-entity push-notification or webhook delivery** — `Events`
   broadcasts to PubSub for in-app reactivity. External webhook
   delivery is out of scope.
@@ -251,8 +253,13 @@ Repo-local aliases:
   %{locale: "x-default", href}]}` for hreflang/canonical tags.
 - **Public form controller defense** — the POST at
   `/entities/:entity_slug/submit` is intentionally un-authed. Protection is a
-  honeypot field, a minimum submission time and a Hammer per-IP-per-entity rate
-  limit. The client address (rate-limit key and stored metadata alike) comes
+  honeypot field, a minimum submission time, a Hammer per-IP-per-entity rate
+  limit and, per entity, Cloudflare Turnstile (`PublicFormTurnstile`, on the
+  connection the entity selects from core's website integrations, never the
+  Authorization page's auth-forms switch). Turnstile runs last and is skipped
+  once another check rejects; no Cloudflare verdict fails closed, but a
+  switched-on option whose connection cannot verify lets the request through
+  with a logged error, as core does for its auth forms. The client address (rate-limit key and stored metadata alike) comes
   from core's `PhoenixKit.Utils.IpAddress.extract_from_conn/1`, never from a
   header read here: `X-Forwarded-For` counts only when the TCP peer is a
   loopback or private address, and then only its LAST entry, so a direct
@@ -356,7 +363,7 @@ Repo-local aliases:
 - Narrowing the core pin to a three-segment `~> 3.5.x` breaks CONSUMERS only
   (`~> 3.5.x` excludes every 3.6+ core, so a host wanting both this module
   and a newer core gets an unsolvable dep set). Raising the floor of the
-  compound `>= 3.5.0 and < 4.0.0` pin is fine, and required whenever code
+  compound `>= 3.7.0 and < 4.0.0` pin is fine, and required whenever code
   starts calling a newer core API.
   `core_pin_conformance_test.exs` guards it; nothing else in this repo would
   notice.
