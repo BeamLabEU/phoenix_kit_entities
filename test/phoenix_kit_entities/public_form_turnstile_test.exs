@@ -17,6 +17,7 @@ defmodule PhoenixKitEntities.PublicFormTurnstileTest do
   import Phoenix.ConnTest, only: [build_conn: 0, fetch_flash: 1]
 
   alias PhoenixKit.Integrations
+  alias PhoenixKit.Modules.Languages
   alias PhoenixKit.Test.Fixtures
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.Components.EntityForm
@@ -298,6 +299,16 @@ defmodule PhoenixKitEntities.PublicFormTurnstileTest do
       refute_received {:siteverify, _}
       assert %{"rejected_submissions" => 1, "turnstile_missing_triggers" => 1} = stats(entity)
       refute Map.has_key?(stats(entity), "turnstile_triggers")
+    end
+
+    test "the missing-token message follows the posted form language", ctx do
+      {:ok, _} = Languages.enable_system()
+      entity = protected_entity(ctx)
+
+      for {locale, message} <- [{"de-DE", "Bitte warten Sie"}, {"fr-FR", "Attendez la fin"}] do
+        {:ok, _} = Languages.add_language(locale)
+        assert error_flash(submit(entity, :none, %{"_locale" => locale})) =~ message
+      end
     end
 
     test "a blank or crafted token counts as no token", ctx do

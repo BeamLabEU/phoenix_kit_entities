@@ -195,13 +195,16 @@
     if (!tokenMissing(form)) return;
 
     event.preventDefault();
-    say(form, "wait");
+    var status = form.querySelector(".entity-turnstile-status");
+    if (!status || !status.textContent.trim()) say(form, "wait");
   }
 
   if (typeof document !== "undefined" && document.addEventListener) {
     document.addEventListener("submit", guardSubmit, true);
 
     var start = function () { startWidgets(document, loadTurnstile); };
+
+    window.addEventListener("phx:page-loading-stop", start);
 
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", start);

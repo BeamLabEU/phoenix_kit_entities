@@ -133,6 +133,7 @@ test("a script that cannot load says so, and is not mistaken for a render error"
   startWidgets(docOf(f), () => Promise.reject(new Error("blocked")));
   await new Promise((resolve) => setImmediate(resolve));
 
+  guardSubmit({ target: f, preventDefault() {} });
   assert.equal(f.status.textContent, "blocked");
 });
 
@@ -165,4 +166,31 @@ test("guardSubmit lets a submit with a token, or a form that is not a Turnstile 
   guardSubmit(event(null));
 
   assert.equal(prevented, false);
+});
+
+test("a sanitized form added by LiveView navigation starts once", async () => {
+  const fs = require("node:fs");
+  const vm = require("node:vm");
+  let forms = [];
+  const rendered = [];
+  const listeners = {};
+  const window = {
+    addEventListener(name, callback) { listeners[name] = callback; },
+    turnstile: { render(el) { rendered.push(el); } }
+  };
+  const document = {
+    readyState: "complete",
+    addEventListener() {},
+    querySelectorAll() { return forms.map((f) => f.field); }
+  };
+  const bundle = require.resolve("../../priv/static/assets/phoenix_kit_entities.js");
+  vm.runInNewContext(fs.readFileSync(bundle, "utf8"), { window, document });
+
+  const added = form({ el: widget({ inLiveView: true }) });
+  forms = [added];
+  listeners["phx:page-loading-stop"]();
+  listeners["phx:page-loading-stop"]();
+  await Promise.resolve();
+
+  assert.deepEqual(rendered, [added.widget]);
 });

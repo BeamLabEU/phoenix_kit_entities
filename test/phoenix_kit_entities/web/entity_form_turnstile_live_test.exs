@@ -78,6 +78,18 @@ defmodule PhoenixKitEntities.Web.EntityFormTurnstileLiveTest do
     refute has_element?(view, "#public-form-turnstile select")
   end
 
+  test "the switch only toggles its setting and treats an imported false as off",
+       %{conn: conn, actor_uuid: actor_uuid} do
+    entity = create_entity(actor_uuid, %{"public_form_turnstile" => "false"})
+    {view, _html} = edit(conn, entity, actor_uuid)
+    settings = socket_settings(view)
+    render_click(view, "toggle_security_setting", %{"setting" => "public_form_title"})
+    assert socket_settings(view) == settings
+
+    view |> element("input[name=public_form_turnstile]") |> render_click()
+    assert socket_settings(view)["public_form_turnstile"] == true
+  end
+
   test "the switch, the connection and the action save with the entity",
        %{conn: conn, actor_uuid: actor_uuid, connection: connection} do
     entity = create_entity(actor_uuid, %{})

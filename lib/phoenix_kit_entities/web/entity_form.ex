@@ -24,6 +24,8 @@ defmodule PhoenixKitEntities.Web.EntityForm do
   # delivers that select's own `name => value` (never a `phx-value-*`), so the
   # setting is whichever of these names the payload carries.
   @security_action_keys ~w(public_form_honeypot_action public_form_time_check_action public_form_rate_limit_action public_form_turnstile_action)
+  @public_form_text_keys ~w(public_form_title public_form_description public_form_submit_text public_form_success_message)
+  @security_toggle_keys ~w(public_form_collect_metadata public_form_debug_mode public_form_honeypot public_form_time_check public_form_rate_limit public_form_turnstile)
   @security_actions ~w(reject_silent reject_error save_suspicious save_log)
   @turnstile_connection_key "public_form_turnstile_connection"
 
@@ -297,7 +299,12 @@ defmodule PhoenixKitEntities.Web.EntityForm do
       # "Create and Return" / "Update and Return" submits a second button
       # named `return_to_list=true`; the regular Create/Update button omits it.
       return_to_list? = params["return_to_list"] == "true"
-      do_save(entity_params, assign(socket, :return_to_list, return_to_list?))
+
+      do_save(
+        entity_params,
+        Map.take(params, @public_form_text_keys),
+        assign(socket, :return_to_list, return_to_list?)
+      )
     else
       {:noreply, put_flash(socket, :error, gettext("Cannot save - you are spectating"))}
     end
@@ -734,47 +741,24 @@ defmodule PhoenixKitEntities.Web.EntityForm do
     end
   end
 
-  def handle_event("update_public_form_setting", params, socket) do
+  # The four public-form texts of the primary language. The inputs carry
+  # `phx-value-setting` because a `phx-blur` event delivers the element's
+  # `phx-value-*` attributes and its `value`, never its `name`.
+
+  def handle_event(
+        "update_public_form_setting",
+        %{"setting" => setting_name, "value" => value},
+        socket
+      )
+      when setting_name in @public_form_text_keys and is_binary(value) do
     if socket.assigns[:lock_owner?] do
-      current_settings = socket.assigns.entity.settings || %{}
-
-      # Extract the setting name and value from params
-      {setting_name, value} =
-        cond do
-          Map.has_key?(params, "public_form_title") ->
-            {"public_form_title", params["public_form_title"]}
-
-          Map.has_key?(params, "public_form_description") ->
-            {"public_form_description", params["public_form_description"]}
-
-          Map.has_key?(params, "public_form_submit_text") ->
-            {"public_form_submit_text", params["public_form_submit_text"]}
-
-          Map.has_key?(params, "public_form_success_message") ->
-            {"public_form_success_message", params["public_form_success_message"]}
-
-          true ->
-            {nil, nil}
-        end
-
-      if setting_name do
-        updated_settings = Map.put(current_settings, setting_name, value)
-        updated_entity = Map.put(socket.assigns.entity, :settings, updated_settings)
-        changeset = settings_changeset(socket, updated_entity)
-
-        socket =
-          socket
-          |> assign(:entity, updated_entity)
-          |> assign(:changeset, changeset)
-
-        reply_with_broadcast(socket)
-      else
-        {:noreply, socket}
-      end
+      put_setting(socket, &Map.put(&1, setting_name, value))
     else
       {:noreply, socket}
     end
   end
+
+  def handle_event("update_public_form_setting", _params, socket), do: {:noreply, socket}
 
   def handle_event("toggle_public_form_field", %{"field" => field_key}, socket) do
     if socket.assigns[:lock_owner?] do
@@ -804,16 +788,17 @@ defmodule PhoenixKitEntities.Web.EntityForm do
     end
   end
 
-  def handle_event("toggle_security_setting", %{"setting" => setting_key}, socket) do
+  def handle_event("toggle_security_setting", %{"setting" => setting_key}, socket)
+      when setting_key in @security_toggle_keys do
     if socket.assigns[:lock_owner?] do
       current_settings = socket.assigns.entity.settings || %{}
 
       # For metadata, default is true (enabled), so we check != false
       current_value =
-        if setting_key == "public_form_collect_metadata" do
-          Map.get(current_settings, setting_key) != false
-        else
-          Map.get(current_settings, setting_key, false)
+        case setting_key do
+          "public_form_collect_metadata" -> Map.get(current_settings, setting_key) != false
+          "public_form_turnstile" -> PublicFormTurnstile.enabled?(current_settings)
+          _ -> Map.get(current_settings, setting_key, false)
         end
 
       updated_settings = Map.put(current_settings, setting_key, !current_value)
@@ -831,6 +816,8 @@ defmodule PhoenixKitEntities.Web.EntityForm do
       {:noreply, put_flash(socket, :error, gettext("Cannot edit - you are spectating"))}
     end
   end
+
+  def handle_event("toggle_security_setting", _params, socket), do: {:noreply, socket}
 
   def handle_event("update_security_action", params, socket) do
     if socket.assigns[:lock_owner?] do
@@ -1055,12 +1042,18 @@ defmodule PhoenixKitEntities.Web.EntityForm do
     end
   end
 
-  defp do_save(entity_params, socket) do
+  defp do_save(entity_params, primary_texts, socket) do
     existing_data = changeset_to_string_map(socket.assigns.changeset)
     entity_params = Map.merge(existing_data, entity_params)
     entity_params = Map.put(entity_params, "fields_definition", socket.assigns.fields)
 
-    settings = merge_translation_params(socket, entity_params)
+    # Submitting with Enter can send the final input value before its blur event.
+    settings =
+      Enum.reduce(primary_texts, merge_translation_params(socket, entity_params), fn
+        {key, ""}, settings -> Map.delete(settings, key)
+        {key, value}, settings when is_binary(value) -> Map.put(settings, key, value)
+        _, settings -> settings
+      end)
 
     settings =
       case entity_params["sort_mode"] do
@@ -1724,18 +1717,23 @@ defmodule PhoenixKitEntities.Web.EntityForm do
     # Extract translation params from form (e.g., %{"es-ES" => %{"display_name" => "Marcas"}})
     new_translations = entity_params["translations"] || %{}
 
-    # Merge new translations into existing, stripping empty values
+    # Merge per key: a posted value is put, a posted empty one removes its key
+    # (the language falls back to the primary text), and a key that was not
+    # posted stays. Replacing the whole language entry would delete what the
+    # page did not post — the public-form texts, whose inputs exist only while
+    # that section is on screen.
     updated_translations =
       Enum.reduce(new_translations, existing_translations, fn {lang_code, fields}, acc ->
-        cleaned =
-          fields
-          |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
-          |> Map.new()
+        merged =
+          Enum.reduce(fields, Map.get(acc, lang_code) || %{}, fn
+            {k, v}, entry when is_nil(v) or v == "" -> Map.delete(entry, k)
+            {k, v}, entry -> Map.put(entry, k, v)
+          end)
 
-        if map_size(cleaned) == 0 do
+        if map_size(merged) == 0 do
           Map.delete(acc, lang_code)
         else
-          Map.put(acc, lang_code, cleaned)
+          Map.put(acc, lang_code, merged)
         end
       end)
 
@@ -2523,64 +2521,149 @@ defmodule PhoenixKitEntities.Web.EntityForm do
 
                 <%!-- Form Configuration --%>
                 <div class="space-y-4">
+                  <%!-- The texts exist per language: the primary language's are the
+                       flat settings, every other language's live in
+                       settings["translations"][lang] (posted with the form like the
+                       entity's own translations) and fall back to the primary text. --%>
+                  <% form_texts =
+                    if @multilang_enabled && @current_lang != @primary_language do
+                      ((@entity.settings || %{})["translations"] || %{})[@current_lang] || %{}
+                    end %>
+                  <.multilang_tabs
+                    multilang_enabled={@multilang_enabled}
+                    language_tabs={@language_tabs}
+                    current_lang={@current_lang}
+                    show_header={false}
+                    show_info={false}
+                    class="mb-2"
+                  />
+                  <p :if={form_texts} id="public-form-texts-hint" class="text-xs text-base-content/60">
+                    {gettext(
+                      "These texts are for the selected language. Leave one empty to use the primary language's text."
+                    )}
+                  </p>
+
                   <%!-- Form Title --%>
                   <div>
                     <.label>{gettext("Form Title")}</.label>
-                    <input
-                      type="text"
-                      name="public_form_title"
-                      value={get_in(@entity.settings, ["public_form_title"]) || @entity.display_name}
-                      placeholder={@entity.display_name}
-                      class="input w-full"
-                      phx-blur="update_public_form_setting"
-                      phx-debounce="500"
-                      disabled={@readonly?}
-                    />
+                    <%= if form_texts do %>
+                      <input
+                        type="text"
+                        id={"public-form-title-#{@current_lang}"}
+                        name={"entities[translations][#{@current_lang}][public_form_title]"}
+                        value={form_texts["public_form_title"]}
+                        placeholder={
+                          get_in(@entity.settings, ["public_form_title"]) || @entity.display_name
+                        }
+                        class="input w-full"
+                        phx-debounce="500"
+                        disabled={@readonly?}
+                      />
+                    <% else %>
+                      <input
+                        type="text"
+                        id={"public-form-title-#{@current_lang}"}
+                        name="public_form_title"
+                        phx-value-setting="public_form_title"
+                        value={get_in(@entity.settings, ["public_form_title"])}
+                        placeholder={@entity.display_name}
+                        class="input w-full"
+                        phx-blur="update_public_form_setting"
+                        phx-debounce="500"
+                        disabled={@readonly?}
+                      />
+                    <% end %>
                   </div>
 
                   <%!-- Form Description --%>
                   <div>
                     <.label>{gettext("Form Description (Optional)")}</.label>
-                    <textarea
-                      name="public_form_description"
-                      placeholder={gettext("Describe what this form is for...")}
-                      class="textarea w-full"
-                      rows="2"
-                      phx-blur="update_public_form_setting"
-                      phx-debounce="500"
-                      disabled={@readonly?}
-                    >{get_in(@entity.settings, ["public_form_description"]) || ""}</textarea>
+                    <%= if form_texts do %>
+                      <textarea
+                        id={"public-form-description-#{@current_lang}"}
+                        name={"entities[translations][#{@current_lang}][public_form_description]"}
+                        placeholder={get_in(@entity.settings, ["public_form_description"]) || ""}
+                        class="textarea w-full"
+                        rows="2"
+                        phx-debounce="500"
+                        disabled={@readonly?}
+                      >{form_texts["public_form_description"] || ""}</textarea>
+                    <% else %>
+                      <textarea
+                        id={"public-form-description-#{@current_lang}"}
+                        name="public_form_description"
+                        phx-value-setting="public_form_description"
+                        placeholder={gettext("Describe what this form is for...")}
+                        class="textarea w-full"
+                        rows="2"
+                        phx-blur="update_public_form_setting"
+                        phx-debounce="500"
+                        disabled={@readonly?}
+                      >{get_in(@entity.settings, ["public_form_description"]) || ""}</textarea>
+                    <% end %>
                   </div>
 
                   <%!-- Submit Button Text --%>
                   <div>
                     <.label>{gettext("Submit Button Text")}</.label>
-                    <input
-                      type="text"
-                      name="public_form_submit_text"
-                      value={
-                        get_in(@entity.settings, ["public_form_submit_text"]) || gettext("Submit")
-                      }
-                      placeholder={gettext("Submit")}
-                      class="input w-full"
-                      phx-blur="update_public_form_setting"
-                      phx-debounce="500"
-                      disabled={@readonly?}
-                    />
+                    <%= if form_texts do %>
+                      <input
+                        type="text"
+                        id={"public-form-submit-text-#{@current_lang}"}
+                        name={"entities[translations][#{@current_lang}][public_form_submit_text]"}
+                        value={form_texts["public_form_submit_text"]}
+                        placeholder={
+                          get_in(@entity.settings, ["public_form_submit_text"]) || gettext("Submit")
+                        }
+                        class="input w-full"
+                        phx-debounce="500"
+                        disabled={@readonly?}
+                      />
+                    <% else %>
+                      <input
+                        type="text"
+                        id={"public-form-submit-text-#{@current_lang}"}
+                        name="public_form_submit_text"
+                        phx-value-setting="public_form_submit_text"
+                        value={get_in(@entity.settings, ["public_form_submit_text"])}
+                        placeholder={gettext("Submit")}
+                        class="input w-full"
+                        phx-blur="update_public_form_setting"
+                        phx-debounce="500"
+                        disabled={@readonly?}
+                      />
+                    <% end %>
                   </div>
 
                   <%!-- Success Message --%>
                   <div>
                     <.label>{gettext("Success Message")}</.label>
-                    <textarea
-                      name="public_form_success_message"
-                      placeholder={gettext("Thank you for your submission!")}
-                      class="textarea w-full"
-                      rows="2"
-                      phx-blur="update_public_form_setting"
-                      phx-debounce="500"
-                      disabled={@readonly?}
-                    >{get_in(@entity.settings, ["public_form_success_message"]) || gettext("Thank you for your submission!")}</textarea>
+                    <%= if form_texts do %>
+                      <textarea
+                        id={"public-form-success-message-#{@current_lang}"}
+                        name={"entities[translations][#{@current_lang}][public_form_success_message]"}
+                        placeholder={
+                          get_in(@entity.settings, ["public_form_success_message"]) ||
+                            gettext("Form submitted successfully!")
+                        }
+                        class="textarea w-full"
+                        rows="2"
+                        phx-debounce="500"
+                        disabled={@readonly?}
+                      >{form_texts["public_form_success_message"] || ""}</textarea>
+                    <% else %>
+                      <textarea
+                        id={"public-form-success-message-#{@current_lang}"}
+                        name="public_form_success_message"
+                        phx-value-setting="public_form_success_message"
+                        placeholder={gettext("Form submitted successfully!")}
+                        class="textarea w-full"
+                        rows="2"
+                        phx-blur="update_public_form_setting"
+                        phx-debounce="500"
+                        disabled={@readonly?}
+                      >{get_in(@entity.settings, ["public_form_success_message"])}</textarea>
+                    <% end %>
                   </div>
 
                   <%!-- Field Selection --%>
