@@ -263,28 +263,28 @@ defmodule PhoenixKitEntities.FieldIndexes do
   @lock_max_wait_ms :timer.hours(1)
 
   defp sync_specs(entity_uuid, opts) do
-    repo().checkout(fn ->
-      key = "phoenix_kit_entities:field_index:" <> entity_uuid
+    key = "phoenix_kit_entities:field_index:" <> entity_uuid
+    repo().checkout(fn -> locked_sync(repo().in_transaction?(), entity_uuid, key, opts) end)
+  end
 
-      if repo().in_transaction?() do
-        case acquire("pg_try_advisory_xact_lock", key, 0) do
-          :ok -> do_sync_specs(entity_uuid, current_specs(entity_uuid), opts)
-          :timeout -> {:error, :sync_in_progress}
-        end
-      else
-        case acquire("pg_try_advisory_lock", key, @lock_max_wait_ms) do
-          :ok ->
-            try do
-              do_sync_specs(entity_uuid, current_specs(entity_uuid), opts)
-            after
-              repo().query("SELECT pg_advisory_unlock(hashtextextended($1, 0))", [key])
-            end
+  defp locked_sync(true, entity_uuid, key, opts) do
+    case acquire("pg_try_advisory_xact_lock", key, 0) do
+      :ok -> do_sync_specs(entity_uuid, current_specs(entity_uuid), opts)
+      :timeout -> {:error, :sync_in_progress}
+    end
+  end
 
-          :timeout ->
-            {:error, :sync_lock_timeout}
-        end
-      end
-    end)
+  defp locked_sync(false, entity_uuid, key, opts) do
+    case acquire("pg_try_advisory_lock", key, @lock_max_wait_ms) do
+      :ok -> sync_then_unlock(entity_uuid, key, opts)
+      :timeout -> {:error, :sync_lock_timeout}
+    end
+  end
+
+  defp sync_then_unlock(entity_uuid, key, opts) do
+    do_sync_specs(entity_uuid, current_specs(entity_uuid), opts)
+  after
+    repo().query("SELECT pg_advisory_unlock(hashtextextended($1, 0))", [key])
   end
 
   defp current_specs(entity_uuid), do: entity_uuid |> Entities.get_entity() |> specs()
