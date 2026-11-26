@@ -630,6 +630,28 @@ for i in $(seq 1 10); do mix test; done       # stability check
 |---|---|---|
 | Reorder + trash lifecycle | Reorder is capped at 1000 uuids and scoped by `entity_uuid` in the DB layer; trashed rows stay in the table so host FKs keep resolving, and every reorder path emits exactly one audit row (success, DB error, or rejection). | [dev_docs/guides/entity-data-lifecycle.md](dev_docs/guides/entity-data-lifecycle.md) |
 
+## Content-Security-Policy
+
+The module works under a host policy that allows inline code by nonce only
+(`script-src 'self' 'nonce-…'`); core's guide is `guides/content-security-policy.md`.
+It renders no inline `<script>` / `<style>` and no inline event handler today.
+
+- No inline event handlers (`onclick=`, `onerror=` …), in markup or in HTML the
+  bundle builds: no nonce covers an attribute. Use a `phx-` binding, or a hook /
+  listener in `priv/static/assets/phoenix_kit_entities.js`.
+- A new inline `<style>` / `<script>` carries the page's nonce. Core's
+  `PhoenixKitWeb.CSP.nonce/1` is newer than this module's core floor, so read it
+  through a feature-detecting helper (`Code.ensure_loaded?/1` +
+  `function_exported?/3` + `apply/3`, answering `nil` on an older core; reference:
+  `PhoenixKitComments.Web.CSP`). Never raise the core floor for it.
+- A `<style>` / `<script>` the bundle creates is stamped before insertion:
+  `window.PhoenixKitInternals && window.PhoenixKitInternals.adoptStyle && window.PhoenixKitInternals.adoptStyle(el)`.
+  The one exception is the Cloudflare Turnstile loader of the public form: a third
+  party's external script gets no borrowed nonce (core does the same), the host
+  allows `https://challenges.cloudflare.com` in `script-src` and `frame-src`.
+- `test/csp_inline_tags_test.exs` enforces all of it. Inline `style="…"` attributes
+  are not covered yet.
+
 ## Versioning & releases
 
 SemVer. The version is single-sourced in `mix.exs` (`@version`); `version/0`
