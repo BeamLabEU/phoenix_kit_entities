@@ -57,6 +57,7 @@ defmodule PhoenixKitEntities.Mirror.Importer do
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.EntityData
   alias PhoenixKitEntities.Events
+  alias PhoenixKitEntities.FieldIndexes
   alias PhoenixKitEntities.Mirror.Exporter
   alias PhoenixKitEntities.Mirror.Storage
   alias PhoenixKitEntities.Relations
@@ -147,6 +148,7 @@ defmodule PhoenixKitEntities.Mirror.Importer do
     case txn do
       {:ok, units} ->
         announce(units)
+        sync_field_indexes(units)
         {Enum.map(units, &unit_result/1), unresolved_links(units)}
 
       {:error, {:aborted, reason, units}} ->
@@ -403,6 +405,19 @@ defmodule PhoenixKitEntities.Mirror.Importer do
           do: {unit.name, written.slug, Enum.map(errors, &elem(&1, 1))}
 
     if broken == [], do: units, else: repo().rollback({:aborted, {:broken_links, broken}, units})
+  end
+
+  # The definitions were written inside the transaction above, where
+  # `FieldIndexes.schedule_sync/1` schedules nothing (its task could not see
+  # them yet); now that they are committed, each imported entity's indexes
+  # catch up. An entity with no indexed field, before or after, is a no-op
+  # sync.
+  defp sync_field_indexes(units) do
+    for %{entity: %{} = entity, def_action: action} <- units, action != :leave do
+      FieldIndexes.schedule_sync(entity)
+    end
+
+    :ok
   end
 
   defp announce(units) do

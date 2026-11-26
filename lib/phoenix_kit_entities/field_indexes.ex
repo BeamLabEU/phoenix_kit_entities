@@ -30,11 +30,17 @@ defmodule PhoenixKitEntities.FieldIndexes do
   `CREATE INDEX CONCURRENTLY` / `DROP INDEX CONCURRENTLY`, so writes to the
   table go on while an index builds; inside one (where `CONCURRENTLY`
   cannot run) it builds plainly. An interrupted concurrent build leaves an
-  INVALID index; the next sync drops and rebuilds it.
+  INVALID index, possibly before its `COMMENT` was written; the next sync
+  of that entity finds it by its name, drops it and rebuilds it
+  (`sync_all/1` is the repair for every entity at once).
 
   Creating, updating or deleting an entity whose indexed fields changed
   calls `schedule_sync/1`, which runs `sync/2` in a task under
-  `PhoenixKit.TaskSupervisor` after the save. Set
+  `PhoenixKit.TaskSupervisor` after the save. A save made inside the
+  caller's own transaction schedules nothing (the task could not see the
+  uncommitted definition): call `sync/2` after the commit, as the mirror
+  importer does. Syncs of one entity are serialised by an advisory lock, so
+  two quick saves cannot interleave their creates and drops. Set
 
       config :phoenix_kit_entities, field_indexes: :manual
 
@@ -214,7 +220,11 @@ defmodule PhoenixKitEntities.FieldIndexes do
   """
   @spec schedule_sync(Entities.t()) :: :ok
   def schedule_sync(%{uuid: uuid}) do
-    if Application.get_env(:phoenix_kit_entities, :field_indexes, :async) == :async do
+    # Inside a caller's transaction the task's own connection could not see
+    # the uncommitted definition yet, so it would sync the old one. The
+    # caller syncs after its commit (the mirror importer does).
+    if Application.get_env(:phoenix_kit_entities, :field_indexes, :async) == :async and
+         not repo().in_transaction?() do
       Task.Supervisor.start_child(PhoenixKit.TaskSupervisor, fn -> sync_and_log(uuid) end)
     end
 
@@ -238,12 +248,29 @@ defmodule PhoenixKitEntities.FieldIndexes do
 
   # ── internals ───────────────────────────────────────────────────────
 
+  # One sync per entity at a time, on one connection: a session advisory
+  # lock keyed on the entity serialises two quick saves' syncs, and has to
+  # be released on the connection that took it.
   defp sync_specs(entity_uuid, specs, opts) do
+    repo().checkout(fn ->
+      key = "phoenix_kit_entities:field_index:" <> entity_uuid
+      repo().query!("SELECT pg_advisory_lock(hashtextextended($1, 0))", [key])
+
+      try do
+        do_sync_specs(entity_uuid, specs, opts)
+      after
+        repo().query!("SELECT pg_advisory_unlock(hashtextextended($1, 0))", [key])
+      end
+    end)
+  end
+
+  defp do_sync_specs(entity_uuid, specs, opts) do
     concurrently? = Keyword.get(opts, :concurrently, true) and not repo().in_transaction?()
-    existing = list(entity_uuid)
 
     wanted =
       Map.new(specs, fn {key, type} -> {index_name(entity_uuid, key, type), {key, type}} end)
+
+    existing = list(entity_uuid) ++ uncommented(entity_uuid, wanted)
 
     # An index that is no longer wanted, or one left INVALID by an
     # interrupted concurrent build, goes; the second kind is rebuilt below.
@@ -260,6 +287,51 @@ defmodule PhoenixKitEntities.FieldIndexes do
            end) do
       {:ok, %{created: created, dropped: dropped}}
     end
+  end
+
+  # A wanted name that exists without our COMMENT: a concurrent build that
+  # was interrupted before the comment was written (INVALID — dropped and
+  # rebuilt), or one that finished but whose comment failed (valid —
+  # adopted: the comment is written now).
+  defp uncommented(_entity_uuid, wanted) when map_size(wanted) == 0, do: []
+
+  defp uncommented(entity_uuid, wanted) do
+    %{rows: rows} =
+      repo().query!(
+        """
+        SELECT c.relname, i.indisvalid
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_index i ON i.indexrelid = c.oid
+        WHERE n.nspname = $1 AND c.relkind = 'i' AND c.relname = ANY($2)
+          AND NOT EXISTS (
+            SELECT 1 FROM pg_description d
+            WHERE d.objoid = c.oid AND d.classoid = 'pg_class'::regclass
+          )
+        """,
+        [schema(), Map.keys(wanted)]
+      )
+
+    Enum.flat_map(rows, fn
+      [name, false] ->
+        [%{name: name, key: nil, type: nil, valid?: false}]
+
+      [name, true] ->
+        {key, type} = Map.fetch!(wanted, name)
+        comment!(entity_uuid, name, key, type)
+        [%{name: name, key: key, type: type, valid?: true}]
+    end)
+  end
+
+  defp comment!(entity_uuid, name, key, type) do
+    {:ok, _} = comment(entity_uuid, name, key, type)
+  end
+
+  defp comment(entity_uuid, name, key, type) do
+    repo().query(
+      "COMMENT ON INDEX #{schema()}.#{name} IS #{literal(@comment_prefix <> "#{entity_uuid}:#{type}:#{key}")}",
+      []
+    )
   end
 
   defp run_each(items, fun) do
@@ -279,11 +351,8 @@ defmodule PhoenixKitEntities.FieldIndexes do
       "CREATE INDEX #{how}IF NOT EXISTS #{name} ON #{s}.#{@table} USING btree " <>
         "(entity_uuid, (#{expression("data", key, type)}))"
 
-    comment =
-      "COMMENT ON INDEX #{s}.#{name} IS #{literal(@comment_prefix <> "#{entity_uuid}:#{type}:#{key}")}"
-
     with {:ok, _} <- ddl(sql, concurrently?),
-         {:ok, _} <- repo().query(comment, []) do
+         {:ok, _} <- comment(entity_uuid, name, key, type) do
       {:ok, name}
     end
   end

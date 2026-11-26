@@ -135,6 +135,25 @@ defmodule PhoenixKitEntities.FieldIndexesTest do
                [{"available", "date"}, {"price", "text"}]
     end
 
+    test "a wanted index left without its comment (an interrupted build) is found by name",
+         %{entity: entity} do
+      name = FieldIndexes.index_name(entity.uuid, "price", "numeric")
+
+      # What a build that died between CREATE and COMMENT leaves behind.
+      Repo.query!(
+        "CREATE INDEX #{name} ON public.phoenix_kit_entity_data " <>
+          "(entity_uuid, (#{FieldIndexes.expression("data", "price", "numeric")}))"
+      )
+
+      assert FieldIndexes.list(entity) == []
+      assert {:ok, %{created: created, dropped: []}} = FieldIndexes.sync(entity)
+      refute name in created
+      assert length(created) == 2
+
+      assert %{key: "price", type: "numeric", valid?: true} =
+               Enum.find(FieldIndexes.list(entity), &(&1.name == name))
+    end
+
     test "a deleted entity's indexes go with sync_all/1", %{entity: entity} do
       {:ok, _} = FieldIndexes.sync(entity)
       {:ok, _} = Entities.delete_entity(entity)
@@ -198,6 +217,34 @@ defmodule PhoenixKitEntities.FieldIndexesTest do
                  {"city", :eq, String.duplicate("x", 255) <> "y"}
                ])
              ) == []
+    end
+  end
+
+  describe "whitespace in stored values" do
+    setup do
+      # The functions as this branch defines them (the suite's DB may carry
+      # an earlier body: the chain does not re-run a version it stamped).
+      for stmt <- PhoenixKitEntities.Migrations.up_statements("public"),
+          stmt =~ "CREATE OR REPLACE FUNCTION",
+          do: Repo.query!(stmt)
+
+      :ok
+    end
+
+    test "ASCII whitespace is skipped, a Unicode space is a dirty value, neither fails a write",
+         %{entity: entity, actor: actor} do
+      {:ok, _} = FieldIndexes.sync(entity)
+
+      record!(entity, actor, "tab", %{"price" => "\t12\n", "available" => "\t2026-12-01"})
+
+      record!(entity, actor, "emspace", %{
+        "price" => "\u200312",
+        "available" => "\u30002026-12-01"
+      })
+
+      assert titles(FieldQuery.list(entity, [{"price", :eq, 12}])) == ["tab"]
+      assert titles(FieldQuery.list(entity, [{"available", :eq, "2026-12-01"}])) == ["tab"]
+      assert titles(FieldQuery.list(entity, [{"price", :is_nil}])) == ["emspace"]
     end
   end
 
@@ -288,6 +335,51 @@ defmodule PhoenixKitEntities.FieldIndexesTest do
       assert {:error, {:invalid_value, "price"}} = FieldQuery.list(entity, [{"price", :eq, "x"}])
       assert {:error, :entity_not_found} = FieldQuery.list("no_such_entity", [])
       assert {:ok, [_, _, _]} = FieldQuery.list("fx_crane", [])
+    end
+
+    test "limit and offset must be integers; NaN and out-of-range numbers are invalid values",
+         %{entity: entity} do
+      assert {:error, {:invalid_option, :offset}} =
+               FieldQuery.list(entity, [], offset: "0 + (SELECT 1/0)")
+
+      assert {:error, {:invalid_option, :limit}} = FieldQuery.list(entity, [], limit: "10")
+      assert {:ok, [_]} = FieldQuery.list(entity, [], limit: 1, offset: 1)
+
+      assert {:error, {:invalid_value, "price"}} =
+               FieldQuery.list(entity, [{"price", :lte, "NaN"}])
+
+      assert {:error, {:invalid_value, "price"}} =
+               FieldQuery.list(entity, [{"price", :lte, Decimal.new("Infinity")}])
+
+      assert {:error, {:invalid_value, "price"}} =
+               FieldQuery.list(entity, [{"price", :lte, Integer.pow(10, 2000)}])
+    end
+
+    test "a status may be an atom", %{entity: entity} do
+      assert {:ok, [_, _, _]} = FieldQuery.list(entity, [], status: :published)
+      assert {:ok, [_, _, _]} = FieldQuery.list(entity, [], status: [:published, "draft"])
+    end
+
+    test "the planner uses the index for every operator shape and type", %{entity: entity} do
+      Repo.query!("SET LOCAL enable_seqscan = off")
+      # Three rows: the (entity_uuid, position) index is as cheap as any, so
+      # it goes for this test (the sandbox rolls the DROP back) — what is
+      # pinned is that the field's index MATCHES the query's expression.
+      Repo.query!("DROP INDEX IF EXISTS public.phoenix_kit_entity_data_entity_position_idx")
+
+      for {filters, key, type} <- [
+            {[{"price", :between, {100, 200}}], "price", "numeric"},
+            {[{"price", :in, [90, 400]}], "price", "numeric"},
+            {[{"available", :gte, "2027-01-01"}], "available", "date"},
+            {[{"available", :between, {"2026-01-01", "2026-12-31"}}], "available", "date"},
+            {[{"city", :eq, "Tallinn"}], "city", "text"},
+            {[{"city", :in, ["Tallinn", "Tartu"]}], "city", "text"}
+          ] do
+        {:ok, sql, params} = FieldQuery.build(entity, filters)
+        %{rows: rows} = Repo.query!("EXPLAIN " <> sql, params)
+        plan = Enum.map_join(rows, "\n", &hd/1)
+        assert plan =~ FieldIndexes.index_name(entity.uuid, key, type), inspect(filters) <> plan
+      end
     end
 
     test "the planner uses the field's index", %{entity: entity} do
