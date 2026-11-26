@@ -194,7 +194,9 @@ defmodule PhoenixKitEntities.Migrations do
   #
   # Every function is IMMUTABLE (an index expression must be) and PARALLEL
   # SAFE, and names the functions it calls with the schema, so neither the
-  # index nor a query depends on the caller's search_path. The regexes
+  # index nor a query depends on the caller's search_path. Whitespace is the
+  # explicit ASCII set numeric input skips, never `\s` (which follows the
+  # locale and takes U+2003, which the cast then refuses). The regexes
   # bound the digits and the exponent, so `try_numeric` never reaches a
   # numeric overflow; `try_date` catches what the regex cannot see (an
   # impossible day) in its own block.
@@ -210,7 +212,7 @@ defmodule PhoenixKitEntities.Migrations do
       CREATE OR REPLACE FUNCTION #{p}phoenix_kit_entities_try_numeric(value text)
       RETURNS numeric LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $fn$
         SELECT CASE
-          WHEN value ~ '^\\s*[-+]?([0-9]{1,200}(\\.[0-9]{0,200})?|\\.[0-9]{1,200})([eE][-+]?[0-9]{1,3})?\\s*$'
+          WHEN value ~ '^[ \\t\\n\\r\\f\\v]*[-+]?([0-9]{1,200}(\\.[0-9]{0,200})?|\\.[0-9]{1,200})([eE][-+]?[0-9]{1,3})?[ \\t\\n\\r\\f\\v]*$'
           THEN btrim(value)::numeric
         END
       $fn$
@@ -219,14 +221,16 @@ defmodule PhoenixKitEntities.Migrations do
       CREATE OR REPLACE FUNCTION #{p}phoenix_kit_entities_try_date(value text)
       RETURNS date LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE AS $fn$
       BEGIN
-        IF value IS NULL OR value !~ '^\\s*[0-9]{4}-[0-9]{2}-[0-9]{2}' THEN
+        value := regexp_replace(value, '^[ \\t\\n\\r\\f\\v]+', '');
+
+        IF value IS NULL OR value !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}' THEN
           RETURN NULL;
         END IF;
 
         RETURN make_date(
-          substr(btrim(value), 1, 4)::int,
-          substr(btrim(value), 6, 2)::int,
-          substr(btrim(value), 9, 2)::int
+          substr(value, 1, 4)::int,
+          substr(value, 6, 2)::int,
+          substr(value, 9, 2)::int
         );
       EXCEPTION WHEN others THEN
         RETURN NULL;

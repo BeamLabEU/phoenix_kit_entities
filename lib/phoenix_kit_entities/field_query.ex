@@ -16,6 +16,8 @@ defmodule PhoenixKitEntities.FieldQuery do
 
   Operators: `:eq`, `:neq`, `:lt`, `:lte`, `:gt`, `:gte`, `:between`
   (`{low, high}`, inclusive), `:in` (a list), `:is_nil`, `:not_nil`.
+  `:neq` (like SQL's `<>`) leaves out records that have no value for the
+  field; add `{key, :is_nil}` in a separate query for those.
   Text compares only with `:eq`, `:neq`, `:in`, `:is_nil` and `:not_nil` —
   the text index holds the first 255 characters, so an equality is
   rechecked against the full value, and an order on text is by those
@@ -46,7 +48,8 @@ defmodule PhoenixKitEntities.FieldQuery do
   The records of `entity` (a struct, uuid or name) matching every filter,
   in the requested order. `{:error, reason}` for an unknown entity
   (`:entity_not_found`), a key the entity does not define
-  (`{:unknown_field, key}`), an operator the field's type does not take
+  (`{:unknown_field, key}`), a non-integer `:limit`/`:offset`
+  (`{:invalid_option, key}`), an operator the field's type does not take
   (`{:invalid_operator, key, op}`) or a value that does not cast to it
   (`{:invalid_value, key}`).
   """
@@ -83,9 +86,11 @@ defmodule PhoenixKitEntities.FieldQuery do
           {:ok, String.t(), list()} | {:error, term()}
   def build(%{} = entity, filters, opts \\ []) do
     with {:ok, where, params} <- where_clause(entity, filters, opts),
-         {:ok, order} <- order_clause(entity, opts[:order_by]) do
-      limit = opts |> Keyword.get(:limit, @default_limit) |> min(@max_limit) |> max(0)
-      offset = opts |> Keyword.get(:offset, 0) |> max(0)
+         {:ok, order} <- order_clause(entity, opts[:order_by]),
+         {:ok, limit} <- integer_opt(opts, :limit, @default_limit),
+         {:ok, offset} <- integer_opt(opts, :offset, 0) do
+      limit = limit |> min(@max_limit) |> max(0)
+      offset = max(offset, 0)
 
       sql =
         "SELECT d.uuid FROM #{FieldIndexes.schema()}.phoenix_kit_entity_data d " <>
@@ -96,6 +101,16 @@ defmodule PhoenixKitEntities.FieldQuery do
   end
 
   # ── building ────────────────────────────────────────────────────────
+
+  # LIMIT and OFFSET are written into the SQL, so only an integer gets
+  # there (a string would be SQL).
+  defp integer_opt(opts, key, default) do
+    case Keyword.get(opts, key, default) do
+      n when is_integer(n) -> {:ok, n}
+      nil -> {:ok, default}
+      _ -> {:error, {:invalid_option, key}}
+    end
+  end
 
   defp where_clause(entity, filters, opts) do
     base = ["d.entity_uuid = $1::uuid"]
@@ -125,7 +140,8 @@ defmodule PhoenixKitEntities.FieldQuery do
 
       statuses ->
         n = length(params) + 1
-        {clauses ++ ["d.status = ANY($#{n}::text[])"], params ++ [List.wrap(statuses)]}
+        statuses = statuses |> List.wrap() |> Enum.map(&to_string/1)
+        {clauses ++ ["d.status = ANY($#{n}::text[])"], params ++ [statuses]}
     end
   end
 
@@ -251,13 +267,13 @@ defmodule PhoenixKitEntities.FieldQuery do
     end)
   end
 
-  defp cast("numeric", %Decimal{} = d), do: {:ok, d}
-  defp cast("numeric", n) when is_integer(n), do: {:ok, Decimal.new(n)}
+  defp cast("numeric", %Decimal{} = d), do: finite(d)
+  defp cast("numeric", n) when is_integer(n), do: finite(Decimal.new(n))
   defp cast("numeric", n) when is_float(n), do: {:ok, Decimal.from_float(n)}
 
   defp cast("numeric", s) when is_binary(s) do
     case Decimal.parse(String.trim(s)) do
-      {d, ""} -> {:ok, d}
+      {d, ""} -> finite(d)
       _ -> :error
     end
   end
@@ -274,6 +290,21 @@ defmodule PhoenixKitEntities.FieldQuery do
   defp cast("text", s) when is_binary(s), do: {:ok, s}
   defp cast("text", v) when is_number(v) or is_atom(v), do: {:ok, to_string(v)}
   defp cast(_type, _value), do: :error
+
+  # NaN compares greater than every number in Postgres (`5 <= 'NaN'` is
+  # true), and a value past Postgres' numeric range cannot be sent at all;
+  # neither can match a stored value, both are an invalid filter. The
+  # bounds are far past what `phoenix_kit_entities_try_numeric` stores.
+  @max_digits 1000
+  @max_exp 10_000
+
+  defp finite(%Decimal{coef: coef, exp: exp} = d) when is_integer(coef) do
+    if length(Integer.digits(coef)) <= @max_digits and abs(exp) <= @max_exp,
+      do: {:ok, d},
+      else: :error
+  end
+
+  defp finite(_nan_or_inf), do: :error
 
   # ── loading ─────────────────────────────────────────────────────────
 
