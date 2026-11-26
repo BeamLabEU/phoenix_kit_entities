@@ -511,7 +511,11 @@ defmodule PhoenixKitEntities.Web.EntityForm do
       field_form = socket.assigns.field_form || %{}
       merged_params = Map.merge(field_form, field_params)
       sanitized_options = sanitize_field_options(merged_params)
-      merged_params = Map.put(merged_params, "options", sanitized_options)
+
+      merged_params =
+        merged_params
+        |> Map.put("options", sanitized_options)
+        |> normalize_indexed()
 
       # Process file-specific fields
       merged_params =
@@ -1742,6 +1746,23 @@ defmodule PhoenixKitEntities.Web.EntityForm do
     else
       Map.put(settings, "translations", updated_translations)
     end
+  end
+
+  # "" from the select means no index: the key leaves the definition, so a
+  # field that never had one keeps exactly the shape it had.
+  defp normalize_indexed(%{"indexed" => indexed} = params) when indexed in [nil, ""],
+    do: Map.delete(params, "indexed")
+
+  defp normalize_indexed(params), do: params
+
+  defp blank_index?(value), do: value in [nil, ""]
+
+  defp index_type_options do
+    [
+      {"numeric", gettext("Number")},
+      {"text", gettext("Text")},
+      {"date", gettext("Date")}
+    ]
   end
 
   defp new_field_form do
@@ -3536,6 +3557,32 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                         value={@field_form["default"]}
                       />
                     </div>
+                  </div>
+
+                  <%!-- Opt-in typed index (FieldIndexes) --%>
+                  <div :if={@field_form["type"] not in ~w(file image video relation rich_text)}>
+                    <.label>{gettext("Index for filtering")}</.label>
+                    <label class="select w-full">
+                      <select name="field[indexed]" id="field-indexed">
+                        <option value="" selected={blank_index?(@field_form["indexed"])}>
+                          {gettext("No index")}
+                        </option>
+                        <option
+                          :for={{value, label} <- index_type_options()}
+                          value={value}
+                          selected={to_string(@field_form["indexed"]) == value}
+                        >
+                          {label}
+                        </option>
+                      </select>
+                    </label>
+                    <.label class="label">
+                      <span class="fieldset-label">
+                        {gettext(
+                          "Makes filtering and sorting records by this field fast. The index is built in the background after you save the entity."
+                        )}
+                      </span>
+                    </.label>
                   </div>
                 <% end %>
 

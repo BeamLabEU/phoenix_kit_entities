@@ -3127,3 +3127,19 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "The verification could not start. Please reload the page."
 msgstr ""
+
+#, elixir-autogen, elixir-format
+msgid "Index for filtering"
+msgstr ""
+
+#, elixir-autogen, elixir-format
+msgid "No index"
+msgstr ""
+
+#, elixir-autogen, elixir-format
+msgid "Makes filtering and sorting records by this field fast. The index is built in the background after you save the entity."
+msgstr ""
+
+#, elixir-autogen, elixir-format
+msgid "invalid index type '%{type}' for field '%{key}'"
+msgstr ""
