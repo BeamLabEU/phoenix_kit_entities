@@ -31,8 +31,11 @@ defmodule PhoenixKitEntities.FieldIndexes do
   table go on while an index builds; inside one (where `CONCURRENTLY`
   cannot run) it builds plainly. An interrupted concurrent build leaves an
   INVALID index, possibly before its `COMMENT` was written; the next sync
-  of that entity finds it by its name, drops it and rebuilds it
-  (`sync_all/1` is the repair for every entity at once).
+  of that entity finds it by its name, drops it and rebuilds it while the
+  field still asks for it (`sync_all/1` runs that for every entity). One
+  left by a build of a field that no longer asks for an index has no
+  comment to be found by; `list_uncommented/0` names such leftovers for
+  an operator to drop.
 
   Creating, updating or deleting an entity whose indexed fields changed
   calls `schedule_sync/1`, which runs `sync/2` in a task under
@@ -248,20 +251,51 @@ defmodule PhoenixKitEntities.FieldIndexes do
 
   # ── internals ───────────────────────────────────────────────────────
 
-  # One sync per entity at a time, on one connection: a session advisory
-  # lock keyed on the entity serialises two quick saves' syncs, and has to
-  # be released on the connection that took it.
+  # One sync per entity at a time, on one connection: an advisory lock
+  # keyed on the entity serialises two quick saves' syncs. It is TRIED in a
+  # loop, never waited for inside one statement: a session blocked in
+  # `pg_advisory_lock` holds a snapshot, which the other sync's
+  # `CREATE INDEX CONCURRENTLY` would wait for — a deadlock. Inside a
+  # transaction the lock is the transaction's (released by its end, even a
+  # failed one); outside, the session's, released by a non-raising unlock.
+  @lock_poll_ms 250
+  @lock_max_wait_ms :timer.hours(1)
+
   defp sync_specs(entity_uuid, specs, opts) do
     repo().checkout(fn ->
       key = "phoenix_kit_entities:field_index:" <> entity_uuid
-      repo().query!("SELECT pg_advisory_lock(hashtextextended($1, 0))", [key])
+      xact? = repo().in_transaction?()
+      fun = if xact?, do: "pg_try_advisory_xact_lock", else: "pg_try_advisory_lock"
 
-      try do
-        do_sync_specs(entity_uuid, specs, opts)
-      after
-        repo().query!("SELECT pg_advisory_unlock(hashtextextended($1, 0))", [key])
+      case acquire(fun, key, @lock_max_wait_ms) do
+        :ok when xact? ->
+          do_sync_specs(entity_uuid, specs, opts)
+
+        :ok ->
+          try do
+            do_sync_specs(entity_uuid, specs, opts)
+          after
+            repo().query("SELECT pg_advisory_unlock(hashtextextended($1, 0))", [key])
+          end
+
+        :timeout ->
+          {:error, :sync_lock_timeout}
       end
     end)
+  end
+
+  defp acquire(fun, key, left) do
+    case repo().query!("SELECT #{fun}(hashtextextended($1, 0))", [key]) do
+      %{rows: [[true]]} ->
+        :ok
+
+      _ when left <= 0 ->
+        :timeout
+
+      _ ->
+        Process.sleep(@lock_poll_ms)
+        acquire(fun, key, left - @lock_poll_ms)
+    end
   end
 
   defp do_sync_specs(entity_uuid, specs, opts) do
@@ -332,6 +366,34 @@ defmodule PhoenixKitEntities.FieldIndexes do
       "COMMENT ON INDEX #{schema()}.#{name} IS #{literal(@comment_prefix <> "#{entity_uuid}:#{type}:#{key}")}",
       []
     )
+  end
+
+  @doc """
+  Indexes on the entity data table with this module's name prefix but no
+  `COMMENT` — leftovers of a build interrupted before its comment, for a
+  field that no longer asks for one — as `[%{name, valid?}]`. Not dropped
+  automatically: an index being built right now looks the same.
+  """
+  @spec list_uncommented() :: [%{name: String.t(), valid?: boolean()}]
+  def list_uncommented do
+    %{rows: rows} =
+      repo().query!(
+        """
+        SELECT c.relname, i.indisvalid
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_index i ON i.indexrelid = c.oid
+        WHERE n.nspname = $1 AND c.relkind = 'i' AND c.relname LIKE $2
+          AND NOT EXISTS (
+            SELECT 1 FROM pg_description d
+            WHERE d.objoid = c.oid AND d.classoid = 'pg_class'::regclass
+          )
+        ORDER BY c.relname
+        """,
+        [schema(), String.replace(@name_prefix, "_", "\\_") <> "%"]
+      )
+
+    Enum.map(rows, fn [name, valid?] -> %{name: name, valid?: valid?} end)
   end
 
   defp run_each(items, fun) do

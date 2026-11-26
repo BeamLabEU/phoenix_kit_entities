@@ -140,10 +140,15 @@ defmodule PhoenixKitEntities.FieldQuery do
 
       statuses ->
         n = length(params) + 1
-        statuses = statuses |> List.wrap() |> Enum.map(&to_string/1)
+        statuses = statuses |> List.wrap() |> Enum.map(&status_text/1)
         {clauses ++ ["d.status = ANY($#{n}::text[])"], params ++ [statuses]}
     end
   end
+
+  # Anything that is not a status name matches no record.
+  defp status_text(status) when is_binary(status), do: status
+  defp status_text(status) when is_atom(status) and not is_nil(status), do: Atom.to_string(status)
+  defp status_text(_), do: ""
 
   defp filter_clause(fields, {key, op}, params) when op in [:is_nil, :not_nil],
     do: filter_clause(fields, {key, op, nil}, params)
@@ -298,8 +303,10 @@ defmodule PhoenixKitEntities.FieldQuery do
   @max_digits 1000
   @max_exp 10_000
 
+  @max_coef Integer.pow(10, @max_digits)
+
   defp finite(%Decimal{coef: coef, exp: exp} = d) when is_integer(coef) do
-    if length(Integer.digits(coef)) <= @max_digits and abs(exp) <= @max_exp,
+    if coef < @max_coef and abs(exp) <= @max_exp,
       do: {:ok, d},
       else: :error
   end

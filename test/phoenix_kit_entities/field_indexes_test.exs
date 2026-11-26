@@ -154,6 +154,18 @@ defmodule PhoenixKitEntities.FieldIndexesTest do
                Enum.find(FieldIndexes.list(entity), &(&1.name == name))
     end
 
+    test "list_uncommented/0 names a leftover no field asks for; sync leaves it alone",
+         %{entity: entity} do
+      name = FieldIndexes.index_name(entity.uuid, "gone", "numeric")
+      Repo.query!("CREATE INDEX #{name} ON public.phoenix_kit_entity_data (entity_uuid)")
+
+      assert %{name: ^name, valid?: true} =
+               Enum.find(FieldIndexes.list_uncommented(), &(&1.name == name))
+
+      {:ok, _} = FieldIndexes.sync(entity)
+      assert Enum.any?(FieldIndexes.list_uncommented(), &(&1.name == name))
+    end
+
     test "a deleted entity's indexes go with sync_all/1", %{entity: entity} do
       {:ok, _} = FieldIndexes.sync(entity)
       {:ok, _} = Entities.delete_entity(entity)
@@ -353,11 +365,19 @@ defmodule PhoenixKitEntities.FieldIndexesTest do
 
       assert {:error, {:invalid_value, "price"}} =
                FieldQuery.list(entity, [{"price", :lte, Integer.pow(10, 2000)}])
+
+      # Bounded without walking the digits.
+      {micros, result} =
+        :timer.tc(fn -> FieldQuery.list(entity, [{"price", :lte, Integer.pow(7, 100_000)}]) end)
+
+      assert result == {:error, {:invalid_value, "price"}}
+      assert micros < 1_000_000
     end
 
     test "a status may be an atom", %{entity: entity} do
       assert {:ok, [_, _, _]} = FieldQuery.list(entity, [], status: :published)
       assert {:ok, [_, _, _]} = FieldQuery.list(entity, [], status: [:published, "draft"])
+      assert {:ok, []} = FieldQuery.list(entity, [], status: %{})
     end
 
     test "the planner uses the index for every operator shape and type", %{entity: entity} do
