@@ -290,6 +290,33 @@ defmodule PhoenixKitEntities.Web.EntityFormLiveTest do
     end
   end
 
+  describe "the field index option on a type change" do
+    test "a field changed to a type without the option loses its index", %{conn: conn} = ctx do
+      conn = put_test_scope(conn, fake_scope(user_uuid: ctx.actor_uuid))
+      {:ok, view, _html} = live(conn, "/en/admin/entities/#{ctx.entity.uuid}/edit")
+
+      render_hook(view, "add_field", %{})
+
+      render_hook(view, "save_field", %{
+        "field" => %{"type" => "text", "key" => "doc", "label" => "Doc", "indexed" => "text"}
+      })
+
+      render_hook(view, "add_field", %{})
+
+      render_hook(view, "save_field", %{
+        "field" => %{"type" => "file", "key" => "scan", "label" => "Scan", "indexed" => "text"}
+      })
+
+      view
+      |> form("form[phx-change='validate']", %{"entities" => %{"display_name" => "Typed"}})
+      |> render_submit()
+
+      fields = Entities.get_entity(ctx.entity.uuid).fields_definition
+      assert Enum.find(fields, &(&1["key"] == "doc"))["indexed"] == "text"
+      refute Map.has_key?(Enum.find(fields, &(&1["key"] == "scan")), "indexed")
+    end
+  end
+
   describe "field management events" do
     test "add / edit / cancel / delete field events don't crash",
          %{conn: conn} = ctx do

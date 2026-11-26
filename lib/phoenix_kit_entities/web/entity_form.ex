@@ -1749,11 +1749,20 @@ defmodule PhoenixKitEntities.Web.EntityForm do
   end
 
   # "" from the select means no index: the key leaves the definition, so a
-  # field that never had one keeps exactly the shape it had.
+  # field that never had one keeps exactly the shape it had. A field changed
+  # to a type the select is hidden for loses its index too — otherwise it
+  # would keep one the form can no longer remove.
+  @unindexable_types ~w(file image video relation rich_text heading)
+
   defp normalize_indexed(%{"indexed" => indexed} = params) when indexed in [nil, ""],
     do: Map.delete(params, "indexed")
 
+  defp normalize_indexed(%{"type" => type} = params) when type in @unindexable_types,
+    do: Map.delete(params, "indexed")
+
   defp normalize_indexed(params), do: params
+
+  defp unindexable_type?(type), do: type in @unindexable_types
 
   defp blank_index?(value), do: value in [nil, ""]
 
@@ -3560,7 +3569,7 @@ defmodule PhoenixKitEntities.Web.EntityForm do
                   </div>
 
                   <%!-- Opt-in typed index (FieldIndexes) --%>
-                  <div :if={@field_form["type"] not in ~w(file image video relation rich_text)}>
+                  <div :if={not unindexable_type?(@field_form["type"])}>
                     <.label>{gettext("Index for filtering")}</.label>
                     <label class="select w-full">
                       <select name="field[indexed]" id="field-indexed">
