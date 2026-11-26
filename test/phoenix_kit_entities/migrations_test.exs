@@ -27,8 +27,8 @@ defmodule PhoenixKitEntities.MigrationsTest do
     phoenix_kit_entity_data_parent_uuid_fkey
   )
 
-  test "chain is V1 and marks phoenix_kit_entities" do
-    assert Migrations.current_version() == 1
+  test "chain is V2 and marks phoenix_kit_entities" do
+    assert Migrations.current_version() == 2
     assert Migrations.version_table() == "phoenix_kit_entities"
   end
 
@@ -39,7 +39,27 @@ defmodule PhoenixKitEntities.MigrationsTest do
       assert Enum.any?(stmts, &String.contains?(&1, "CREATE TABLE IF NOT EXISTS public.#{t} ("))
     end
 
-    assert List.last(stmts) == "COMMENT ON TABLE public.phoenix_kit_entities IS 'pkn_schema:1'"
+    assert List.last(stmts) == "COMMENT ON TABLE public.phoenix_kit_entities IS 'pkn_schema:2'"
+  end
+
+  test "V2 creates the field-index functions, immutable and schema-qualified" do
+    stmts = Migrations.up_statements("public")
+
+    for name <- ~w(field_text try_numeric try_date idx_numeric idx_date idx_text) do
+      stmt =
+        Enum.find(
+          stmts,
+          &(&1 =~ "CREATE OR REPLACE FUNCTION public.phoenix_kit_entities_#{name}(")
+        )
+
+      assert stmt, "missing function #{name}"
+      assert stmt =~ "IMMUTABLE"
+    end
+
+    idx = Enum.find(stmts, &(&1 =~ "FUNCTION public.phoenix_kit_entities_idx_numeric("))
+
+    assert idx =~
+             "public.phoenix_kit_entities_try_numeric(public.phoenix_kit_entities_field_text("
   end
 
   test "no statement can destroy data, in either direction" do

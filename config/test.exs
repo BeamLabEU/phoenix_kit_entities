@@ -59,3 +59,8 @@ config :phoenix_kit_entities, PhoenixKitEntities.Test.Endpoint,
   server: false
 
 config :logger, level: :warning
+
+# Field-index syncs (`PhoenixKitEntities.FieldIndexes`) run in a background
+# task after an entity save in a host. A task outside the test's sandbox
+# checkout cannot reach the database, so the suite calls `sync/2` itself.
+config :phoenix_kit_entities, field_indexes: :manual

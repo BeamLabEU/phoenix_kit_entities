@@ -15,11 +15,37 @@ defmodule PhoenixKitEntities.Migrations do
   `phoenix_kit_entity_data.created_by_uuid` (v169.ex:77 vs :200); the live
   schema (authority for this chain) has it nullable, so `created_by_uuid` is
   adopted here without `NOT NULL`.
+
+  ## V2: the field-index functions
+
+  V2 adds no table shape. It creates the IMMUTABLE SQL functions that
+  `PhoenixKitEntities.FieldIndexes` builds its opt-in per-field expression
+  indexes on and that `PhoenixKitEntities.FieldQuery` filters with — one
+  definition of "the value of field `key` read as numeric / text / date"
+  for both sides, so an index and a query can never disagree on the cast:
+
+    * `phoenix_kit_entities_field_text(data, key)` — the field's raw text,
+      from the primary language's map on a multilang record
+      (`data -> data->>'_primary_language'`), else from the flat map;
+    * `phoenix_kit_entities_try_numeric(text)` /
+      `phoenix_kit_entities_try_date(text)` — a guarded cast that answers
+      NULL for anything that does not cast (`"abc"`, `"12,5"`, an
+      impossible date), so a dirty value can never fail a write or an
+      index build;
+    * `phoenix_kit_entities_idx_numeric/2`, `_idx_date/2`, `_idx_text/2` —
+      the three indexed expressions (text cut to 255 characters, within a
+      btree entry's size limit).
+
+  The indexes themselves are not part of the chain: they are created and
+  dropped at runtime per entity, only for fields an admin marks `indexed`.
+  `CREATE OR REPLACE FUNCTION` makes the step replayable; core's
+  `ExpectedSchema` manifest does not describe functions, so no core
+  release is needed.
   """
 
   use Ecto.Migration
 
-  @current_version 1
+  @current_version 2
   @marker_prefix "pkn_schema:"
   @version_table "phoenix_kit_entities"
 
@@ -89,7 +115,7 @@ defmodule PhoenixKitEntities.Migrations do
     prefix = validated_prefix(prefix: prefix)
     p = "#{prefix}."
 
-    [
+    List.flatten([
       """
       CREATE TABLE IF NOT EXISTS #{p}phoenix_kit_entities (
           name character varying(255) NOT NULL,
@@ -159,7 +185,72 @@ defmodule PhoenixKitEntities.Migrations do
       "CREATE INDEX IF NOT EXISTS phoenix_kit_entity_data_status_idx ON #{p}phoenix_kit_entity_data USING btree (status)",
       "CREATE INDEX IF NOT EXISTS phoenix_kit_entity_data_title_idx ON #{p}phoenix_kit_entity_data USING btree (title)",
       "CREATE UNIQUE INDEX IF NOT EXISTS phoenix_kit_entity_data_uuid_idx ON #{p}phoenix_kit_entity_data USING btree (uuid)",
+      v2_statements(p),
       "COMMENT ON TABLE #{p}#{@version_table} IS '#{@marker_prefix}#{@current_version}'"
+    ])
+  end
+
+  # ── V2: field-index functions ─────────────────────────────────────────
+  #
+  # Every function is IMMUTABLE (an index expression must be) and PARALLEL
+  # SAFE, and names the functions it calls with the schema, so neither the
+  # index nor a query depends on the caller's search_path. The regexes
+  # bound the digits and the exponent, so `try_numeric` never reaches a
+  # numeric overflow; `try_date` catches what the regex cannot see (an
+  # impossible day) in its own block.
+  defp v2_statements(p) do
+    [
+      """
+      CREATE OR REPLACE FUNCTION #{p}phoenix_kit_entities_field_text(data jsonb, key text)
+      RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $fn$
+        SELECT COALESCE(data -> (data ->> '_primary_language') ->> key, data ->> key)
+      $fn$
+      """,
+      """
+      CREATE OR REPLACE FUNCTION #{p}phoenix_kit_entities_try_numeric(value text)
+      RETURNS numeric LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $fn$
+        SELECT CASE
+          WHEN value ~ '^\\s*[-+]?([0-9]{1,200}(\\.[0-9]{0,200})?|\\.[0-9]{1,200})([eE][-+]?[0-9]{1,3})?\\s*$'
+          THEN btrim(value)::numeric
+        END
+      $fn$
+      """,
+      """
+      CREATE OR REPLACE FUNCTION #{p}phoenix_kit_entities_try_date(value text)
+      RETURNS date LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE AS $fn$
+      BEGIN
+        IF value IS NULL OR value !~ '^\\s*[0-9]{4}-[0-9]{2}-[0-9]{2}' THEN
+          RETURN NULL;
+        END IF;
+
+        RETURN make_date(
+          substr(btrim(value), 1, 4)::int,
+          substr(btrim(value), 6, 2)::int,
+          substr(btrim(value), 9, 2)::int
+        );
+      EXCEPTION WHEN others THEN
+        RETURN NULL;
+      END
+      $fn$
+      """,
+      """
+      CREATE OR REPLACE FUNCTION #{p}phoenix_kit_entities_idx_numeric(data jsonb, key text)
+      RETURNS numeric LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $fn$
+        SELECT #{p}phoenix_kit_entities_try_numeric(#{p}phoenix_kit_entities_field_text(data, key))
+      $fn$
+      """,
+      """
+      CREATE OR REPLACE FUNCTION #{p}phoenix_kit_entities_idx_date(data jsonb, key text)
+      RETURNS date LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $fn$
+        SELECT #{p}phoenix_kit_entities_try_date(#{p}phoenix_kit_entities_field_text(data, key))
+      $fn$
+      """,
+      """
+      CREATE OR REPLACE FUNCTION #{p}phoenix_kit_entities_idx_text(data jsonb, key text)
+      RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $fn$
+        SELECT left(#{p}phoenix_kit_entities_field_text(data, key), 255)
+      $fn$
+      """
     ]
   end
 
