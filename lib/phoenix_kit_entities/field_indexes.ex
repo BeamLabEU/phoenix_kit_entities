@@ -181,14 +181,12 @@ defmodule PhoenixKitEntities.FieldIndexes do
           {:ok, %{created: [String.t()], dropped: [String.t()]}} | {:error, term()}
   def sync(entity, opts \\ [])
 
-  def sync(entity_uuid, opts) when is_binary(entity_uuid) do
-    case Entities.get_entity(entity_uuid) do
-      nil -> sync_specs(entity_uuid, [], opts)
-      entity -> sync(entity, opts)
-    end
-  end
-
-  def sync(%{uuid: uuid} = entity, opts), do: sync_specs(uuid, specs(entity), opts)
+  # The definition is read AFTER the entity's lock is taken, from the
+  # database (a struct passed in names the entity, nothing more): a sync
+  # that waited for another always applies the newest definition, never
+  # the one it was scheduled with. A missing entity wants no index.
+  def sync(entity_uuid, opts) when is_binary(entity_uuid), do: sync_specs(entity_uuid, opts)
+  def sync(%{uuid: uuid}, opts), do: sync_specs(uuid, opts)
 
   @doc """
   `sync/2` for every entity, and drops the field indexes of entities that
@@ -203,11 +201,11 @@ defmodule PhoenixKitEntities.FieldIndexes do
       list_all_entity_uuids()
       |> Enum.reject(&MapSet.member?(known, &1))
 
-    work = Enum.map(entities, &{&1.uuid, specs(&1)}) ++ Enum.map(orphans, &{&1, []})
+    work = Enum.map(entities, & &1.uuid) ++ orphans
 
     Enum.reduce_while(work, {:ok, %{created: 0, dropped: 0}}, fn
-      {uuid, specs}, {:ok, acc} ->
-        case sync_specs(uuid, specs, opts) do
+      uuid, {:ok, acc} ->
+        case sync_specs(uuid, opts) do
           {:ok, %{created: c, dropped: d}} ->
             {:cont, {:ok, %{created: acc.created + length(c), dropped: acc.dropped + length(d)}}}
 
@@ -257,32 +255,39 @@ defmodule PhoenixKitEntities.FieldIndexes do
   # `pg_advisory_lock` holds a snapshot, which the other sync's
   # `CREATE INDEX CONCURRENTLY` would wait for — a deadlock. Inside a
   # transaction the lock is the transaction's (released by its end, even a
-  # failed one); outside, the session's, released by a non-raising unlock.
+  # failed one) and is tried ONCE: a transaction that waited would hold its
+  # snapshot against the other sync's concurrent build, a stall Postgres
+  # cannot see, so it gets `{:error, :sync_in_progress}` instead. Outside,
+  # the lock is the session's, released by a non-raising unlock.
   @lock_poll_ms 250
   @lock_max_wait_ms :timer.hours(1)
 
-  defp sync_specs(entity_uuid, specs, opts) do
+  defp sync_specs(entity_uuid, opts) do
     repo().checkout(fn ->
       key = "phoenix_kit_entities:field_index:" <> entity_uuid
-      xact? = repo().in_transaction?()
-      fun = if xact?, do: "pg_try_advisory_xact_lock", else: "pg_try_advisory_lock"
 
-      case acquire(fun, key, @lock_max_wait_ms) do
-        :ok when xact? ->
-          do_sync_specs(entity_uuid, specs, opts)
+      if repo().in_transaction?() do
+        case acquire("pg_try_advisory_xact_lock", key, 0) do
+          :ok -> do_sync_specs(entity_uuid, current_specs(entity_uuid), opts)
+          :timeout -> {:error, :sync_in_progress}
+        end
+      else
+        case acquire("pg_try_advisory_lock", key, @lock_max_wait_ms) do
+          :ok ->
+            try do
+              do_sync_specs(entity_uuid, current_specs(entity_uuid), opts)
+            after
+              repo().query("SELECT pg_advisory_unlock(hashtextextended($1, 0))", [key])
+            end
 
-        :ok ->
-          try do
-            do_sync_specs(entity_uuid, specs, opts)
-          after
-            repo().query("SELECT pg_advisory_unlock(hashtextextended($1, 0))", [key])
-          end
-
-        :timeout ->
-          {:error, :sync_lock_timeout}
+          :timeout ->
+            {:error, :sync_lock_timeout}
+        end
       end
     end)
   end
+
+  defp current_specs(entity_uuid), do: entity_uuid |> Entities.get_entity() |> specs()
 
   defp acquire(fun, key, left) do
     case repo().query!("SELECT #{fun}(hashtextextended($1, 0))", [key]) do
@@ -384,6 +389,7 @@ defmodule PhoenixKitEntities.FieldIndexes do
         JOIN pg_namespace n ON n.oid = c.relnamespace
         JOIN pg_index i ON i.indexrelid = c.oid
         WHERE n.nspname = $1 AND c.relkind = 'i' AND c.relname LIKE $2
+          AND i.indrelid = (quote_ident($1) || '.#{@table}')::regclass
           AND NOT EXISTS (
             SELECT 1 FROM pg_description d
             WHERE d.objoid = c.oid AND d.classoid = 'pg_class'::regclass

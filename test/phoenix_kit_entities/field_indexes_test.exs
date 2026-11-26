@@ -166,6 +166,30 @@ defmodule PhoenixKitEntities.FieldIndexesTest do
       assert Enum.any?(FieldIndexes.list_uncommented(), &(&1.name == name))
     end
 
+    test "the stored definition is synced, not the struct passed in", %{entity: entity} do
+      stale = %{entity | fields_definition: Enum.map(@fields, &Map.delete(&1, "indexed"))}
+      assert {:ok, %{created: created}} = FieldIndexes.sync(stale)
+      assert length(created) == 3
+    end
+
+    test "inside a transaction a sync another session holds the lock for is refused at once",
+         %{entity: entity} do
+      {:ok, conn} = Repo.config() |> Keyword.delete(:pool) |> Postgrex.start_link()
+      key = "phoenix_kit_entities:field_index:" <> entity.uuid
+      Postgrex.query!(conn, "SELECT pg_advisory_lock(hashtextextended($1, 0))", [key])
+
+      try do
+        # (The sandbox's own transaction is not one `in_transaction?/0` sees.)
+        assert {:ok, {:error, :sync_in_progress}} =
+                 Repo.transaction(fn -> FieldIndexes.sync(entity) end)
+      after
+        Postgrex.query!(conn, "SELECT pg_advisory_unlock(hashtextextended($1, 0))", [key])
+        GenServer.stop(conn)
+      end
+
+      assert {:ok, %{created: [_, _, _]}} = FieldIndexes.sync(entity)
+    end
+
     test "a deleted entity's indexes go with sync_all/1", %{entity: entity} do
       {:ok, _} = FieldIndexes.sync(entity)
       {:ok, _} = Entities.delete_entity(entity)
