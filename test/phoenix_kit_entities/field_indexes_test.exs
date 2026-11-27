@@ -205,12 +205,21 @@ defmodule PhoenixKitEntities.FieldIndexesTest do
       price = FieldIndexes.index_name(entity.uuid, "price", "numeric")
       Repo.query!("DROP INDEX public.#{price}")
 
-      assert {:ok, %{created: 1, dropped: 0}} = FieldIndexes.sync_all(repair_only: true)
+      assert {:ok, %{created: 1, dropped: 0, failed: 0}} =
+               FieldIndexes.sync_all(repair_only: true)
+
       names = Enum.map(FieldIndexes.list(entity), & &1.name)
       assert price in names
       # The index city no longer asks for is a full sync's to drop, not repair's.
       assert FieldIndexes.index_name(entity.uuid, "city", "text") in names
       assert {:ok, %{created: 0, dropped: 0}} = FieldIndexes.sync_all(repair_only: true)
+
+      # The worker, with the module on, does the same repair.
+      Repo.query!("DROP INDEX public.#{price}")
+      PhoenixKit.Settings.update_boolean_setting("entities_enabled", true)
+      assert PhoenixKitEntities.enabled?()
+      assert :ok = PhoenixKitEntities.FieldIndexRepairWorker.perform(%Oban.Job{args: %{}})
+      assert price in Enum.map(FieldIndexes.list(entity), & &1.name)
     end
 
     test "the repair worker is declared as a valid daily cron and runs" do

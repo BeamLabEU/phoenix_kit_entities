@@ -29,23 +29,21 @@ defmodule PhoenixKitEntities.FieldIndexRepairWorker do
 
   @impl Oban.Worker
   def perform(%Oban.Job{}) do
-    if PhoenixKitEntities.enabled?() do
-      case FieldIndexes.sync_all(repair_only: true) do
-        {:ok, %{created: 0}} ->
-          :ok
-
-        {:ok, %{created: n, dropped: d}} ->
-          Logger.info(
-            "[Entities] field index repair rebuilt #{n} index(es), dropped #{d} invalid"
-          )
-
-          :ok
-
-        {:error, reason} ->
-          {:error, reason}
-      end
-    else
-      :ok
-    end
+    if PhoenixKitEntities.enabled?(),
+      do: FieldIndexes.sync_all(repair_only: true) |> outcome(),
+      else: :ok
   end
+
+  # Every entity was tried; any failure makes the job retry (Oban backoff).
+  defp outcome({:ok, %{failed: failed}}) when failed > 0,
+    do: {:error, {:field_index_repair_failed, failed}}
+
+  defp outcome({:ok, %{created: 0}}), do: :ok
+
+  defp outcome({:ok, %{created: n, dropped: d}}) do
+    Logger.info("[Entities] field index repair rebuilt #{n} index(es), dropped #{d} invalid")
+    :ok
+  end
+
+  defp outcome({:error, _} = error), do: error
 end

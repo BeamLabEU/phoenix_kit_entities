@@ -204,9 +204,10 @@ defmodule PhoenixKitEntities.FieldIndexes do
   only builds what a definition asks for and is missing or INVALID — an
   invalid one is dropped to be rebuilt, nothing else is ever dropped, and
   entities that no longer exist are left alone. With nothing wrong it
-  changes nothing.
+  changes nothing. It goes on past an entity that fails and returns
+  `{:ok, %{created: n, dropped: n, failed: n}}`.
   """
-  @spec sync_all(keyword()) :: {:ok, %{created: integer(), dropped: integer()}} | {:error, term()}
+  @spec sync_all(keyword()) :: {:ok, map()} | {:error, term()}
   def sync_all(opts \\ []) do
     entities = Entities.list_entities()
     known = MapSet.new(entities, & &1.uuid)
@@ -220,6 +221,10 @@ defmodule PhoenixKitEntities.FieldIndexes do
         do: Enum.map(entities, & &1.uuid),
         else: Enum.map(entities, & &1.uuid) ++ orphans
 
+    if opts[:repair_only], do: repair_each(work, opts), else: sync_each(work, opts)
+  end
+
+  defp sync_each(work, opts) do
     Enum.reduce_while(work, {:ok, %{created: 0, dropped: 0}}, fn
       uuid, {:ok, acc} ->
         case sync_specs(uuid, opts) do
@@ -230,6 +235,22 @@ defmodule PhoenixKitEntities.FieldIndexes do
             {:halt, error}
         end
     end)
+  end
+
+  # Repair goes on past a failing entity, so one entity's lock timeout
+  # does not leave every later one unrepaired; the failures are counted.
+  defp repair_each(work, opts) do
+    {:ok,
+     Enum.reduce(work, %{created: 0, dropped: 0, failed: 0}, fn uuid, acc ->
+       case sync_specs(uuid, opts) do
+         {:ok, %{created: c, dropped: d}} ->
+           %{acc | created: acc.created + length(c), dropped: acc.dropped + length(d)}
+
+         {:error, reason} ->
+           Logger.error("[Entities] field index repair failed for #{uuid}: #{inspect(reason)}")
+           %{acc | failed: acc.failed + 1}
+       end
+     end)}
   end
 
   @doc """

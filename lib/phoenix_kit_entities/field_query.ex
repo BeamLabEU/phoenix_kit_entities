@@ -57,20 +57,30 @@ defmodule PhoenixKitEntities.FieldQuery do
   @spec list(Entities.t() | String.t(), [filter()], keyword()) ::
           {:ok, [EntityData.t()]} | {:error, term()}
   def list(entity, filters, opts \\ []) when is_list(filters) do
+    # One connection for the literal check and the query it guards.
     with {:ok, entity} <- fetch_entity(entity),
-         {:ok, sql, params} <- build(entity, filters, opts) do
-      %{rows: rows} = repo().query!(sql, params)
+         {:ok, rows} <- repo().checkout(fn -> run(entity, filters, opts) end) do
       uuids = Enum.map(rows, fn [uuid] -> Ecto.UUID.load!(uuid) end)
       {:ok, load(uuids, opts)}
     end
+  end
+
+  defp run(entity, filters, opts) do
+    with {:ok, sql, params} <- build(entity, filters, opts),
+         do: {:ok, repo().query!(sql, params).rows}
   end
 
   @doc "Like `list/3`, but the number of matching records (`:limit`/`:order_by` ignored)."
   @spec count(Entities.t() | String.t(), [filter()], keyword()) ::
           {:ok, non_neg_integer()} | {:error, term()}
   def count(entity, filters, opts \\ []) when is_list(filters) do
-    with {:ok, entity} <- fetch_entity(entity),
-         :ok <- FieldIndexes.check_literals(),
+    with {:ok, entity} <- fetch_entity(entity) do
+      repo().checkout(fn -> do_count(entity, filters, opts) end)
+    end
+  end
+
+  defp do_count(entity, filters, opts) do
+    with :ok <- FieldIndexes.check_literals(),
          {:ok, where, params} <- where_clause(entity, filters, opts) do
       sql =
         "SELECT count(*) FROM #{FieldIndexes.schema()}.phoenix_kit_entity_data d WHERE #{where}"
