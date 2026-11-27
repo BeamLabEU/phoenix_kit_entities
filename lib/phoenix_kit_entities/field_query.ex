@@ -51,7 +51,8 @@ defmodule PhoenixKitEntities.FieldQuery do
   (`{:unknown_field, key}`), a non-integer `:limit`/`:offset`
   (`{:invalid_option, key}`), an operator the field's type does not take
   (`{:invalid_operator, key, op}`) or a value that does not cast to it
-  (`{:invalid_value, key}`).
+  (`{:invalid_value, key}`), and `{:error, :standard_conforming_strings_off}`
+  on a connection that would misread the quoted keys.
   """
   @spec list(Entities.t() | String.t(), [filter()], keyword()) ::
           {:ok, [EntityData.t()]} | {:error, term()}
@@ -69,6 +70,7 @@ defmodule PhoenixKitEntities.FieldQuery do
           {:ok, non_neg_integer()} | {:error, term()}
   def count(entity, filters, opts \\ []) when is_list(filters) do
     with {:ok, entity} <- fetch_entity(entity),
+         :ok <- FieldIndexes.check_literals(),
          {:ok, where, params} <- where_clause(entity, filters, opts) do
       sql =
         "SELECT count(*) FROM #{FieldIndexes.schema()}.phoenix_kit_entity_data d WHERE #{where}"
@@ -85,7 +87,8 @@ defmodule PhoenixKitEntities.FieldQuery do
   @spec build(Entities.t(), [filter()], keyword()) ::
           {:ok, String.t(), list()} | {:error, term()}
   def build(%{} = entity, filters, opts \\ []) do
-    with {:ok, where, params} <- where_clause(entity, filters, opts),
+    with :ok <- FieldIndexes.check_literals(),
+         {:ok, where, params} <- where_clause(entity, filters, opts),
          {:ok, order} <- order_clause(entity, opts[:order_by]),
          {:ok, limit} <- integer_opt(opts, :limit, @default_limit),
          {:ok, offset} <- integer_opt(opts, :offset, 0) do

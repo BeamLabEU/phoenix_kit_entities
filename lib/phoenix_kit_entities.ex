@@ -1183,6 +1183,16 @@ defmodule PhoenixKitEntities do
     end
   end
 
+  @doc """
+  The module's scheduled job: the daily repair of the opt-in field indexes
+  (`PhoenixKitEntities.FieldIndexRepairWorker`, core `default` queue). It
+  only rebuilds missing or INVALID indexes a definition asks for, and does
+  nothing with the module off.
+  """
+  @impl PhoenixKit.Module
+  @spec oban_crons() :: [{String.t(), module()}]
+  def oban_crons, do: [{"43 4 * * *", PhoenixKitEntities.FieldIndexRepairWorker}]
+
   @impl PhoenixKit.Module
   @doc """
   Checks if the entities system is enabled.

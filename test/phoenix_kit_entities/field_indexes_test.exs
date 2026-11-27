@@ -12,6 +12,8 @@ defmodule PhoenixKitEntities.FieldIndexesTest do
   """
   use PhoenixKitEntities.DataCase, async: false
 
+  require Logger
+
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.EntityData
   alias PhoenixKitEntities.FieldIndexes
@@ -188,6 +190,72 @@ defmodule PhoenixKitEntities.FieldIndexesTest do
       end
 
       assert {:ok, %{created: [_, _, _]}} = FieldIndexes.sync(entity)
+    end
+
+    test "repair_only rebuilds a missing wanted index and drops nothing else", %{entity: entity} do
+      {:ok, _} = FieldIndexes.sync(entity)
+
+      fields =
+        Enum.map(@fields, fn
+          %{"key" => "city"} = f -> Map.delete(f, "indexed")
+          f -> f
+        end)
+
+      {:ok, entity} = Entities.update_entity(entity, %{fields_definition: fields})
+      price = FieldIndexes.index_name(entity.uuid, "price", "numeric")
+      Repo.query!("DROP INDEX public.#{price}")
+
+      assert {:ok, %{created: 1, dropped: 0}} = FieldIndexes.sync_all(repair_only: true)
+      names = Enum.map(FieldIndexes.list(entity), & &1.name)
+      assert price in names
+      # The index city no longer asks for is a full sync's to drop, not repair's.
+      assert FieldIndexes.index_name(entity.uuid, "city", "text") in names
+      assert {:ok, %{created: 0, dropped: 0}} = FieldIndexes.sync_all(repair_only: true)
+    end
+
+    test "the repair worker is declared as a valid daily cron and runs" do
+      assert {entries, []} = PhoenixKit.ObanCrons.declared([PhoenixKitEntities])
+
+      assert {_, PhoenixKitEntities.FieldIndexRepairWorker} =
+               List.keyfind(entries, PhoenixKitEntities.FieldIndexRepairWorker, 1)
+
+      assert :ok = PhoenixKitEntities.FieldIndexRepairWorker.perform(%Oban.Job{args: %{}})
+    end
+
+    test "a save inside a transaction logs, once per entity, that it was not synced", %{
+      entity: entity
+    } do
+      previous = Application.get_env(:phoenix_kit_entities, :field_indexes)
+      Application.put_env(:phoenix_kit_entities, :field_indexes, :async)
+      on_exit(fn -> Application.put_env(:phoenix_kit_entities, :field_indexes, previous) end)
+      :persistent_term.erase({FieldIndexes, :skipped_in_transaction, entity.uuid})
+      level = Logger.level()
+      Logger.configure(level: :info)
+      on_exit(fn -> Logger.configure(level: level) end)
+
+      log =
+        ExUnit.CaptureLog.capture_log([level: :info], fn ->
+          Repo.transaction(fn ->
+            FieldIndexes.schedule_sync(entity)
+            FieldIndexes.schedule_sync(entity)
+          end)
+        end)
+
+      assert length(String.split(log, "FieldIndexes.sync/2")) == 2, log
+      assert log =~ entity.uuid
+    end
+
+    test "with standard_conforming_strings off nothing that embeds a key runs", %{entity: entity} do
+      Repo.query!("SET LOCAL standard_conforming_strings = off")
+      assert {:error, :standard_conforming_strings_off} = FieldIndexes.sync(entity)
+
+      assert {:error, :standard_conforming_strings_off} =
+               FieldQuery.list(entity, [{"price", :lte, 1}])
+
+      assert {:error, :standard_conforming_strings_off} =
+               FieldQuery.count(entity, [{"price", :lte, 1}])
+
+      assert FieldIndexes.list(entity) == []
     end
 
     test "a deleted entity's indexes go with sync_all/1", %{entity: entity} do

@@ -51,6 +51,14 @@ defmodule PhoenixKitEntities.FieldIndexes do
   task, say). An entity with no indexed field never triggers anything, so
   an install that does not use the option sees no change.
 
+  A daily job (`PhoenixKitEntities.FieldIndexRepairWorker`, declared in
+  the module's `oban_crons/0`) runs `sync_all(repair_only: true)`, which
+  rebuilds missing or INVALID wanted indexes and drops nothing else. A save
+  inside a caller's transaction logs once per entity that it was not
+  synced. Every sync and every `FieldQuery` checks that the connection has
+  `standard_conforming_strings` on (`check_literals/0`), because keys are
+  embedded as quoted literals.
+
   Each index carries a `COMMENT` naming its entity, type and key, which is
   how a sync finds the ones it owns. The names are
   `phoenix_kit_entity_data_fx_<16 hex>`, a hash of the three.
@@ -191,6 +199,12 @@ defmodule PhoenixKitEntities.FieldIndexes do
   @doc """
   `sync/2` for every entity, and drops the field indexes of entities that
   no longer exist. Returns `{:ok, %{created: n, dropped: n}}`.
+
+  `repair_only: true` (the daily `PhoenixKitEntities.FieldIndexRepairWorker`)
+  only builds what a definition asks for and is missing or INVALID — an
+  invalid one is dropped to be rebuilt, nothing else is ever dropped, and
+  entities that no longer exist are left alone. With nothing wrong it
+  changes nothing.
   """
   @spec sync_all(keyword()) :: {:ok, %{created: integer(), dropped: integer()}} | {:error, term()}
   def sync_all(opts \\ []) do
@@ -201,7 +215,10 @@ defmodule PhoenixKitEntities.FieldIndexes do
       list_all_entity_uuids()
       |> Enum.reject(&MapSet.member?(known, &1))
 
-    work = Enum.map(entities, & &1.uuid) ++ orphans
+    work =
+      if opts[:repair_only],
+        do: Enum.map(entities, & &1.uuid),
+        else: Enum.map(entities, & &1.uuid) ++ orphans
 
     Enum.reduce_while(work, {:ok, %{created: 0, dropped: 0}}, fn
       uuid, {:ok, acc} ->
@@ -224,10 +241,8 @@ defmodule PhoenixKitEntities.FieldIndexes do
     # Inside a caller's transaction the task's own connection could not see
     # the uncommitted definition yet, so it would sync the old one. The
     # caller syncs after its commit (the mirror importer does).
-    if Application.get_env(:phoenix_kit_entities, :field_indexes, :async) == :async and
-         not repo().in_transaction?() do
-      Task.Supervisor.start_child(PhoenixKit.TaskSupervisor, fn -> sync_and_log(uuid) end)
-    end
+    if Application.get_env(:phoenix_kit_entities, :field_indexes, :async) == :async,
+      do: start_sync(uuid, repo().in_transaction?())
 
     :ok
   rescue
@@ -238,6 +253,29 @@ defmodule PhoenixKitEntities.FieldIndexes do
       :ok
   catch
     :exit, _ -> :ok
+  end
+
+  defp start_sync(uuid, true), do: note_skipped_in_transaction(uuid)
+
+  defp start_sync(uuid, false),
+    do: Task.Supervisor.start_child(PhoenixKit.TaskSupervisor, fn -> sync_and_log(uuid) end)
+
+  # Once per entity per VM: a host saving inside its own transaction learns
+  # why its index did not appear, without a line on every save.
+  defp note_skipped_in_transaction(uuid) do
+    key = {__MODULE__, :skipped_in_transaction, uuid}
+
+    if :persistent_term.get(key, false) == false do
+      :persistent_term.put(key, true)
+
+      Logger.info(
+        "[Entities] entity #{uuid} was saved inside a transaction, so its field indexes " <>
+          "were not synced automatically; call PhoenixKitEntities.FieldIndexes.sync/2 " <>
+          "after the commit"
+      )
+    end
+
+    :ok
   end
 
   defp sync_and_log(uuid) do
@@ -264,7 +302,27 @@ defmodule PhoenixKitEntities.FieldIndexes do
 
   defp sync_specs(entity_uuid, opts) do
     key = "phoenix_kit_entities:field_index:" <> entity_uuid
-    repo().checkout(fn -> locked_sync(repo().in_transaction?(), entity_uuid, key, opts) end)
+
+    repo().checkout(fn ->
+      with :ok <- check_literals() do
+        locked_sync(repo().in_transaction?(), entity_uuid, key, opts)
+      end
+    end)
+  end
+
+  @doc """
+  `:ok` when the connection reads `'...'` literals as `literal/1` writes
+  them (`standard_conforming_strings` on, Postgres' default since 9.1),
+  else `{:error, :standard_conforming_strings_off}` — with it off a
+  backslash in a key would escape the closing quote, so nothing that embeds
+  a key runs.
+  """
+  @spec check_literals() :: :ok | {:error, :standard_conforming_strings_off}
+  def check_literals do
+    case repo().query!("SHOW standard_conforming_strings", []) do
+      %{rows: [["on"]]} -> :ok
+      _ -> {:error, :standard_conforming_strings_off}
+    end
   end
 
   defp locked_sync(true, entity_uuid, key, opts) do
@@ -314,7 +372,7 @@ defmodule PhoenixKitEntities.FieldIndexes do
     # An index that is no longer wanted, or one left INVALID by an
     # interrupted concurrent build, goes; the second kind is rebuilt below.
     {to_drop, to_keep} =
-      Enum.split_with(existing, &(not Map.has_key?(wanted, &1.name) or not &1.valid?))
+      Enum.split_with(existing, &drop?(&1, wanted, opts[:repair_only]))
 
     kept = MapSet.new(to_keep, & &1.name)
     to_create = Enum.reject(wanted, fn {name, _} -> MapSet.member?(kept, name) end)
@@ -327,6 +385,11 @@ defmodule PhoenixKitEntities.FieldIndexes do
       {:ok, %{created: created, dropped: dropped}}
     end
   end
+
+  # Repair only rebuilds: an INVALID wanted index goes (to be built again);
+  # one nobody asks for any more stays.
+  defp drop?(index, wanted, true), do: Map.has_key?(wanted, index.name) and not index.valid?
+  defp drop?(index, wanted, _), do: not Map.has_key?(wanted, index.name) or not index.valid?
 
   # A wanted name that exists without our COMMENT: a concurrent build that
   # was interrupted before the comment was written (INVALID — dropped and
