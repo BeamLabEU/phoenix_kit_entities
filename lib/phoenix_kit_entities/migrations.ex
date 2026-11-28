@@ -223,7 +223,7 @@ defmodule PhoenixKitEntities.Migrations do
       BEGIN
         value := regexp_replace(value, '^[ \\t\\n\\r\\f\\v]+', '');
 
-        IF value IS NULL OR value !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}' THEN
+        IF value IS NULL OR value !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}[ \\t\\n\\r\\f\\v]*$' THEN
           RETURN NULL;
         END IF;
 

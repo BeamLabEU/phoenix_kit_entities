@@ -64,6 +64,8 @@ defmodule PhoenixKitEntities.FieldIndexes do
   `phoenix_kit_entity_data_fx_<16 hex>`, a hash of the three.
   """
 
+  import Ecto.Query, only: [from: 2]
+
   require Logger
 
   alias PhoenixKitEntities, as: Entities
@@ -165,10 +167,11 @@ defmodule PhoenixKitEntities.FieldIndexes do
         JOIN pg_namespace n ON n.oid = c.relnamespace
         JOIN pg_index i ON i.indexrelid = c.oid
         JOIN pg_description d ON d.objoid = c.oid AND d.classoid = 'pg_class'::regclass
-        WHERE n.nspname = $1 AND c.relkind = 'i' AND d.description LIKE $2
+        WHERE n.nspname = $1 AND c.relkind = 'i' AND starts_with(d.description, $2)
+          AND i.indrelid = (quote_ident($1) || '.#{@table}')::regclass
         ORDER BY c.relname
         """,
-        [schema(), @comment_prefix <> entity_uuid <> ":%"]
+        [schema(), @comment_prefix <> entity_uuid <> ":"]
       )
 
     Enum.map(rows, fn [name, comment, valid?] ->
@@ -209,19 +212,15 @@ defmodule PhoenixKitEntities.FieldIndexes do
   """
   @spec sync_all(keyword()) :: {:ok, map()} | {:error, term()}
   def sync_all(opts \\ []) do
-    entities = Entities.list_entities()
-    known = MapSet.new(entities, & &1.uuid)
+    uuids = repo().all(from(e in Entities, select: e.uuid, order_by: e.uuid))
 
-    orphans =
-      list_all_entity_uuids()
-      |> Enum.reject(&MapSet.member?(known, &1))
-
-    work =
-      if opts[:repair_only],
-        do: Enum.map(entities, & &1.uuid),
-        else: Enum.map(entities, & &1.uuid) ++ orphans
-
-    if opts[:repair_only], do: repair_each(work, opts), else: sync_each(work, opts)
+    if opts[:repair_only] do
+      repair_each(uuids, opts)
+    else
+      known = MapSet.new(uuids)
+      orphans = Enum.reject(list_all_entity_uuids(), &MapSet.member?(known, &1))
+      sync_each(uuids ++ orphans, opts)
+    end
   end
 
   defp sync_each(work, opts) do
@@ -324,11 +323,14 @@ defmodule PhoenixKitEntities.FieldIndexes do
   defp sync_specs(entity_uuid, opts) do
     key = "phoenix_kit_entities:field_index:" <> entity_uuid
 
-    repo().checkout(fn ->
-      with :ok <- check_literals() do
-        locked_sync(repo().in_transaction?(), entity_uuid, key, opts)
-      end
-    end)
+    repo().checkout(
+      fn ->
+        with :ok <- check_literals() do
+          locked_sync(repo().in_transaction?(), entity_uuid, key, opts)
+        end
+      end,
+      timeout: :infinity
+    )
   end
 
   @doc """
@@ -366,7 +368,12 @@ defmodule PhoenixKitEntities.FieldIndexes do
     repo().query("SELECT pg_advisory_unlock(hashtextextended($1, 0))", [key])
   end
 
-  defp current_specs(entity_uuid), do: entity_uuid |> Entities.get_entity() |> specs()
+  defp current_specs(entity_uuid) do
+    fields =
+      repo().one(from(e in Entities, where: e.uuid == ^entity_uuid, select: e.fields_definition))
+
+    specs(%{fields_definition: fields})
+  end
 
   defp acquire(fun, key, left) do
     case repo().query!("SELECT #{fun}(hashtextextended($1, 0))", [key]) do
@@ -427,6 +434,7 @@ defmodule PhoenixKitEntities.FieldIndexes do
         JOIN pg_namespace n ON n.oid = c.relnamespace
         JOIN pg_index i ON i.indexrelid = c.oid
         WHERE n.nspname = $1 AND c.relkind = 'i' AND c.relname = ANY($2)
+          AND i.indrelid = (quote_ident($1) || '.#{@table}')::regclass
           AND NOT EXISTS (
             SELECT 1 FROM pg_description d
             WHERE d.objoid = c.oid AND d.classoid = 'pg_class'::regclass
@@ -500,7 +508,7 @@ defmodule PhoenixKitEntities.FieldIndexes do
     how = if concurrently?, do: "CONCURRENTLY ", else: ""
 
     sql =
-      "CREATE INDEX #{how}IF NOT EXISTS #{name} ON #{s}.#{@table} USING btree " <>
+      "CREATE INDEX #{how}#{name} ON #{s}.#{@table} USING btree " <>
         "(entity_uuid, (#{expression("data", key, type)}))"
 
     with {:ok, _} <- ddl(sql, concurrently?),
@@ -540,10 +548,12 @@ defmodule PhoenixKitEntities.FieldIndexes do
         SELECT DISTINCT split_part(d.description, ':', 3)
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_index i ON i.indexrelid = c.oid
         JOIN pg_description d ON d.objoid = c.oid AND d.classoid = 'pg_class'::regclass
-        WHERE n.nspname = $1 AND c.relkind = 'i' AND d.description LIKE $2
+        WHERE n.nspname = $1 AND c.relkind = 'i' AND starts_with(d.description, $2)
+          AND i.indrelid = (quote_ident($1) || '.#{@table}')::regclass
         """,
-        [schema(), @comment_prefix <> "%"]
+        [schema(), @comment_prefix]
       )
 
     List.flatten(rows)

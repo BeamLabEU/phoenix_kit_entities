@@ -310,7 +310,7 @@ defmodule PhoenixKitEntities do
         changeset,
         :fields_definition,
         gettext("invalid index type '%{type}' for field '%{key}'",
-          type: to_string(indexed),
+          type: if(is_binary(indexed), do: indexed, else: inspect(indexed)),
           key: to_string(field["key"])
         )
       )

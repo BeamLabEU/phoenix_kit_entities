@@ -32,8 +32,6 @@ defmodule PhoenixKitEntities.FieldQuery do
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.{EntityData, FieldIndexes}
 
-  import Ecto.Query, only: [from: 2]
-
   @max_limit 1000
   @default_limit 100
   @text_ops [:eq, :neq, :in, :is_nil, :not_nil]
@@ -59,15 +57,21 @@ defmodule PhoenixKitEntities.FieldQuery do
   def list(entity, filters, opts \\ []) when is_list(filters) do
     # One connection for the literal check and the query it guards.
     with {:ok, entity} <- fetch_entity(entity),
-         {:ok, rows} <- repo().checkout(fn -> run(entity, filters, opts) end) do
-      uuids = Enum.map(rows, fn [uuid] -> Ecto.UUID.load!(uuid) end)
-      {:ok, load(uuids, opts)}
+         {:ok, records} <- repo().checkout(fn -> run(entity, filters, opts) end) do
+      records = repo().preload(records, [:entity, :creator])
+
+      case opts[:lang] do
+        lang when is_binary(lang) -> {:ok, EntityData.resolve_languages(records, lang)}
+        _ -> {:ok, records}
+      end
     end
   end
 
   defp run(entity, filters, opts) do
-    with {:ok, sql, params} <- build(entity, filters, opts),
-         do: {:ok, repo().query!(sql, params).rows}
+    with {:ok, sql, params} <- build(entity, filters, opts) do
+      %{columns: columns, rows: rows} = repo().query!(sql, params)
+      {:ok, Enum.map(rows, &repo().load(EntityData, {columns, &1}))}
+    end
   end
 
   @doc "Like `list/3`, but the number of matching records (`:limit`/`:order_by` ignored)."
@@ -106,7 +110,7 @@ defmodule PhoenixKitEntities.FieldQuery do
       offset = max(offset, 0)
 
       sql =
-        "SELECT d.uuid FROM #{FieldIndexes.schema()}.phoenix_kit_entity_data d " <>
+        "SELECT d.* FROM #{FieldIndexes.schema()}.phoenix_kit_entity_data d " <>
           "WHERE #{where} ORDER BY #{order} LIMIT #{limit} OFFSET #{offset}"
 
       {:ok, sql, params}
@@ -341,20 +345,4 @@ defmodule PhoenixKitEntities.FieldQuery do
   end
 
   defp fetch_entity(_), do: {:error, :entity_not_found}
-
-  defp load([], _opts), do: []
-
-  defp load(uuids, opts) do
-    by_uuid =
-      from(d in EntityData, where: d.uuid in ^uuids, preload: [:entity, :creator])
-      |> repo().all()
-      |> Map.new(&{&1.uuid, &1})
-
-    records = uuids |> Enum.map(&by_uuid[&1]) |> Enum.reject(&is_nil/1)
-
-    case opts[:lang] do
-      lang when is_binary(lang) -> EntityData.resolve_languages(records, lang)
-      _ -> records
-    end
-  end
 end

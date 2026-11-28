@@ -97,6 +97,12 @@ defmodule PhoenixKitEntities.FieldIndexesTest do
       assert errors_on(changeset)[:fields_definition] |> Enum.any?(&(&1 =~ "gin"))
     end
 
+    test "a malformed index type returns a changeset error", %{entity: entity} do
+      fields = [Map.put(hd(@fields), "indexed", %{"invalid" => true})]
+      assert {:error, changeset} = Entities.update_entity(entity, %{fields_definition: fields})
+      assert errors_on(changeset)[:fields_definition]
+    end
+
     test "the index expression quotes the key as a literal" do
       assert FieldIndexes.expression("data", "o'brien", "text") ==
                "public.phoenix_kit_entities_idx_text(data, 'o''brien')"
@@ -154,6 +160,28 @@ defmodule PhoenixKitEntities.FieldIndexesTest do
 
       assert %{key: "price", type: "numeric", valid?: true} =
                Enum.find(FieldIndexes.list(entity), &(&1.name == name))
+    end
+
+    test "a name collision on another table leaves its index alone", %{entity: entity} do
+      name = FieldIndexes.index_name(entity.uuid, "price", "numeric")
+      Repo.query!("CREATE INDEX #{name} ON public.phoenix_kit_entities (uuid)")
+
+      # Isolate the expected DDL error so the enclosing sandbox transaction remains usable.
+      assert {:error, :collision} =
+               Repo.transaction(
+                 fn ->
+                   assert {:error, %Postgrex.Error{}} =
+                            FieldIndexes.sync(entity, concurrently: false)
+
+                   Repo.rollback(:collision)
+                 end,
+                 mode: :savepoint
+               )
+
+      assert %{rows: [[nil]]} =
+               Repo.query!("SELECT obj_description($1::text::regclass, 'pg_class')", [name])
+
+      refute Enum.any?(FieldIndexes.list(entity), &(&1.name == name))
     end
 
     test "list_uncommented/0 names a leftover no field asks for; sync leaves it alone",
@@ -348,7 +376,9 @@ defmodule PhoenixKitEntities.FieldIndexesTest do
          %{entity: entity, actor: actor} do
       {:ok, _} = FieldIndexes.sync(entity)
 
-      record!(entity, actor, "tab", %{"price" => "\t12\n", "available" => "\t2026-12-01"})
+      record!(entity, actor, "tab", %{"price" => "\t12\n", "available" => "\t2026-12-01\n"})
+
+      record!(entity, actor, "date-suffix", %{"available" => "2026-12-01oops", "price" => 1})
 
       record!(entity, actor, "emspace", %{
         "price" => "\u200312",
@@ -428,6 +458,31 @@ defmodule PhoenixKitEntities.FieldIndexesTest do
 
       assert titles(FieldQuery.list(entity, [{"city", :in, ["Tartu", "Narva"]}])) == ["small"]
       assert {:ok, 2} = FieldQuery.count(entity, [{"city", :eq, "Tallinn"}])
+    end
+
+    test "filtering and loading record data share a single read", %{entity: entity} do
+      ref = make_ref()
+      parent = self()
+
+      :telemetry.attach(
+        ref,
+        [:phoenix_kit_entities, :test, :repo, :query],
+        fn _, _, meta, _ ->
+          if meta.query =~ "phoenix_kit_entity_data", do: send(parent, {ref, :read})
+        end,
+        nil
+      )
+
+      try do
+        assert {:ok, [record]} = FieldQuery.list(entity, [{"city", :eq, "Tartu"}])
+        assert record.data["city"] == "Tartu"
+        assert Ecto.assoc_loaded?(record.entity)
+        assert Ecto.assoc_loaded?(record.creator)
+        assert_received {^ref, :read}
+        refute_received {^ref, :read}
+      after
+        :telemetry.detach(ref)
+      end
     end
 
     test "trashed records are left out unless asked for", %{entity: entity} do
