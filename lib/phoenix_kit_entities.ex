@@ -106,6 +106,7 @@ defmodule PhoenixKitEntities do
   alias PhoenixKit.Utils.UUID, as: UUIDUtils
   alias PhoenixKitEntities.EntityData
   alias PhoenixKitEntities.Events
+  alias PhoenixKitEntities.FieldIndexes
   alias PhoenixKitEntities.FieldTypes
   alias PhoenixKitEntities.Managed
   alias PhoenixKitEntities.Mirror.Exporter
@@ -264,7 +265,9 @@ defmodule PhoenixKitEntities do
     missing_keys = required_keys -- Map.keys(field)
 
     if Enum.empty?(missing_keys) do
-      validate_field_type(changeset, field)
+      changeset
+      |> validate_field_type(field)
+      |> validate_field_indexed(field)
     else
       add_error(
         changeset,
@@ -295,6 +298,26 @@ defmodule PhoenixKitEntities do
       )
     end
   end
+
+  # `"indexed"` is opt-in: absent (or nil) means no index; anything else
+  # must be one of `FieldIndexes.types/0`.
+  defp validate_field_indexed(changeset, %{"indexed" => indexed} = field)
+       when not is_nil(indexed) do
+    if FieldIndexes.index_type(field) do
+      changeset
+    else
+      add_error(
+        changeset,
+        :fields_definition,
+        gettext("invalid index type '%{type}' for field '%{key}'",
+          type: if(is_binary(indexed), do: indexed, else: inspect(indexed)),
+          key: to_string(field["key"])
+        )
+      )
+    end
+  end
+
+  defp validate_field_indexed(changeset, _field), do: changeset
 
   # A relation needs a target. And with `entities_allow_relations` off, no
   # NEW relation field may be added — one the entity already had (same key,
@@ -373,6 +396,16 @@ defmodule PhoenixKitEntities do
   end
 
   defp notify_entity_event(result, _event, _opts), do: result
+
+  # Opt-in field indexes (`FieldIndexes`): a save that changed which
+  # fields are indexed has them built or dropped in the background. An
+  # entity that never asks for one never gets here.
+  defp maybe_sync_field_indexes({:ok, %__MODULE__{} = entity}, indexed_before) do
+    if FieldIndexes.specs(entity) != indexed_before, do: FieldIndexes.schedule_sync(entity)
+    :ok
+  end
+
+  defp maybe_sync_field_indexes(_result, _indexed_before), do: :ok
 
   # Records an entity-lifecycle activity entry. The actor UUID comes
   # from the caller's `:actor_uuid` opt (the user performing the
@@ -673,6 +706,7 @@ defmodule PhoenixKitEntities do
       |> changeset(attrs)
       |> repo().insert()
       |> notify_entity_event(:created, opts)
+      |> tap(&maybe_sync_field_indexes(&1, []))
     end
   end
 
@@ -751,7 +785,7 @@ defmodule PhoenixKitEntities do
 
         with :ok <- Managed.validate_mutation(stored, attrs, opts),
              {:ok, updated} <- stored |> changeset(attrs) |> repo().update() do
-          updated
+          {FieldIndexes.specs(stored), updated}
         else
           {:error, %Ecto.Changeset{} = changeset} -> repo().rollback({:invalid, changeset})
           {:error, reason} -> repo().rollback({:refused, reason})
@@ -759,9 +793,16 @@ defmodule PhoenixKitEntities do
       end)
 
     case txn do
-      {:ok, updated} -> notify_entity_event({:ok, updated}, :updated, opts)
-      {:error, {:invalid, changeset}} -> notify_entity_event({:error, changeset}, :updated, opts)
-      {:error, {:refused, reason}} -> {:error, reason}
+      {:ok, {indexed_before, updated}} ->
+        {:ok, updated}
+        |> notify_entity_event(:updated, opts)
+        |> tap(&maybe_sync_field_indexes(&1, indexed_before))
+
+      {:error, {:invalid, changeset}} ->
+        notify_entity_event({:error, changeset}, :updated, opts)
+
+      {:error, {:refused, reason}} ->
+        {:error, reason}
     end
   end
 
@@ -865,6 +906,16 @@ defmodule PhoenixKitEntities do
       :ok ->
         repo().delete(entity)
         |> notify_entity_event(:deleted, opts)
+        |> tap(fn
+          {:ok, deleted} ->
+            maybe_sync_field_indexes(
+              {:ok, %{deleted | fields_definition: []}},
+              FieldIndexes.specs(entity)
+            )
+
+          _ ->
+            :ok
+        end)
 
       {:error, reason} ->
         {:error, reason}
@@ -1131,6 +1182,16 @@ defmodule PhoenixKitEntities do
       {:error, {:user_entity_limit_reached, max_entities}}
     end
   end
+
+  @doc """
+  The module's scheduled job: the daily repair of the opt-in field indexes
+  (`PhoenixKitEntities.FieldIndexRepairWorker`, core `default` queue). It
+  only rebuilds missing or INVALID indexes a definition asks for, and does
+  nothing with the module off.
+  """
+  @impl PhoenixKit.Module
+  @spec oban_crons() :: [{String.t(), module()}]
+  def oban_crons, do: [{"43 4 * * *", PhoenixKitEntities.FieldIndexRepairWorker}]
 
   @impl PhoenixKit.Module
   @doc """

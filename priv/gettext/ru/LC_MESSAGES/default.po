@@ -3132,3 +3132,19 @@ msgstr "Не удалось загрузить проверку, поэтому 
 #, elixir-autogen, elixir-format
 msgid "The verification could not start. Please reload the page."
 msgstr "Не удалось запустить проверку. Пожалуйста, перезагрузите страницу."
+
+#, elixir-autogen, elixir-format
+msgid "Index for filtering"
+msgstr "Индекс для фильтрации"
+
+#, elixir-autogen, elixir-format
+msgid "No index"
+msgstr "Без индекса"
+
+#, elixir-autogen, elixir-format
+msgid "Makes filtering and sorting records by this field fast. The index is built in the background after you save the entity."
+msgstr "Ускоряет фильтрацию и сортировку записей по этому полю. Индекс строится в фоне после сохранения сущности."
+
+#, elixir-autogen, elixir-format
+msgid "invalid index type '%{type}' for field '%{key}'"
+msgstr "недопустимый тип индекса '%{type}' у поля '%{key}'"

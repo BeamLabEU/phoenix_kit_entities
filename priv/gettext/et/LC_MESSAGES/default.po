@@ -3127,3 +3127,19 @@ msgstr "Kinnitust ei saanud laadida, seega seda vormi ei saa saata. Teie brauser
 #, elixir-autogen, elixir-format
 msgid "The verification could not start. Please reload the page."
 msgstr "Kinnitust ei õnnestunud käivitada. Palun laadige leht uuesti."
+
+#, elixir-autogen, elixir-format
+msgid "Index for filtering"
+msgstr "Indeks filtreerimiseks"
+
+#, elixir-autogen, elixir-format
+msgid "No index"
+msgstr "Indeksita"
+
+#, elixir-autogen, elixir-format
+msgid "Makes filtering and sorting records by this field fast. The index is built in the background after you save the entity."
+msgstr "Muudab kirjete filtreerimise ja sortimise selle välja järgi kiireks. Indeks luuakse taustal pärast üksuse salvestamist."
+
+#, elixir-autogen, elixir-format
+msgid "invalid index type '%{type}' for field '%{key}'"
+msgstr "väljal '%{key}' on vigane indeksi tüüp '%{type}'"

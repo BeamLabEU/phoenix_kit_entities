@@ -364,6 +364,20 @@ Repo-local aliases:
   mount/`handle_params`: host hooks find-or-create folders, and a render must
   not write them. It rescues and catches `:exit`, degrading to an unscoped
   picker.
+- **Field indexes are opt-in and runtime-built** (`FieldIndexes`): a field
+  definition's `"indexed"` (`numeric` | `text` | `date`, set in the entity
+  form's field modal) asks for a btree expression index on `(entity_uuid,
+  <schema>.phoenix_kit_entities_idx_<type>(data, '<key>'))`. They are not
+  migrations: `FieldIndexes.sync/2` creates/drops them (`CONCURRENTLY` outside
+  a transaction), run in a task after an entity save that changed the indexed
+  set unless `config :phoenix_kit_entities, field_indexes: :manual` (the test
+  config). Each index is found again by its `COMMENT`; `sync_all/1` also drops
+  a deleted entity's. **`FieldIndexes.expression/3` is the only source of the
+  SQL** — `FieldQuery` (the filter helper: `list/3`, `count/3`, `build/3`)
+  builds its WHERE from it with the key as a literal, never a parameter, or the
+  planner cannot match the index. A dirty value casts to NULL (never raises);
+  text is indexed by its first 255 characters and an equality rechecks the full
+  value. Never add a cast of a field value of your own; go through these.
 - **PubSub topic strings live in `Events` as named functions** — never
   hardcode a topic in a caller. Broadcasts go through
   `PhoenixKit.PubSub.Manager` (the host's PubSub), not a module-local server.
@@ -404,6 +418,7 @@ lib/phoenix_kit_entities/
 ├── errors.ex                                    # Atom/tagged-tuple -> gettext dispatcher
 ├── events.ex                                    # PubSub topics + broadcast helpers
 ├── field_types.ex / field_type.ex               # Field-type registry + struct
+├── field_indexes.ex / field_query.ex            # Opt-in typed field indexes + the filter helper sharing their SQL
 ├── form_builder.ex                              # Dynamic form generation + data validation
 ├── gettext.ex                                   # Module Gettext backend
 ├── managed.ex                                   # Managed-blueprint guards + delete-guard registry
@@ -518,7 +533,7 @@ render translated in the permissions matrix via
 
 Owns a versioned chain: `PhoenixKitEntities.Migrations` via `migration_module/0`,
 marker `pkn_schema:<N>` as a `COMMENT ON TABLE phoenix_kit_entities`, currently
-V1. `mix phoenix_kit.update` applies it in hosts (and `mix phoenix_kit.status`
+V2. `mix phoenix_kit.update` applies it in hosts (and `mix phoenix_kit.status`
 reports it); the test suite runs it through `Test.Migration` in
 `test_helper.exs`.
 
@@ -542,6 +557,10 @@ Consequences, from the protocol in the `phoenix_kit_hello_world` README
 - V1's statements are pinned in `test/phoenix_kit_entities/migrations_test.exs`,
   including a drift guard that derives the expected object inventory from
   core's `ExpectedSchema` manifest rather than a hand-copied list.
+- **V2 adds functions, not shape**: the IMMUTABLE `phoenix_kit_entities_*`
+  SQL functions (`field_text`, guarded `try_numeric` / `try_date`, and the
+  three `idx_*` expressions) that field indexes and `FieldQuery` share.
+  Core's manifest does not describe functions, so no core release was needed.
 - `migrated_version_runtime/1` reports `0` for a marker-less table but RAISES
   on an unusable prefix — "not installed" and "you gave me a prefix I cannot
   query" must not look the same to the update task. It rescues and catches
